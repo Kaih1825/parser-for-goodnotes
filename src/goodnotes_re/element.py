@@ -62,11 +62,18 @@ def parse_image_elements(records: Sequence[Message]) -> tuple[ImageElement, ...]
     images: list[ImageElement] = []
     for i, rec in enumerate(records):
         att_uuid = None
-        f4 = rec.by_number(4)
-        if f4 and isinstance(f4[0].value, bytes):
-            s = f4[0].value.decode("utf-8", errors="ignore")
+        f7 = rec.by_number(7)
+        if f7 and isinstance(f7[0].value, bytes):
+            s = f7[0].value.decode("utf-8", errors="ignore")
             if _looks_like_uuid(s):
                 att_uuid = s
+
+        if not att_uuid:
+            f4 = rec.by_number(4)
+            if f4 and isinstance(f4[0].value, bytes):
+                s = f4[0].value.decode("utf-8", errors="ignore")
+                if _looks_like_uuid(s):
+                    att_uuid = s
 
         if not att_uuid:
             continue
@@ -196,6 +203,7 @@ class StickyNote:
     height: float = 256.0
     color_hex: str = "#FAE778"
     author: str = ""
+    text: str = ""
     is_open: bool = True
 
     def as_dict(self) -> dict[str, object]:
@@ -207,21 +215,86 @@ class StickyNote:
             "height": self.height,
             "color_hex": self.color_hex,
             "author": self.author,
+            "text": self.text,
             "is_open": self.is_open,
         }
 
 
+def _extract_sticky_note_text(msg: Message) -> str:
+    """Extract plain text payload from StickyNote (Type 35) field 31 LZ4 message."""
+    texts: list[str] = []
+    f31_list = msg.by_number(31)
+    for f31 in f31_list:
+        if not isinstance(f31.value, bytes):
+            continue
+        m31 = try_decode_message(f31.value)
+        if not m31:
+            continue
+        f1_list = m31.by_number(1)
+        for f1 in f1_list:
+            if not isinstance(f1.value, bytes):
+                continue
+            m31_f1 = try_decode_message(f1.value)
+            if not m31_f1:
+                continue
+            f2_list = m31_f1.by_number(2)
+            for f2 in f2_list:
+                if isinstance(f2.value, bytes) and b"bv41" in f2.value:
+                    pos = f2.value.find(b"bv41")
+                    try:
+                        from .compression import decode_apple_lz4
+                        lz4_data, _ = decode_apple_lz4(f2.value[pos:])
+                        proto = try_decode_message(lz4_data)
+                        if proto:
+                            for pf in proto.fields:
+                                if isinstance(pf.value, bytes):
+                                    m_pf = try_decode_message(pf.value)
+                                    if m_pf:
+                                        f1_txt = m_pf.by_number(1)
+                                        if f1_txt and isinstance(f1_txt[0].value, bytes):
+                                            txt = f1_txt[0].value.decode("utf-8", errors="ignore")
+                                            if txt:
+                                                texts.append(txt)
+                    except Exception:
+                        pass
+    return "".join(texts)
+
+
 def parse_sticky_notes(records: Sequence[Message]) -> tuple[StickyNote, ...]:
     """Extract all sticky note objects (Type 35) from decoded page records."""
-    note_uuids: set[str] = set()
+    note_meta: dict[str, dict[str, object]] = {}
     for rec in records:
+        f2 = rec.by_number(2)
         f16 = rec.by_number(16)
-        if f16 and not isinstance(f16[0].value, bytes) and f16[0].value == 35:
+        type_code = f2[0].value if f2 and not isinstance(f2[0].value, bytes) else (f16[0].value if f16 and not isinstance(f16[0].value, bytes) else None)
+        if type_code == 35:
             f1 = rec.by_number(1)
             if f1 and isinstance(f1[0].value, bytes):
                 u_str = f1[0].value.decode("utf-8", errors="ignore")
                 if _looks_like_uuid(u_str):
-                    note_uuids.add(u_str)
+                    is_folded = False
+                    f7_state = rec.by_number(7)
+                    if f7_state and isinstance(f7_state[0].value, bytes):
+                        m7 = try_decode_message(f7_state[0].value)
+                        if m7 and m7.by_number(1) and isinstance(m7.by_number(1)[0].value, bytes):
+                            m7_1 = try_decode_message(m7.by_number(1)[0].value)
+                            if m7_1 and m7_1.by_number(1):
+                                is_folded = True
+
+                    w, h = 256.0, 256.0
+                    f21_size = rec.by_number(21)
+                    if f21_size and isinstance(f21_size[0].value, bytes):
+                        size_msg = try_decode_message(f21_size[0].value)
+                        if size_msg and size_msg.by_number(2) and isinstance(size_msg.by_number(2)[0].value, bytes):
+                            s_inner = try_decode_message(size_msg.by_number(2)[0].value)
+                            if s_inner:
+                                fw = s_inner.by_number(1)
+                                fh = s_inner.by_number(2)
+                                if fw and fh:
+                                    w = fw[0].fixed_float() or 256.0
+                                    h = fh[0].fixed_float() or 256.0
+
+                    note_meta[u_str] = {"is_folded": is_folded, "w": w, "h": h}
 
     sticky_notes: dict[str, StickyNote] = {}
     for rec in records:
@@ -239,7 +312,8 @@ def parse_sticky_notes(records: Sequence[Message]) -> tuple[StickyNote, ...]:
                 continue
             u_str = f1[0].value.decode("utf-8", errors="ignore")
             is_type_35 = any(not isinstance(f.value, bytes) and f.value == 35 for f in msg.by_number(2))
-            if u_str in note_uuids or is_type_35:
+            if u_str in note_meta or is_type_35:
+                meta = note_meta.get(u_str, {})
                 x, y = 0.0, 0.0
                 f20_pos = msg.by_number(20)
                 if f20_pos and isinstance(f20_pos[0].value, bytes):
@@ -253,18 +327,22 @@ def parse_sticky_notes(records: Sequence[Message]) -> tuple[StickyNote, ...]:
                                 x = fx[0].fixed_float() or 0.0
                                 y = fy[0].fixed_float() or 0.0
 
-                w, h = 256.0, 256.0
-                f21_size = msg.by_number(21)
-                if f21_size and isinstance(f21_size[0].value, bytes):
-                    size_msg = try_decode_message(f21_size[0].value)
-                    if size_msg and size_msg.by_number(2) and isinstance(size_msg.by_number(2)[0].value, bytes):
-                        s_inner = try_decode_message(size_msg.by_number(2)[0].value)
-                        if s_inner:
-                            fw = s_inner.by_number(1)
-                            fh = s_inner.by_number(2)
-                            if fw and fh:
-                                w = fw[0].fixed_float() or 256.0
-                                h = fh[0].fixed_float() or 256.0
+                w = float(meta.get("w", 256.0))
+                h = float(meta.get("h", 256.0))
+
+                # Fallback to inner msg f21 if not found in outer metadata record
+                if w == 256.0 and h == 256.0:
+                    f21_size = msg.by_number(21)
+                    if f21_size and isinstance(f21_size[0].value, bytes):
+                        size_msg = try_decode_message(f21_size[0].value)
+                        if size_msg and size_msg.by_number(2) and isinstance(size_msg.by_number(2)[0].value, bytes):
+                            s_inner = try_decode_message(size_msg.by_number(2)[0].value)
+                            if s_inner:
+                                fw = s_inner.by_number(1)
+                                fh = s_inner.by_number(2)
+                                if fw and fh:
+                                    w = fw[0].fixed_float() or 256.0
+                                    h = fh[0].fixed_float() or 256.0
 
                 color_hex = "#FAE778"
                 f30_color = msg.by_number(30)
@@ -285,7 +363,20 @@ def parse_sticky_notes(records: Sequence[Message]) -> tuple[StickyNote, ...]:
                 if f33_auth and isinstance(f33_auth[0].value, bytes):
                     author = f33_auth[0].value.decode("utf-8", errors="ignore")
 
-                is_open = (w != 256.0 or h != 256.0)
+                note_text = _extract_sticky_note_text(msg)
+
+                is_folded = bool(meta.get("is_folded", False))
+                if not is_folded:
+                    for candidate_msg in (msg, rec):
+                        f7_state = candidate_msg.by_number(7)
+                        if f7_state and isinstance(f7_state[0].value, bytes):
+                            m7 = try_decode_message(f7_state[0].value)
+                            if m7 and m7.by_number(1) and isinstance(m7.by_number(1)[0].value, bytes):
+                                m7_1 = try_decode_message(m7.by_number(1)[0].value)
+                                if m7_1 and m7_1.by_number(1):
+                                    is_folded = True
+                                    break
+                is_open = not is_folded
 
                 sticky_notes[u_str] = StickyNote(
                     uuid=u_str,
@@ -295,6 +386,7 @@ def parse_sticky_notes(records: Sequence[Message]) -> tuple[StickyNote, ...]:
                     height=h,
                     color_hex=color_hex,
                     author=author,
+                    text=note_text,
                     is_open=is_open,
                 )
 
@@ -344,14 +436,24 @@ def parse_page_elements(records: Sequence[Message]) -> tuple[PageElement, ...]:
                 uuid = candidate
 
         attachment_uuid = None
-        attachment_fields = record.by_number(4)
-        if attachment_fields and isinstance(attachment_fields[0].value, bytes):
+        f7_fields = record.by_number(7)
+        if f7_fields and isinstance(f7_fields[0].value, bytes):
             try:
-                candidate = attachment_fields[0].value.decode("utf-8")
+                candidate = f7_fields[0].value.decode("utf-8")
             except UnicodeDecodeError:
                 candidate = ""
             if _looks_like_uuid(candidate):
                 attachment_uuid = candidate
+
+        if not attachment_uuid:
+            attachment_fields = record.by_number(4)
+            if attachment_fields and isinstance(attachment_fields[0].value, bytes):
+                try:
+                    candidate = attachment_fields[0].value.decode("utf-8")
+                except UnicodeDecodeError:
+                    candidate = ""
+                if _looks_like_uuid(candidate):
+                    attachment_uuid = candidate
 
         related_uuids = tuple(
             value

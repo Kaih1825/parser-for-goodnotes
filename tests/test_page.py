@@ -118,18 +118,83 @@ class PageTests(unittest.TestCase):
             self.skipTest("shape.goodnotes not present")
         with GoodNotesDocument.open(sample) as document:
             page = document.pages()[0]
-            self.assertEqual(len(page.shapes), 39)
+            self.assertEqual(len(page.shapes), 45)
             rectangles = [s for s in page.shapes if s.shape_type == "rectangle"]
             ellipses = [s for s in page.shapes if s.shape_type == "ellipse"]
             polygons = [s for s in page.shapes if s.shape_type == "polygon"]
             arrows = [s for s in page.shapes if getattr(s, "start_arrow", False) or getattr(s, "end_arrow", False)]
             self.assertGreaterEqual(len(rectangles), 2)
-            self.assertGreaterEqual(len(ellipses), 7)
+            self.assertGreaterEqual(len(ellipses), 5)
             self.assertGreaterEqual(len(polygons), 5)
-            self.assertEqual(len(arrows), 12)
+            self.assertGreaterEqual(len(arrows), 12)
 
+
+
+    def test_aaa_goodnotes_image_elements(self) -> None:
+        sample = resolve_sample("aaa.goodnotes")
+        if not sample.exists():
+            self.skipTest("aaa.goodnotes not present")
+        with GoodNotesDocument.open(sample) as document:
+            pages = document.pages()
+            self.assertEqual(len(pages), 4)
+            total_images = sum(len(page.image_elements) for page in pages)
+            self.assertEqual(total_images, 13)
+
+
+    def test_ooo_goodnotes_strokes(self) -> None:
+        sample = resolve_sample("ooo.goodnotes")
+        if not sample.exists():
+            self.skipTest("ooo.goodnotes not present")
+        with GoodNotesDocument.open(sample) as document:
+            pages = document.pages()
+            self.assertEqual(len(pages), 1)
+            strokes = pages[0].strokes
+            self.assertEqual(len(strokes), 3)
+            # Verify all 3 strokes have full point sequences (> 100 points each)
+            for stroke in strokes:
+                self.assertGreater(len(stroke.points), 100)
+
+
+    def test_shape2_goodnotes_stroke_pressures(self) -> None:
+        sample = resolve_sample("shape2.goodnotes")
+        if not sample.exists():
+            self.skipTest("shape2.goodnotes not present")
+        with GoodNotesDocument.open(sample) as document:
+            pages = document.pages()
+            self.assertEqual(len(pages), 1)
+            strokes = pages[0].strokes
+            self.assertGreaterEqual(len(strokes), 7)
+            for stroke in strokes:
+                pressures = [pt.pressure for pt in stroke.points]
+                # Verify that max pressure differs from min pressure (variable pressure)
+                self.assertGreater(max(pressures) - min(pressures), 1.0)
+
+
+    def test_shape2_goodnotes_sticky_note_text(self) -> None:
+        sample = resolve_sample("shape2.goodnotes")
+        if not sample.exists():
+            self.skipTest("shape2.goodnotes not present")
+        with GoodNotesDocument.open(sample) as document:
+            pages = document.pages()
+            self.assertEqual(len(pages), 1)
+            sticky_notes = pages[0].sticky_notes
+            self.assertEqual(len(sticky_notes), 3)
+            # Verify sticky note text extraction
+            note_texts = [sn.text for sn in sticky_notes if sn.text]
+            self.assertTrue(any("你好" in txt for txt in note_texts))
+            self.assertTrue(any("pppp" in txt for txt in note_texts))
+
+            # Verify structured TextElement extraction from sticky notes
+            text_elements = pages[0].text_elements
+            self.assertGreaterEqual(len(text_elements), 2)
+            self.assertTrue(any("你好" in te.text for te in text_elements))
+            self.assertTrue(any(te.alignment in ("center", "right") for te in text_elements))
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+
 

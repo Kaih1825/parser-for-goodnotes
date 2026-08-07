@@ -50,17 +50,145 @@ class TextElement:
         }
 
 
+def _parse_text_elements_from_dec_msg(
+    dec_msg: Message,
+    rec_uuid: str,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    default_font: str = "Helvetica Neue",
+    default_size: float = 14.0,
+) -> list[TextElement]:
+    elements: list[TextElement] = []
+    for field in dec_msg.fields:
+        if not isinstance(field.value, bytes):
+            continue
+        m_item = try_decode_message(field.value)
+        if not m_item:
+            continue
+
+        txt = ""
+        f1_txt = m_item.by_number(1)
+        if f1_txt and isinstance(f1_txt[0].value, bytes):
+            txt = f1_txt[0].value.decode("utf-8", errors="ignore")
+
+        if not txt:
+            continue
+
+        font_name = default_font
+        font_size = default_size
+        color_hex = "#000000"
+        alpha = 1.0
+        strikethrough = False
+        underline = False
+        italic = False
+        bold = False
+        list_type = None
+        alignment = "left"
+
+        # Parse formatting in m_item f2
+        f2_val = m_item.by_number(2)
+        if f2_val and isinstance(f2_val[0].value, bytes):
+            m2 = try_decode_message(f2_val[0].value)
+            if m2:
+                if m2.by_number(1) and not isinstance(m2.by_number(1)[0].value, bytes) and m2.by_number(1)[0].value == 1:
+                    strikethrough = True
+                if m2.by_number(2) and not isinstance(m2.by_number(2)[0].value, bytes) and m2.by_number(2)[0].value == 1:
+                    underline = True
+                if m2.by_number(50) and not isinstance(m2.by_number(50)[0].value, bytes) and m2.by_number(50)[0].value == 1:
+                    italic = True
+
+                f30 = m2.by_number(30)
+                if f30 and isinstance(f30[0].value, bytes):
+                    font_name = f30[0].value.decode("utf-8", "ignore") or font_name
+
+                f40 = m2.by_number(40)
+                if f40 and f40[0].fixed_float() and f40[0].fixed_float() > 0:
+                    font_size = f40[0].fixed_float()
+
+                f60 = m2.by_number(60)
+                if f60 and not isinstance(f60[0].value, bytes):
+                    if f60[0].value > 18446744073709551212 or "bold" in font_name.lower():
+                        bold = True
+                elif "bold" in font_name.lower():
+                    bold = True
+
+                # Color parsing from f3 in m2
+                f3_color = m2.by_number(3)
+                if f3_color and isinstance(f3_color[0].value, bytes):
+                    c_msg = try_decode_message(f3_color[0].value)
+                    if c_msg:
+                        cr, cg, cb = c_msg.by_number(1), c_msg.by_number(2), c_msg.by_number(3)
+                        ca = c_msg.by_number(4)
+                        if cr and cg and cb:
+                            r = int(max(0.0, min(1.0, cr[0].fixed_float() or 0.0)) * 255)
+                            g = int(max(0.0, min(1.0, cg[0].fixed_float() or 0.0)) * 255)
+                            b = int(max(0.0, min(1.0, cb[0].fixed_float() or 0.0)) * 255)
+                            color_hex = f"#{r:02X}{g:02X}{b:02X}"
+                        if ca and ca[0].fixed_float() is not None:
+                            alpha = max(0.0, min(1.0, ca[0].fixed_float()))
+
+        # Parse list & alignment in m_item f3
+        f3_val = m_item.by_number(3)
+        if f3_val and isinstance(f3_val[0].value, bytes):
+            m3 = try_decode_message(f3_val[0].value)
+            if m3:
+                f3_3 = m3.by_number(3)
+                if f3_3:
+                    if isinstance(f3_3[0].value, bytes):
+                        if f3_3[0].value == b"":
+                            list_type = "bullet"
+                        else:
+                            m3_3 = try_decode_message(f3_3[0].value)
+                            if m3_3 and m3_3.by_number(1) and not isinstance(m3_3.by_number(1)[0].value, bytes) and m3_3.by_number(1)[0].value == 1:
+                                list_type = "numbered"
+                            elif m3_3 and len(m3_3.fields) == 0:
+                                list_type = "bullet"
+                f4_align = m3.by_number(4)
+                if f4_align and not isinstance(f4_align[0].value, bytes):
+                    align_code = int(f4_align[0].value)
+                    if align_code == 1:
+                        alignment = "left"
+                    elif align_code == 2:
+                        alignment = "center"
+                    elif align_code == 3:
+                        alignment = "right"
+
+        elements.append(
+            TextElement(
+                uuid=rec_uuid,
+                text=txt,
+                x=x,
+                y=y,
+                width=width,
+                height=height,
+                font_family=font_name,
+                font_size=font_size,
+                color_hex=color_hex,
+                alpha=alpha,
+                is_bold=bold,
+                is_italic=italic,
+                is_underline=underline,
+                is_strikethrough=strikethrough,
+                list_type=list_type,
+                alignment=alignment,
+            )
+        )
+    return elements
+
+
 def parse_text_elements(records: Sequence[Message]) -> tuple[TextElement, ...]:
-    """Extract structured rich text elements from Type 35 / bv41 record payloads."""
+    """Extract structured rich text elements from Type 35 / bv41 record payloads (including Sticky Notes)."""
     from .compression import decode_apple_lz4
 
     text_elements: list[TextElement] = []
 
+    # 1. Parse standard rich text box records (f21 payload)
     for record in records:
         f16 = record.by_number(16)
         type_code = f16[0].value if f16 and not isinstance(f16[0].value, bytes) else None
-        
-        # Identify text record UUID
+
         rec_uuid = ""
         f1 = record.by_number(1)
         if f1 and isinstance(f1[0].value, bytes):
@@ -179,120 +307,70 @@ def parse_text_elements(records: Sequence[Message]) -> tuple[TextElement, ...]:
         if not dec_msg:
             continue
 
-        for field in dec_msg.fields:
+        text_elements.extend(
+            _parse_text_elements_from_dec_msg(dec_msg, rec_uuid, x, y, width, height, default_font, default_size)
+        )
+
+    # 2. Parse Sticky Note (Type 35) rich text payloads in f20 records
+    for record in records:
+        f20 = record.by_number(20)
+        if not f20:
+            continue
+        for field in f20:
             if not isinstance(field.value, bytes):
                 continue
-            m_item = try_decode_message(field.value)
-            if not m_item:
+            msg = try_decode_message(field.value)
+            if not msg:
+                continue
+            is_type_35 = any(not isinstance(f.value, bytes) and f.value == 35 for f in msg.by_number(2))
+            if not is_type_35:
                 continue
 
-            txt = ""
-            f1_txt = m_item.by_number(1)
-            if f1_txt and isinstance(f1_txt[0].value, bytes):
-                txt = f1_txt[0].value.decode("utf-8", errors="ignore")
+            f1 = msg.by_number(1)
+            u_str = f1[0].value.decode("utf-8", errors="ignore") if f1 and isinstance(f1[0].value, bytes) else ""
 
-            if not txt:
-                continue
+            # Extract sticky note position (x, y)
+            nx, ny = 0.0, 0.0
+            f20_pos = msg.by_number(20)
+            if f20_pos and isinstance(f20_pos[0].value, bytes):
+                pos_msg = try_decode_message(f20_pos[0].value)
+                if pos_msg and pos_msg.by_number(1) and isinstance(pos_msg.by_number(1)[0].value, bytes):
+                    pt_msg = try_decode_message(pos_msg.by_number(1)[0].value)
+                    if pt_msg:
+                        fx, fy = pt_msg.by_number(1), pt_msg.by_number(2)
+                        if fx and fy:
+                            nx = fx[0].fixed_float() or 0.0
+                            ny = fy[0].fixed_float() or 0.0
 
-            font_name = default_font
-            font_size = default_size
-            color_hex = "#000000"
-            alpha = 1.0
-            strikethrough = False
-            underline = False
-            italic = False
-            bold = False
-            list_type = None
-            alignment = "left"
-
-            # Parse formatting in m_item f2
-            f2_val = m_item.by_number(2)
-            if f2_val and isinstance(f2_val[0].value, bytes):
-                m2 = try_decode_message(f2_val[0].value)
-                if m2:
-                    if m2.by_number(1) and not isinstance(m2.by_number(1)[0].value, bytes) and m2.by_number(1)[0].value == 1:
-                        strikethrough = True
-                    if m2.by_number(2) and not isinstance(m2.by_number(2)[0].value, bytes) and m2.by_number(2)[0].value == 1:
-                        underline = True
-                    if m2.by_number(50) and not isinstance(m2.by_number(50)[0].value, bytes) and m2.by_number(50)[0].value == 1:
-                        italic = True
-                    
-                    f30 = m2.by_number(30)
-                    if f30 and isinstance(f30[0].value, bytes):
-                        font_name = f30[0].value.decode("utf-8", "ignore") or font_name
-
-                    f40 = m2.by_number(40)
-                    if f40 and f40[0].fixed_float() and f40[0].fixed_float() > 0:
-                        font_size = f40[0].fixed_float()
-
-                    f60 = m2.by_number(60)
-                    if f60 and not isinstance(f60[0].value, bytes):
-                        if f60[0].value > 18446744073709551212 or "bold" in font_name.lower():
-                            bold = True
-                    elif "bold" in font_name.lower():
-                        bold = True
-
-                    # Color parsing from f3 in m2
-                    f3_color = m2.by_number(3)
-                    if f3_color and isinstance(f3_color[0].value, bytes):
-                        c_msg = try_decode_message(f3_color[0].value)
-                        if c_msg:
-                            cr, cg, cb = c_msg.by_number(1), c_msg.by_number(2), c_msg.by_number(3)
-                            ca = c_msg.by_number(4)
-                            if cr and cg and cb:
-                                r = int(max(0.0, min(1.0, cr[0].fixed_float() or 0.0)) * 255)
-                                g = int(max(0.0, min(1.0, cg[0].fixed_float() or 0.0)) * 255)
-                                b = int(max(0.0, min(1.0, cb[0].fixed_float() or 0.0)) * 255)
-                                color_hex = f"#{r:02X}{g:02X}{b:02X}"
-                            if ca and ca[0].fixed_float() is not None:
-                                alpha = max(0.0, min(1.0, ca[0].fixed_float()))
-
-            # Parse list & alignment in m_item f3
-            f3_val = m_item.by_number(3)
-            if f3_val and isinstance(f3_val[0].value, bytes):
-                m3 = try_decode_message(f3_val[0].value)
-                if m3:
-                    f3_3 = m3.by_number(3)
-                    if f3_3:
-                        if isinstance(f3_3[0].value, bytes):
-                            if f3_3[0].value == b"":
-                                list_type = "bullet"
-                            else:
-                                m3_3 = try_decode_message(f3_3[0].value)
-                                if m3_3 and m3_3.by_number(1) and not isinstance(m3_3.by_number(1)[0].value, bytes) and m3_3.by_number(1)[0].value == 1:
-                                    list_type = "numbered"
-                                elif m3_3 and len(m3_3.fields) == 0:
-                                    list_type = "bullet"
-                    f4_align = m3.by_number(4)
-                    if f4_align and not isinstance(f4_align[0].value, bytes):
-                        align_code = int(f4_align[0].value)
-                        if align_code == 1:
-                            alignment = "left"
-                        elif align_code == 2:
-                            alignment = "center"
-                        elif align_code == 3:
-                            alignment = "right"
-
-            text_elements.append(
-                TextElement(
-                    uuid=rec_uuid,
-                    text=txt,
-                    x=x,
-                    y=y,
-                    width=width,
-                    height=height,
-                    font_family=font_name,
-                    font_size=font_size,
-                    color_hex=color_hex,
-                    alpha=alpha,
-                    is_bold=bold,
-                    is_italic=italic,
-                    is_underline=underline,
-                    is_strikethrough=strikethrough,
-                    list_type=list_type,
-                    alignment=alignment,
-                )
-            )
+            # Decode field 31 LZ4 payload
+            f31_list = msg.by_number(31)
+            for f31 in f31_list:
+                if not isinstance(f31.value, bytes):
+                    continue
+                m31 = try_decode_message(f31.value)
+                if not m31:
+                    continue
+                f1_list = m31.by_number(1)
+                for f1_item in f1_list:
+                    if not isinstance(f1_item.value, bytes):
+                        continue
+                    m31_f1 = try_decode_message(f1_item.value)
+                    if not m31_f1:
+                        continue
+                    f2_list = m31_f1.by_number(2)
+                    for f2_item in f2_list:
+                        if isinstance(f2_item.value, bytes) and b"bv41" in f2_item.value:
+                            pos = f2_item.value.find(b"bv41")
+                            try:
+                                lz4_data, _ = decode_apple_lz4(f2_item.value[pos:])
+                                dec_msg = try_decode_message(lz4_data)
+                                if dec_msg:
+                                    extracted = _parse_text_elements_from_dec_msg(
+                                        dec_msg, u_str, nx, ny, 256.0, 256.0, default_font="Helvetica Neue", default_size=14.0
+                                    )
+                                    text_elements.extend(extracted)
+                            except Exception:
+                                pass
 
     return tuple(text_elements)
 

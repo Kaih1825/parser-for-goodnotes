@@ -1,7 +1,7 @@
 """Page model and background attachment metadata parser for GoodNotes documents."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import re
 from typing import Sequence
 
@@ -95,11 +95,13 @@ def parse_page_from_records(
     # Map UUID -> metadata (is_erased, type_code) & parent UUID from metadata records
     uuid_metadata: dict[str, dict[str, object]] = {}
     uuid_parent: dict[str, str] = {}
+    sn_uuids = {sn.uuid for sn in sticky_notes}
     for record in records:
         f1 = record.by_number(1)
         f3 = record.by_number(3)
         f16 = record.by_number(16)
         f20 = record.by_number(20)
+        f21 = record.by_number(21)
         if f1 and isinstance(f1[0].value, bytes):
             try:
                 u_str = f1[0].value.decode("utf-8")
@@ -107,13 +109,33 @@ def parse_page_from_records(
                     is_erased = bool(f3 and f3[0].value == 1)
                     type_code = f16[0].value if f16 and not isinstance(f16[0].value, bytes) else None
                     uuid_metadata[u_str] = {"is_erased": is_erased, "type_code": type_code}
+
+                    p_20 = ""
                     if f20 and isinstance(f20[0].value, bytes):
                         try:
-                            p_str = f20[0].value.decode("utf-8")
-                            if len(p_str) == 36 and "-" in p_str:
-                                uuid_parent[u_str] = p_str
+                            cand = f20[0].value.decode("utf-8")
+                            if len(cand) == 36 and "-" in cand:
+                                p_20 = cand
                         except UnicodeDecodeError:
                             pass
+
+                    p_21 = ""
+                    if f21 and isinstance(f21[0].value, bytes):
+                        try:
+                            cand = f21[0].value.decode("utf-8")
+                            if len(cand) == 36 and "-" in cand:
+                                p_21 = cand
+                        except UnicodeDecodeError:
+                            pass
+
+                    if p_21 in sn_uuids:
+                        uuid_parent[u_str] = p_21
+                    elif p_20 in sn_uuids:
+                        uuid_parent[u_str] = p_20
+                    elif p_20:
+                        uuid_parent[u_str] = p_20
+                    elif p_21:
+                        uuid_parent[u_str] = p_21
             except UnicodeDecodeError:
                 pass
 
@@ -175,6 +197,20 @@ def parse_page_from_records(
                 for sf in sub_msg.fields:
                     if isinstance(sf.value, bytes) and b"bv41" in sf.value:
                         process_stroke_bytes(sf.value)
+
+    # Map (color_hex, width) -> dash_pattern for brush dash inheritance to shapes
+    brush_dash_map = {}
+    for stroke in strokes:
+        if stroke.dash_pattern:
+            key = (stroke.color_hex, round(stroke.width, 2))
+            brush_dash_map[key] = stroke.dash_pattern
+
+    if brush_dash_map and shapes:
+        for idx, sh in enumerate(shapes):
+            if not sh.dash_pattern:
+                key = (sh.color_hex, round(sh.stroke_width, 2))
+                if key in brush_dash_map:
+                    shapes[idx] = replace(sh, dash_pattern=brush_dash_map[key])
 
     return Page(
         index=page_index,

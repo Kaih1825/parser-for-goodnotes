@@ -23,3 +23,16 @@ class ArchiveTests(unittest.TestCase):
                 output = root / "out.json"
                 write_json(document, output)
             self.assertIn('"notes/page"', output.read_text(encoding="utf-8"))
+
+    def test_teat_goodnotes_page_backgrounds(self) -> None:
+        sample = Path("samples/Teat.goodnotes")
+        if not sample.exists():
+            self.skipTest("Teat.goodnotes not present")
+        with GoodNotesDocument.open(sample) as document:
+            pages = document.pages()
+            self.assertEqual(len(pages), 3)
+            # Page 1 & Page 2 share white template PDF; Page 3 has black template PDF
+            self.assertEqual(pages[0].background_attachment_path, "attachments/5B0C9E9F-C00D-4ED5-9F5F-2D5ECB13A2FD")
+            self.assertEqual(pages[1].background_attachment_path, "attachments/5B0C9E9F-C00D-4ED5-9F5F-2D5ECB13A2FD")
+            self.assertEqual(pages[2].background_attachment_path, "attachments/2BFD1B79-172D-41E7-97DC-4798F79625B0")
+

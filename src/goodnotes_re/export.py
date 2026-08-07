@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 import json
+import math
 from pathlib import Path
 from typing import Iterator
 
@@ -60,6 +61,121 @@ def stroke_candidates(message: Message) -> Iterator[tuple[str, list[tuple[float,
 
 import base64
 
+
+def _catmull_rom_to_svg_path(pts: tuple[tuple[float, float], ...], scale: float = 1.0) -> str:
+    if not pts:
+        return ""
+    if len(pts) == 1:
+        x, y = pts[0][0] * scale, pts[0][1] * scale
+        return f"M {x:.2f} {y:.2f} L {x:.2f} {y:.2f}"
+    if len(pts) == 2:
+        return f"M {pts[0][0]*scale:.2f} {pts[0][1]*scale:.2f} L {pts[1][0]*scale:.2f} {pts[1][1]*scale:.2f}"
+
+    p = [pts[0]] + list(pts) + [pts[-1]]
+    path = [f"M {pts[0][0]*scale:.2f} {pts[0][1]*scale:.2f}"]
+
+    for i in range(1, len(p) - 2):
+        p0, p1, p2, p3 = p[i-1], p[i], p[i+1], p[i+2]
+
+        d1 = math.hypot(p1[0] - p0[0], p1[1] - p0[1]) ** 0.5 or 1e-4
+        d2 = math.hypot(p2[0] - p1[0], p2[1] - p1[1]) ** 0.5 or 1e-4
+        d3 = math.hypot(p3[0] - p2[0], p3[1] - p2[1]) ** 0.5 or 1e-4
+
+        t1x = (p1[0] - p0[0]) / d1 - (p2[0] - p0[0]) / (d1 + d2) + (p2[0] - p1[0]) / d2
+        t1y = (p1[1] - p0[1]) / d1 - (p2[1] - p0[1]) / (d1 + d2) + (p2[1] - p1[1]) / d2
+        t2x = (p2[0] - p1[0]) / d2 - (p3[0] - p1[0]) / (d2 + d3) + (p3[0] - p2[0]) / d3
+        t2y = (p2[1] - p1[1]) / d2 - (p3[1] - p1[1]) / (d2 + d3) + (p3[1] - p2[1]) / d3
+
+        t1x *= d2 / 3.0
+        t1y *= d2 / 3.0
+        t2x *= d2 / 3.0
+        t2y *= d2 / 3.0
+
+        c1x = p1[0] + t1x
+        c1y = p1[1] + t1y
+        c2x = p2[0] - t2x
+        c2y = p2[1] - t2y
+
+        path.append(f"C {c1x*scale:.2f} {c1y*scale:.2f} {c2x*scale:.2f} {c2y*scale:.2f} {p2[0]*scale:.2f} {p2[1]*scale:.2f}")
+
+    return " ".join(path)
+
+
+def _rounded_polygon_svg_path(pts: tuple[tuple[float, float], ...], r: float, scale: float = 1.0, is_closed: bool = True) -> str:
+    if not pts:
+        return ""
+    if len(pts) == 1:
+        x, y = pts[0][0] * scale, pts[0][1] * scale
+        return f"M {x:.2f} {y:.2f} L {x:.2f} {y:.2f}"
+    if len(pts) == 2:
+        return f"M {pts[0][0]*scale:.2f} {pts[0][1]*scale:.2f} L {pts[1][0]*scale:.2f} {pts[1][1]*scale:.2f}"
+
+    p_list = [p for p in pts]
+    if len(p_list) > 1 and p_list[-1] == p_list[0]:
+        p_list.pop()
+
+    n = len(p_list)
+    if n < 3:
+        return f"M {pts[0][0]*scale:.2f} {pts[0][1]*scale:.2f} L {pts[-1][0]*scale:.2f} {pts[-1][1]*scale:.2f}"
+
+    if r <= 0.0:
+        path = [f"M {p_list[0][0]*scale:.2f} {p_list[0][1]*scale:.2f}"]
+        for p in p_list[1:]:
+            path.append(f"L {p[0]*scale:.2f} {p[1]*scale:.2f}")
+        if is_closed:
+            path.append("Z")
+        return " ".join(path)
+
+    path_cmds = []
+    for i in range(n):
+        p_prev = p_list[(i - 1) % n]
+        p_curr = p_list[i]
+        p_next = p_list[(i + 1) % n]
+
+        v1 = (p_prev[0] - p_curr[0], p_prev[1] - p_curr[1])
+        v2 = (p_next[0] - p_curr[0], p_next[1] - p_curr[1])
+
+        len1 = math.hypot(v1[0], v1[1])
+        len2 = math.hypot(v2[0], v2[1])
+
+        if len1 < 1e-4 or len2 < 1e-4:
+            continue
+
+        eff_r = min(r, len1 / 2.0, len2 / 2.0)
+        start_pt = (p_curr[0] + (v1[0] / len1) * eff_r, p_curr[1] + (v1[1] / len1) * eff_r)
+        end_pt = (p_curr[0] + (v2[0] / len2) * eff_r, p_curr[1] + (v2[1] / len2) * eff_r)
+
+        if i == 0:
+            path_cmds.append(f"M {start_pt[0]*scale:.2f} {start_pt[1]*scale:.2f}")
+
+        path_cmds.append(f"Q {p_curr[0]*scale:.2f} {p_curr[1]*scale:.2f} {end_pt[0]*scale:.2f} {end_pt[1]*scale:.2f}")
+
+        p_next_next = p_list[(i + 2) % n]
+        v_next_to_next = (p_next_next[0] - p_next[0], p_next_next[1] - p_next[1])
+        len_next_to_next = math.hypot(v_next_to_next[0], v_next_to_next[1])
+        eff_r_next = min(r, len2 / 2.0, len_next_to_next / 2.0)
+        v_next_back = (-v2[0], -v2[1])
+        next_start_pt = (p_next[0] + (v_next_back[0] / len2) * eff_r_next, p_next[1] + (v_next_back[1] / len2) * eff_r_next)
+
+        path_cmds.append(f"L {next_start_pt[0]*scale:.2f} {next_start_pt[1]*scale:.2f}")
+
+    if is_closed:
+        path_cmds.append("Z")
+    return " ".join(path_cmds)
+
+
+def _get_marker_ref_x(path_d: str, align: str = "tip") -> float:
+    """Calculates refX dynamically from marker path geometry."""
+    import re
+    coords = [float(x) for x in re.findall(r"[-+]?\d*\.\d+|\d+", path_d)]
+    x_coords = coords[0::2] if coords else [5.0]
+    if align == "min":
+        return min(x_coords)
+    elif align == "max":
+        return max(x_coords)
+    return (min(x_coords) + max(x_coords)) / 2.0
+
+
 def write_svg(
     document: GoodNotesDocument,
     directory: str | Path,
@@ -107,6 +223,58 @@ def write_svg(
             except Exception:
                 pass
 
+        # Render image elements (placed right above background, beneath strokes, shapes and text)
+        for img in page.image_elements:
+            att_path = None
+            if f"attachments/{img.attachment_uuid}" in document.member_names():
+                att_path = f"attachments/{img.attachment_uuid}"
+            if att_path:
+                try:
+                    idata = document.read(att_path)
+                    mime = "image/jpeg" if idata.startswith(b"\xff\xd8\xff") else "image/png"
+                    img_b64 = base64.b64encode(idata).decode("ascii")
+                    crop_x = img.x * dpi_scale
+                    crop_y = img.y * dpi_scale
+                    crop_w = img.width * dpi_scale
+                    crop_h = img.height * dpi_scale
+                    rot_deg = img.rotation_rad * (180.0 / 3.141592653589793)
+
+                    elements.append(f'<!-- Image Attachment: {html.escape(img.attachment_uuid)} -->')
+
+                    is_cropped = (
+                        img.orig_width > 0
+                        and img.orig_height > 0
+                        and (abs(img.width - img.orig_width) > 0.1 or abs(img.height - img.orig_height) > 0.1)
+                    )
+
+                    if is_cropped:
+                        cx = crop_x + crop_w / 2.0
+                        cy = crop_y + crop_h / 2.0
+                        orig_w = img.orig_width * dpi_scale
+                        orig_h = img.orig_height * dpi_scale
+                        img_x = (img.orig_x - img.x) * dpi_scale
+                        img_y = (img.orig_y - img.y) * dpi_scale
+
+                        transform = f' transform="rotate({rot_deg:.2f}, {cx:.2f}, {cy:.2f})"' if abs(rot_deg) > 0.01 else ""
+
+                        elements.append(
+                            f'<g{transform}>'
+                            f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" viewBox="0 0 {crop_w:.2f} {crop_h:.2f}" overflow="hidden">'
+                            f'<image href="data:{mime};base64,{img_b64}" x="{img_x:.2f}" y="{img_y:.2f}" width="{orig_w:.2f}" height="{orig_h:.2f}" preserveAspectRatio="none"/>'
+                            f'</svg>'
+                            f'</g>'
+                        )
+                    else:
+                        transform_attr = ""
+                        if abs(rot_deg) > 0.01:
+                            cx, cy = crop_x + crop_w / 2.0, crop_y + crop_h / 2.0
+                            transform_attr = f' transform="rotate({rot_deg:.2f}, {cx:.2f}, {cy:.2f})"'
+                        elements.append(
+                            f'<image href="data:{mime};base64,{img_b64}" x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" preserveAspectRatio="none"{transform_attr}/>'
+                        )
+                except Exception:
+                    pass
+
         # Determine sticky note open/close state override
         state_override: bool | None = None
         if sticky_note_state:
@@ -134,7 +302,7 @@ def write_svg(
                 nh = note.height * dpi_scale
                 elements.append(f'<!-- Sticky Note (Expanded): {html.escape(note.uuid)} -->')
                 elements.append(
-                    f'<rect x="{nx:.2f}" y="{ny:.2f}" width="{nw:.2f}" height="{nh:.2f}" rx="8" ry="8" fill="{note.color_hex}" fill-opacity="0.95" stroke="#E0CE5E" stroke-width="0.8"/>'
+                    f'<rect x="{nx:.2f}" y="{ny:.2f}" width="{nw:.2f}" height="{nh:.2f}" rx="8" ry="8" fill="{note.color_hex}" fill-opacity="0.95" stroke="rgba(0,0,0,0.15)" stroke-width="0.8"/>'
                 )
                 if note.author:
                     tx = nx + 12.0 * dpi_scale
@@ -143,82 +311,173 @@ def write_svg(
                         f'<text x="{tx:.2f}" y="{ty:.2f}" font-family="sans-serif" font-size="10" fill="#555555" font-weight="500">{html.escape(note.author)}</text>'
                     )
             else:
-                # Render folded note icon indicator at (nx, ny)
+                # Render folded note icon indicator at (nx, ny) with natural opacity overlay
                 elements.append(f'<!-- Sticky Note (Folded): {html.escape(note.uuid)} -->')
                 elements.append(
                     f'<g transform="translate({nx:.2f}, {ny:.2f})">'
-                    f'<path d="M 3 0 L 14 0 C 16 0 17 1 17 3 L 17 14 L 11 20 L 3 20 C 1 20 0 19 0 17 L 0 3 C 0 1 1 0 3 0 Z" fill="{note.color_hex}" stroke="#555555" stroke-width="0.8" stroke-linejoin="round"/>'
-                    f'<path d="M 11 20 L 11 15 C 11 14.5 11.5 14 12 14 L 17 14 Z" fill="#D8C554" stroke="#555555" stroke-width="0.8" stroke-linejoin="round"/>'
+                    f'<path d="M 3 0 L 14 0 C 16 0 17 1 17 3 L 17 14 L 11 20 L 3 20 C 1 20 0 19 0 17 L 0 3 C 0 1 1 0 3 0 Z" fill="{note.color_hex}" stroke="rgba(0,0,0,0.25)" stroke-width="0.8" stroke-linejoin="round"/>'
+                    f'<path d="M 11 20 L 11 15 C 11 14.5 11.5 14 12 14 L 17 14 Z" fill="black" fill-opacity="0.18" stroke="rgba(0,0,0,0.25)" stroke-width="0.8" stroke-linejoin="round"/>'
                     f'</g>'
                 )
 
         # Render vector shapes
-        has_arrows = any(getattr(s, "start_arrow", False) or getattr(s, "end_arrow", False) for s in page.shapes)
-        if has_arrows:
-            elements.append(
-                '<defs>'
-                '<marker id="arrow-start" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">'
-                '<path d="M 0 5 L 10 0 L 7 5 L 10 10 Z" fill="#1e1b1b"/>'
-                '</marker>'
-                '<marker id="arrow-end" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto">'
-                '<path d="M 0 0 L 10 5 L 0 10 L 3 5 Z" fill="#1e1b1b"/>'
-                '</marker>'
-                '</defs>'
-            )
+        arrow_shapes = [s for s in page.shapes if getattr(s, "start_arrow", False) or getattr(s, "end_arrow", False)]
+        if arrow_shapes:
+            arrow_colors = sorted({s.color_hex for s in arrow_shapes})
+            defs_elements = ['<defs>']
+            for color in arrow_colors:
+                color_clean = color.replace('#', '')
+
+                open_start_path = "M 10 0 L 0 5 L 10 10"
+                open_end_path = "M 0 0 L 10 5 L 0 10"
+                filled_start_path = "M 10 0 L 0 5 L 10 10 Z"
+                filled_end_path = "M 0 0 L 10 5 L 0 10 Z"
+
+                # Dual formulas: Open V-Shape aligns to tip vertex; Solid Triangle aligns to solid base
+                rx_open_start = _get_marker_ref_x(open_start_path, "min")
+                rx_open_end = _get_marker_ref_x(open_end_path, "max")
+                rx_filled_start = _get_marker_ref_x(filled_start_path, "max")
+                rx_filled_end = _get_marker_ref_x(filled_end_path, "min")
+
+                # Open V-shape arrowhead (Style 1)
+                defs_elements.append(
+                    f'<marker id="arrow-start-open-{color_clean}" viewBox="0 0 10 10" refX="{rx_open_start:.2f}" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
+                    f'<path d="{open_start_path}" fill="none" stroke="{color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
+                    f'</marker>'
+                    f'<marker id="arrow-end-open-{color_clean}" viewBox="0 0 10 10" refX="{rx_open_end:.2f}" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
+                    f'<path d="{open_end_path}" fill="none" stroke="{color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
+                    f'</marker>'
+                )
+                # Filled triangle arrowhead (Style 2)
+                defs_elements.append(
+                    f'<marker id="arrow-start-filled-{color_clean}" viewBox="0 0 10 10" refX="{rx_filled_start:.2f}" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
+                    f'<path d="{filled_start_path}" fill="{color}"/>'
+                    f'</marker>'
+                    f'<marker id="arrow-end-filled-{color_clean}" viewBox="0 0 10 10" refX="{rx_filled_end:.2f}" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
+                    f'<path d="{filled_end_path}" fill="{color}"/>'
+                    f'</marker>'
+                )
+                # Circle dot arrowhead (Style 3)
+                defs_elements.append(
+                    f'<marker id="arrow-start-dot-{color_clean}" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
+                    f'<circle cx="5" cy="5" r="4" fill="{color}"/>'
+                    f'</marker>'
+                    f'<marker id="arrow-end-dot-{color_clean}" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
+                    f'<circle cx="5" cy="5" r="4" fill="{color}"/>'
+                    f'</marker>'
+                )
+            defs_elements.append('</defs>')
+            elements.append("".join(defs_elements))
 
         for shape in page.shapes:
             is_polyline = 1 in shape.field_numbers or 2 not in shape.field_numbers or shape.shape_type == "polyline"
             pts = shape.points
+            stroke_w = max(0.5, shape.stroke_width * dpi_scale)
+
             dash_pattern = getattr(shape, "dash_pattern", None)
-            dash_attr = f' stroke-dasharray="{" ".join(f"{d * dpi_scale:.2f}" for d in dash_pattern)}"' if dash_pattern else ""
+            dash_attr = ""
+            if dash_pattern:
+                first_val = dash_pattern[0]
+                gap_val = dash_pattern[1] if len(dash_pattern) > 1 else dash_pattern[0]
+                if first_val <= 2.5:
+                    dot_gap = max(stroke_w * 2.5, gap_val * 2.0 * dpi_scale)
+                    dash_attr = f' stroke-dasharray="0 {dot_gap:.2f}"'
+                else:
+                    dash_len = max(stroke_w * 2.5, first_val * dpi_scale)
+                    gap_len = max(stroke_w * 2.0, gap_val * dpi_scale)
+                    dash_attr = f' stroke-dasharray="{dash_len:.2f} {gap_len:.2f}"'
 
             marker_attr = ""
-            if getattr(shape, "start_arrow", False):
-                marker_attr += ' marker-start="url(#arrow-start)"'
-            if getattr(shape, "end_arrow", False):
-                marker_attr += ' marker-end="url(#arrow-end)"'
+            c_clean = shape.color_hex.replace('#', '')
+            s_style = int(getattr(shape, "start_arrow", 0))
+            e_style = int(getattr(shape, "end_arrow", 0))
+
+            if s_style == 1:
+                marker_attr += f' marker-start="url(#arrow-start-open-{c_clean})"'
+            elif s_style == 2 or (isinstance(getattr(shape, "start_arrow", False), bool) and shape.start_arrow):
+                marker_attr += f' marker-start="url(#arrow-start-filled-{c_clean})"'
+            elif s_style >= 3:
+                marker_attr += f' marker-start="url(#arrow-start-dot-{c_clean})"'
+
+            if e_style == 1:
+                marker_attr += f' marker-end="url(#arrow-end-open-{c_clean})"'
+            elif e_style == 2 or (isinstance(getattr(shape, "end_arrow", False), bool) and shape.end_arrow):
+                marker_attr += f' marker-end="url(#arrow-end-filled-{c_clean})"'
+            elif e_style >= 3:
+                marker_attr += f' marker-end="url(#arrow-end-dot-{c_clean})"'
 
             is_filled = getattr(shape, "is_filled", True)
             fill_attr = f'fill="{shape.color_hex}" fill-opacity="0.08"' if (fill_shapes and is_filled) else 'fill="none"'
-            stroke_w = max(0.5, shape.stroke_width * dpi_scale)
 
-            if shape.shape_type == "rectangle" and len(pts) == 5:
+            c_rad = getattr(shape, "corner_radius", 0.0)
+            is_dotted = bool(dash_pattern and dash_pattern[0] <= 2.5)
+            if marker_attr:
+                join_cap_attr = 'stroke-linecap="butt" stroke-linejoin="miter"'
+            else:
+                join_cap_attr = 'stroke-linecap="round" stroke-linejoin="round"'
+
+            if shape.shape_type == "ellipse" and shape.cx is not None and shape.cy is not None:
+                cx = shape.cx * dpi_scale
+                cy = shape.cy * dpi_scale
+                rx = (shape.rx or 0.0) * dpi_scale
+                ry = (shape.ry or 0.0) * dpi_scale
+                elements.append(
+                    f'<ellipse cx="{cx:.2f}" cy="{cy:.2f}" rx="{rx:.2f}" ry="{ry:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} {fill_attr}/>'
+                )
+            elif shape.shape_type == "capsule":
                 left = min(p[0] for p in pts) * dpi_scale
                 top = min(p[1] for p in pts) * dpi_scale
                 right = max(p[0] for p in pts) * dpi_scale
                 bottom = max(p[1] for p in pts) * dpi_scale
                 w = right - left
                 h = bottom - top
-                rx_val = min(6.0 * dpi_scale, w / 4.0, h / 4.0)
+                r_val = min(w, h) / 2.0
                 elements.append(
-                    f'<rect x="{left:.2f}" y="{top:.2f}" width="{w:.2f}" height="{h:.2f}" rx="{rx_val:.2f}" ry="{rx_val:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr}{marker_attr} {fill_attr}/>'
+                    f'<rect x="{left:.2f}" y="{top:.2f}" width="{w:.2f}" height="{h:.2f}" rx="{r_val:.2f}" ry="{r_val:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr}{marker_attr} {fill_attr}/>'
+                )
+            elif shape.shape_type == "rectangle" and len(pts) == 5:
+                left = min(p[0] for p in pts) * dpi_scale
+                top = min(p[1] for p in pts) * dpi_scale
+                right = max(p[0] for p in pts) * dpi_scale
+                bottom = max(p[1] for p in pts) * dpi_scale
+                w = right - left
+                h = bottom - top
+                if c_rad > 0.0:
+                    rx_val = min(c_rad * dpi_scale, w / 4.0, h / 4.0)
+                else:
+                    rx_val = 0.0
+                elements.append(
+                    f'<rect x="{left:.2f}" y="{top:.2f}" width="{w:.2f}" height="{h:.2f}" rx="{rx_val:.2f}" ry="{rx_val:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} {fill_attr}/>'
+                )
+            elif shape.shape_type == "polygon":
+                is_closed = (len(pts) > 1 and pts[-1] == pts[0]) or is_filled
+                d_path = _rounded_polygon_svg_path(pts, c_rad, dpi_scale, is_closed=is_closed)
+                elements.append(
+                    f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} {fill_attr}/>'
                 )
             elif is_polyline:
                 if len(pts) == 2:
                     (x1, y1), (x2, y2) = pts
                     elements.append(
-                        f'<line x1="{x1 * dpi_scale:.2f}" y1="{y1 * dpi_scale:.2f}" x2="{x2 * dpi_scale:.2f}" y2="{y2 * dpi_scale:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round"{dash_attr}{marker_attr} fill="none"/>'
+                        f'<line x1="{x1 * dpi_scale:.2f}" y1="{y1 * dpi_scale:.2f}" x2="{x2 * dpi_scale:.2f}" y2="{y2 * dpi_scale:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} fill="none"/>'
                     )
-                elif len(pts) >= 3 and shape.shape_type == "polyline":
-                    path = [f'M {pts[0][0] * dpi_scale:.2f} {pts[0][1] * dpi_scale:.2f}']
-                    for i in range(1, len(pts) - 1):
-                        cx = (pts[i][0] + pts[i+1][0]) / 2.0
-                        cy = (pts[i][1] + pts[i+1][1]) / 2.0
-                        path.append(f'Q {pts[i][0] * dpi_scale:.2f} {pts[i][1] * dpi_scale:.2f} {cx * dpi_scale:.2f} {cy * dpi_scale:.2f}')
-                    path.append(f'L {pts[-1][0] * dpi_scale:.2f} {pts[-1][1] * dpi_scale:.2f}')
-                    d_path = " ".join(path)
-                    elements.append(
-                        f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr}{marker_attr} fill="none"/>'
-                    )
+                elif len(pts) == 3:
+                    (x0, y0), (x1, y1), (x2, y2) = pts
+                    area = abs((x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0))
+                    dist = math.hypot(x2 - x0, y2 - y0)
+                    if dist > 0 and (area / dist) < 3.0:
+                        elements.append(
+                            f'<line x1="{x0 * dpi_scale:.2f}" y1="{y0 * dpi_scale:.2f}" x2="{x2 * dpi_scale:.2f}" y2="{y2 * dpi_scale:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} fill="none"/>'
+                        )
+                    else:
+                        d_path = _catmull_rom_to_svg_path(pts, dpi_scale)
+                        elements.append(
+                            f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} fill="none"/>'
+                        )
                 else:
-                    path = [f'M {pts[0][0] * dpi_scale:.2f} {pts[0][1] * dpi_scale:.2f}']
-                    for x, y in pts[1:]:
-                        path.append(f'L {x * dpi_scale:.2f} {y * dpi_scale:.2f}')
-                    if shape.shape_type != "polyline":
-                        path.append("Z")
-                    d_path = " ".join(path)
+                    d_path = _catmull_rom_to_svg_path(pts, dpi_scale)
                     elements.append(
-                        f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr}{marker_attr} {fill_attr}/>'
+                        f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} fill="none"/>'
                     )
             else:
                 # Curves
@@ -271,80 +530,47 @@ def write_svg(
                         for poly in outline_polys
                     )
 
-            ribbon_d = build_stroke_ribbon(
-                pts,
-                stroke.width,
-                dpi_scale,
-                tpl_format=stroke.tpl_format,
-                outline_polygons=outline_polys,
-                is_cut_start=stroke.is_cut_start,
-                is_cut_end=stroke.is_cut_end,
-            )
-            if ribbon_d:
-                if stroke.is_dot:
-                    # Single point / Dot
-                    pt = pts[0]
-                    cx, cy = pt.x * dpi_scale, pt.y * dpi_scale
-                    r = max(0.5, (stroke.width * pt.pressure * 0.5) * dpi_scale)
-                    elements.append(
-                        f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r:.2f}" fill="{stroke.color_hex}" fill-opacity="{stroke.alpha:.2f}" stroke="none"/>'
-                    )
+            dash_pattern = getattr(stroke, "dash_pattern", None)
+            if stroke.is_dot and pts:
+                # Single point / Dot
+                pt = pts[0]
+                cx, cy = pt.x * dpi_scale, pt.y * dpi_scale
+                r = max(0.5, (stroke.width * pt.pressure * 0.5) * dpi_scale)
+                elements.append(
+                    f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r:.2f}" fill="{stroke.color_hex}" fill-opacity="{stroke.alpha:.2f}" stroke="none"/>'
+                )
+            elif dash_pattern:
+                stroke_w = max(0.5, stroke.width * dpi_scale)
+                first_val = dash_pattern[0]
+                gap_val = dash_pattern[1] if len(dash_pattern) > 1 else dash_pattern[0]
+                if first_val <= 2.5:
+                    dot_gap = max(stroke_w * 2.5, gap_val * 2.0 * dpi_scale)
+                    dash_attr = f' stroke-dasharray="0 {dot_gap:.2f}"'
                 else:
+                    dash_len = max(stroke_w * 2.5, first_val * dpi_scale)
+                    gap_len = max(stroke_w * 2.0, gap_val * dpi_scale)
+                    dash_attr = f' stroke-dasharray="{dash_len:.2f} {gap_len:.2f}"'
+                
+                stroke_pts = tuple((pt.x, pt.y) for pt in pts)
+                if len(stroke_pts) >= 2:
+                    d_path = _catmull_rom_to_svg_path(stroke_pts, dpi_scale)
+                    elements.append(
+                        f'<path d="{d_path}" stroke="{stroke.color_hex}" stroke-opacity="{stroke.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr} fill="none"/>'
+                    )
+            else:
+                ribbon_d = build_stroke_ribbon(
+                    pts,
+                    stroke.width,
+                    dpi_scale,
+                    tpl_format=stroke.tpl_format,
+                    outline_polygons=outline_polys,
+                    is_cut_start=stroke.is_cut_start,
+                    is_cut_end=stroke.is_cut_end,
+                )
+                if ribbon_d:
                     elements.append(
                         f'<path d="{ribbon_d}" fill="{stroke.color_hex}" fill-opacity="{stroke.alpha:.2f}" stroke="none"/>'
                     )
-
-        # Render image elements
-        for img in page.image_elements:
-            att_path = None
-            if f"attachments/{img.attachment_uuid}" in document.member_names():
-                att_path = f"attachments/{img.attachment_uuid}"
-            if att_path:
-                try:
-                    idata = document.read(att_path)
-                    mime = "image/jpeg" if idata.startswith(b"\xff\xd8\xff") else "image/png"
-                    img_b64 = base64.b64encode(idata).decode("ascii")
-                    crop_x = img.x * dpi_scale
-                    crop_y = img.y * dpi_scale
-                    crop_w = img.width * dpi_scale
-                    crop_h = img.height * dpi_scale
-                    rot_deg = img.rotation_rad * (180.0 / 3.141592653589793)
-
-                    elements.append(f'<!-- Image Attachment: {html.escape(img.attachment_uuid)} -->')
-
-                    is_cropped = (
-                        img.orig_width > 0
-                        and img.orig_height > 0
-                        and (abs(img.width - img.orig_width) > 0.1 or abs(img.height - img.orig_height) > 0.1)
-                    )
-
-                    if is_cropped:
-                        cx = crop_x + crop_w / 2.0
-                        cy = crop_y + crop_h / 2.0
-                        orig_w = img.orig_width * dpi_scale
-                        orig_h = img.orig_height * dpi_scale
-                        img_x = (img.orig_x - img.x) * dpi_scale
-                        img_y = (img.orig_y - img.y) * dpi_scale
-
-                        transform = f' transform="rotate({rot_deg:.2f}, {cx:.2f}, {cy:.2f})"' if abs(rot_deg) > 0.01 else ""
-
-                        elements.append(
-                            f'<g{transform}>'
-                            f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" viewBox="0 0 {crop_w:.2f} {crop_h:.2f}" overflow="hidden">'
-                            f'<image href="data:{mime};base64,{img_b64}" x="{img_x:.2f}" y="{img_y:.2f}" width="{orig_w:.2f}" height="{orig_h:.2f}" preserveAspectRatio="none"/>'
-                            f'</svg>'
-                            f'</g>'
-                        )
-                    else:
-                        transform_attr = ""
-                        if abs(rot_deg) > 0.01:
-                            cx, cy = crop_x + crop_w / 2.0, crop_y + crop_h / 2.0
-                            transform_attr = f' transform="rotate({rot_deg:.2f}, {cx:.2f}, {cy:.2f})"'
-                        elements.append(
-                            f'<image href="data:{mime};base64,{img_b64}" x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" preserveAspectRatio="none"{transform_attr}/>'
-                        )
-                except Exception:
-                    pass
 
         # Render rich text elements grouped by text box
         text_boxes: dict[tuple[float, float, str], list[TextElement]] = {}
@@ -386,16 +612,16 @@ def write_svg(
 
             bw = max_box_width if max_box_width > 0 else 50.0
             primary_fs = line_font_sizes[0]
-            if len(lines) == 1:
-                fit_bh = primary_fs * 0.85
-                fit_by = box_y + (max_box_height - fit_bh) / 2.0 if max_box_height > fit_bh else box_y
-                ly_0 = fit_by + (fit_bh + 0.62 * primary_fs) / 2.0
-            else:
-                fit_bh = max_box_height if max_box_height > 0 else sum(line_heights)
-                fit_by = box_y
-                total_text_block_h = sum(line_heights)
-                v_gap = max(0.0, (fit_bh - total_text_block_h) / 2.0)
-                ly_0 = fit_by + v_gap + (primary_fs * 0.70)
+            is_sticky = any(uuid == note.uuid for note in page.sticky_notes)
+            top_pad = (22.0 * dpi_scale) if is_sticky else (6.0 * dpi_scale)
+            left_pad = (16.0 * dpi_scale) if is_sticky else (6.0 * dpi_scale)
+            right_pad = (16.0 * dpi_scale) if is_sticky else (6.0 * dpi_scale)
+
+            bw = max_box_width if max_box_width > 0 else 50.0
+            primary_fs = line_font_sizes[0]
+            fit_bh = max_box_height if max_box_height > 0 else sum(line_heights)
+            fit_by = box_y
+            ly_0 = fit_by + top_pad + (primary_fs * 0.75)
 
             # Draw text box border matching GoodNotes UI selection bounds
             if draw_textbox_border:
@@ -443,15 +669,17 @@ def write_svg(
                     line_width = (te.width * dpi_scale) if te.width > 0 else max_box_width
                     line_style_attrs = list(style_attrs)
 
-                    tx = box_x
+                    tx = box_x + left_pad
                     if te.alignment == "center":
                         line_style_attrs.append('text-anchor="middle"')
                         if line_width > 0:
                             tx = box_x + line_width / 2.0
+                        else:
+                            tx = box_x + left_pad + 50.0
                     elif te.alignment == "right":
                         line_style_attrs.append('text-anchor="end"')
                         if line_width > 0:
-                            tx = box_x + line_width
+                            tx = box_x + line_width - right_pad
                     else:
                         line_style_attrs.append('text-anchor="start"')
 

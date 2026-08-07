@@ -25,8 +25,9 @@ class ShapePath:
     rotation: float = 0.0
     is_filled: bool = True
     dash_pattern: tuple[float, ...] | None = None
-    start_arrow: bool = False
-    end_arrow: bool = False
+    start_arrow: int | bool = False
+    end_arrow: int | bool = False
+    corner_radius: float = 0.0
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -47,6 +48,7 @@ class ShapePath:
             "dash_pattern": list(self.dash_pattern) if self.dash_pattern else None,
             "start_arrow": self.start_arrow,
             "end_arrow": self.end_arrow,
+            "corner_radius": self.corner_radius,
         }
 
 
@@ -217,15 +219,15 @@ def extract_move_offset_from_message(msg: Message) -> tuple[float, float]:
 def _parse_type31_shape(record_index: int, msg: Message) -> ShapePath | None:
     uuid = _uuid_from_message(msg)
 
-    start_arrow = bool(msg.by_number(30) and msg.by_number(30)[0].value in (1, 2))
-    end_arrow = bool(msg.by_number(31) and msg.by_number(31)[0].value in (1, 2))
+    start_arrow = msg.by_number(30)[0].value if (msg.by_number(30) and isinstance(msg.by_number(30)[0].value, int)) else 0
+    end_arrow = msg.by_number(31)[0].value if (msg.by_number(31) and isinstance(msg.by_number(31)[0].value, int)) else 0
 
     pts: list[tuple[float, float]] = []
     f21 = msg.by_number(21)
     if f21 and isinstance(f21[0].value, bytes):
         m21 = try_decode_message(f21[0].value)
         if m21:
-            for sub_tag in [1, 2, 3, 4, 5]:
+            for sub_tag in [1, 5, 3, 2, 4]:
                 fields = m21.by_number(sub_tag)
                 if fields and isinstance(fields[0].value, bytes):
                     m_sub = try_decode_message(fields[0].value)
@@ -296,7 +298,7 @@ def _parse_type31_shape(record_index: int, msg: Message) -> ShapePath | None:
         field_numbers=(1, 2, 8, 9, 14, 16),
         color_hex=color_hex,
         alpha=alpha,
-        shape_type="polyline" if len(pts) == 2 else "polygon",
+        shape_type="polyline",
         is_filled=False,
         dash_pattern=dash_pattern,
         start_arrow=start_arrow,
@@ -375,55 +377,78 @@ def _parse_type35_shape(record_index: int, msg: Message) -> ShapePath | None:
                     m1 = try_decode_message(m3.by_number(1)[0].value)
                     if m1 and m1.by_number(4):
                         a_val = m1.by_number(4)[0].fixed_float()
-                        if a_val is not None:
-                            alpha = a_val
+    # Generic Fill Status Detection from tag 30 alpha
+    is_filled = False
+    f30 = msg.by_number(30)
+    if f30 and isinstance(f30[0].value, bytes):
+        m30 = try_decode_message(f30[0].value)
+        if m30 and m30.by_number(1) and isinstance(m30.by_number(1)[0].value, bytes):
+            m_c = try_decode_message(m30.by_number(1)[0].value)
+            if m_c and m_c.by_number(1) and isinstance(m_c.by_number(1)[0].value, bytes):
+                m_rgb = try_decode_message(m_c.by_number(1)[0].value)
+                if m_rgb and m_rgb.by_number(4):
+                    alpha_f = m_rgb.by_number(4)[0].fixed_float()
+                    if alpha_f is not None and alpha_f > 0.0:
+                        is_filled = True
 
-    shape_subtype = 0
-    f7 = msg.by_number(7)
-    if f7 and isinstance(f7[0].value, bytes):
-        m7 = try_decode_message(f7[0].value)
-        if m7 and m7.by_number(1) and isinstance(m7.by_number(1)[0].value, bytes):
-            m7_1 = try_decode_message(m7.by_number(1)[0].value)
-            if m7_1 and m7_1.by_number(1):
-                shape_subtype = int(m7_1.by_number(1)[0].value)
-    
-    is_filled = shape_subtype in range(5, 24)
-
+    # Generic Geometry & Shape Type Detection from tag 22
     norm_pts = []
+    shape_type = "rectangle"
+    corner_radius = 0.0
+
     f22 = msg.by_number(22)
     if f22 and isinstance(f22[0].value, bytes):
         m22 = try_decode_message(f22[0].value)
-        if m22 and m22.by_number(3) and isinstance(m22.by_number(3)[0].value, bytes):
-            m3 = try_decode_message(m22.by_number(3)[0].value)
-            if m3 and m3.by_number(1) and isinstance(m3.by_number(1)[0].value, bytes):
-                m1 = try_decode_message(m3.by_number(1)[0].value)
-                if m1:
-                    for item in m1.by_number(1):
-                        if isinstance(item.value, bytes):
-                            m_pt = try_decode_message(item.value)
-                            if m_pt:
-                                f_inner = m_pt.by_number(1)
-                                if f_inner and isinstance(f_inner[0].value, bytes):
-                                    m_xy = try_decode_message(f_inner[0].value)
-                                    if m_xy:
-                                        px = m_xy.by_number(1)[0].fixed_float() if m_xy.by_number(1) else 0.0
-                                        py = m_xy.by_number(2)[0].fixed_float() if m_xy.by_number(2) else 0.0
-                                        norm_pts.append((px, py))
+        if m22:
+            if m22.by_number(3) and isinstance(m22.by_number(3)[0].value, bytes):
+                m3 = try_decode_message(m22.by_number(3)[0].value)
+                if m3 and m3.by_number(1) and isinstance(m3.by_number(1)[0].value, bytes):
+                    m1 = try_decode_message(m3.by_number(1)[0].value)
+                    if m1:
+                        for item in m1.by_number(1):
+                            if isinstance(item.value, bytes):
+                                m_pt = try_decode_message(item.value)
+                                if m_pt:
+                                    f_inner = m_pt.by_number(1)
+                                    if f_inner and isinstance(f_inner[0].value, bytes):
+                                        m_xy = try_decode_message(f_inner[0].value)
+                                        if m_xy:
+                                            px = m_xy.by_number(1)[0].fixed_float() if m_xy.by_number(1) else 0.0
+                                            py = m_xy.by_number(2)[0].fixed_float() if m_xy.by_number(2) else 0.0
+                                            norm_pts.append((px, py))
+                                    if m_pt.by_number(3):
+                                        r_val = m_pt.by_number(3)[0].fixed_float()
+                                        if r_val is not None:
+                                            corner_radius = r_val
+                if norm_pts:
+                    shape_type = "polygon"
+            elif m22.by_number(2):
+                shape_type = "ellipse"
+            elif m22.by_number(1) and isinstance(m22.by_number(1)[0].value, bytes):
+                m1 = try_decode_message(m22.by_number(1)[0].value)
+                if m1 and m1.by_number(1):
+                    r_val = m1.by_number(1)[0].fixed_float() or 0.0
+                    if r_val >= 50.0:
+                        shape_type = "capsule"
+                    else:
+                        shape_type = "rectangle"
+                        corner_radius = r_val
 
     cx = pos_x + w / 2.0
     cy = pos_y + h / 2.0
     rx = w / 2.0
     ry = h / 2.0
 
-    if shape_subtype in (2, 3, 8, 9, 10, 12, 13):
+    if shape_type == "ellipse":
         steps = 144
         pts = [(cx + rx * math.cos(2 * math.pi * i / steps), cy + ry * math.sin(2 * math.pi * i / steps)) for i in range(steps)]
         pts.append(pts[0])
-        shape_type = "ellipse"
-    elif norm_pts:
+    elif shape_type == "capsule":
+        left, top, right, bottom = pos_x, pos_y, pos_x + w, pos_y + h
+        pts = [(left, top), (right, top), (right, bottom), (left, bottom), (left, top)]
+    elif shape_type == "polygon" and norm_pts:
         pts = [(pos_x + nx * w, pos_y + ny * h) for nx, ny in norm_pts]
         pts.append(pts[0])
-        shape_type = "polygon"
     else:
         left, top, right, bottom = pos_x, pos_y, pos_x + w, pos_y + h
         pts = [(left, top), (right, top), (right, bottom), (left, bottom), (left, top)]
@@ -445,6 +470,7 @@ def _parse_type35_shape(record_index: int, msg: Message) -> ShapePath | None:
         rotation=0.0,
         is_filled=is_filled,
         dash_pattern=dash_pattern,
+        corner_radius=corner_radius,
     )
 
 
