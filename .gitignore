@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+tmp/
+dist/
+*.egg-info/
+
+# OS and IDE files
+.DS_Store
+.vscode/
+.idea/
+
+# Project output and temporary files
+output_svgs/
+.scratch/

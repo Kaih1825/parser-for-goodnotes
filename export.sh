@@ -1,0 +1,38 @@
+#!/bin/bash
+# 自動匯出 GoodNotes 筆記為 SVG
+files=(
+    "Ch3P1.goodnotes"
+    # "Teat.goodnotes"
+    # "tri.goodnotes"
+    # "ooo.goodnotes"
+    # "國際情勢.goodnotes"
+    # "aaa.goodnotes"
+    # "aaa2.goodnotes"
+    # "Move.goodnotes"
+    # "p5.goodnotes"
+    # "tri2.goodnotes"
+    # "Small.goodnotes"
+    # "sticker.goodnotes"
+    # "muti.goodnotes"
+    # "abcd.goodnotes"
+)
+
+mkdir -p output_svgs
+
+for file in "${files[@]}"; do
+    target=""
+    if [ -f "samples/$file" ]; then
+        target="samples/$file"
+    elif [ -f "$file" ]; then
+        target="$file"
+    fi
+
+    if [ -n "$target" ]; then
+        echo "正在匯出: $target -> output_svgs/"
+        PYTHONPATH=src python3 -m goodnotes_re.cli export-svg "$target" -o "output_svgs" -b close
+    else
+        echo "找不到檔案: $file，跳過。"
+    fi
+done
+
+echo "全部匯出完成！匯出結果已儲存至 output_svgs/ 目錄。"

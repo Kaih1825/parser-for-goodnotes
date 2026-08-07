@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "goodnotes-reverse-engineering-toolkit"
+version = "0.1.0"
+description = "A typed, schema-free protobuf inspector and exporter for GoodNotes documents."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "GoodNotes Reverse Engineering Toolkit contributors"}]
+classifiers = ["Programming Language :: Python :: 3", "Typing :: Typed"]
+
+[project.scripts]
+gn-inspect = "goodnotes_re.cli:inspect_main"
+gn-dump = "goodnotes_re.cli:dump_main"
+gn-diff = "goodnotes_re.cli:diff_main"
+gn-export-json = "goodnotes_re.cli:export_json_main"
+gn-export-svg = "goodnotes_re.cli:export_svg_main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/goodnotes_re"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
