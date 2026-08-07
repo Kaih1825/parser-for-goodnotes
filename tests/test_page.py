@@ -112,5 +112,24 @@ class PageTests(unittest.TestCase):
             self.assertIn(">KAI<", svg_text)
 
 
+    def test_shape_goodnotes_type35_shapes(self) -> None:
+        sample = resolve_sample("shape.goodnotes")
+        if not sample.exists():
+            self.skipTest("shape.goodnotes not present")
+        with GoodNotesDocument.open(sample) as document:
+            page = document.pages()[0]
+            self.assertEqual(len(page.shapes), 39)
+            rectangles = [s for s in page.shapes if s.shape_type == "rectangle"]
+            ellipses = [s for s in page.shapes if s.shape_type == "ellipse"]
+            polygons = [s for s in page.shapes if s.shape_type == "polygon"]
+            arrows = [s for s in page.shapes if getattr(s, "start_arrow", False) or getattr(s, "end_arrow", False)]
+            self.assertGreaterEqual(len(rectangles), 2)
+            self.assertGreaterEqual(len(ellipses), 7)
+            self.assertGreaterEqual(len(polygons), 5)
+            self.assertEqual(len(arrows), 12)
+
+
+
 if __name__ == "__main__":
     unittest.main()
+

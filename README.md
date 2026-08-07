@@ -13,16 +13,24 @@ It **deliberately does NOT use heuristic float scanning**.
 - **Page & Background Resolution**: Automatic PDF background `/MediaBox` dimension detection (A4, Letter, landscape vs. portrait), page ordering, text fragments, and sticky notes (便條紙) content extraction.
 - **CLI Tools**: `gn-inspect`, `gn-dump`, `gn-diff`, `gn-export-json`, `gn-export-svg`.
 
-## Installation
+## Installation & Setup
+
+Using [`uv`](https://github.com/astral-sh/uv):
 
 ```sh
-python3 -m pip install -e .
+uv sync
+```
+
+Or standard pip install:
+
+```sh
+pip install -e .
 ```
 
 Run the unit test suite with:
 
 ```sh
-PYTHONPATH=src python3 -m unittest discover -s tests -v
+uv run pytest
 ```
 
 ## CLI Usage

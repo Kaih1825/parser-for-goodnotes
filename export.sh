@@ -1,7 +1,8 @@
 #!/bin/bash
 # 自動匯出 GoodNotes 筆記為 SVG
 files=(
-    "Ch3P1.goodnotes"
+    # "Ch3P1.goodnotes"
+    "shape.goodnotes"
     # "Teat.goodnotes"
     # "tri.goodnotes"
     # "ooo.goodnotes"
@@ -29,7 +30,7 @@ for file in "${files[@]}"; do
 
     if [ -n "$target" ]; then
         echo "正在匯出: $target -> output_svgs/"
-        PYTHONPATH=src python3 -m goodnotes_re.cli export-svg "$target" -o "output_svgs" -b close
+        uv run gn-export-svg "$target" -o "output_svgs" -b close
     else
         echo "找不到檔案: $file，跳過。"
     fi
