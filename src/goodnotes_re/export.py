@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Iterator
 
 from .archive import GoodNotesDocument
-from .pdf import render_pdf_page_to_png
+from .pdf import render_pdf_page_to_svg
 from .stroke import build_stroke_ribbon
 from .wire import Field, Message, WireType, try_decode_message
 
@@ -101,12 +101,9 @@ def write_svg(
                         f'<image href="data:{mime};base64,{img_b64}" x="0" y="0" width="{pw:.2f}" height="{ph:.2f}" preserveAspectRatio="none"/>'
                     )
                 elif bdata.startswith(b"%PDF"):
-                    png_data = render_pdf_page_to_png(bdata, page_index=page.index, dpi=150.0)
-                    if png_data:
-                        img_b64 = base64.b64encode(png_data).decode("ascii")
-                        elements.append(
-                            f'<image href="data:image/png;base64,{img_b64}" x="0" y="0" width="{pw:.2f}" height="{ph:.2f}" preserveAspectRatio="none"/>'
-                        )
+                    pdf_svg = render_pdf_page_to_svg(bdata, page_index=page.index, width=pw, height=ph)
+                    if pdf_svg:
+                        elements.append(pdf_svg)
             except Exception:
                 pass
 
@@ -156,24 +153,72 @@ def write_svg(
                 )
 
         # Render vector shapes
+        has_arrows = any(getattr(s, "start_arrow", False) or getattr(s, "end_arrow", False) for s in page.shapes)
+        if has_arrows:
+            elements.append(
+                '<defs>'
+                '<marker id="arrow-start" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">'
+                '<path d="M 0 5 L 10 0 L 7 5 L 10 10 Z" fill="#1e1b1b"/>'
+                '</marker>'
+                '<marker id="arrow-end" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto">'
+                '<path d="M 0 0 L 10 5 L 0 10 L 3 5 Z" fill="#1e1b1b"/>'
+                '</marker>'
+                '</defs>'
+            )
+
         for shape in page.shapes:
-            is_polyline = 1 in shape.field_numbers or 2 not in shape.field_numbers
+            is_polyline = 1 in shape.field_numbers or 2 not in shape.field_numbers or shape.shape_type == "polyline"
             pts = shape.points
-            if is_polyline:
+            dash_pattern = getattr(shape, "dash_pattern", None)
+            dash_attr = f' stroke-dasharray="{" ".join(f"{d * dpi_scale:.2f}" for d in dash_pattern)}"' if dash_pattern else ""
+
+            marker_attr = ""
+            if getattr(shape, "start_arrow", False):
+                marker_attr += ' marker-start="url(#arrow-start)"'
+            if getattr(shape, "end_arrow", False):
+                marker_attr += ' marker-end="url(#arrow-end)"'
+
+            is_filled = getattr(shape, "is_filled", True)
+            fill_attr = f'fill="{shape.color_hex}" fill-opacity="0.08"' if (fill_shapes and is_filled) else 'fill="none"'
+            stroke_w = max(0.5, shape.stroke_width * dpi_scale)
+
+            if shape.shape_type == "rectangle" and len(pts) == 5:
+                left = min(p[0] for p in pts) * dpi_scale
+                top = min(p[1] for p in pts) * dpi_scale
+                right = max(p[0] for p in pts) * dpi_scale
+                bottom = max(p[1] for p in pts) * dpi_scale
+                w = right - left
+                h = bottom - top
+                rx_val = min(6.0 * dpi_scale, w / 4.0, h / 4.0)
+                elements.append(
+                    f'<rect x="{left:.2f}" y="{top:.2f}" width="{w:.2f}" height="{h:.2f}" rx="{rx_val:.2f}" ry="{rx_val:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr}{marker_attr} {fill_attr}/>'
+                )
+            elif is_polyline:
                 if len(pts) == 2:
                     (x1, y1), (x2, y2) = pts
                     elements.append(
-                        f'<line x1="{x1 * dpi_scale:.2f}" y1="{y1 * dpi_scale:.2f}" x2="{x2 * dpi_scale:.2f}" y2="{y2 * dpi_scale:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{max(0.5, shape.stroke_width * dpi_scale):.2f}" stroke-linecap="round" fill="none"/>'
+                        f'<line x1="{x1 * dpi_scale:.2f}" y1="{y1 * dpi_scale:.2f}" x2="{x2 * dpi_scale:.2f}" y2="{y2 * dpi_scale:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round"{dash_attr}{marker_attr} fill="none"/>'
+                    )
+                elif len(pts) >= 3 and shape.shape_type == "polyline":
+                    path = [f'M {pts[0][0] * dpi_scale:.2f} {pts[0][1] * dpi_scale:.2f}']
+                    for i in range(1, len(pts) - 1):
+                        cx = (pts[i][0] + pts[i+1][0]) / 2.0
+                        cy = (pts[i][1] + pts[i+1][1]) / 2.0
+                        path.append(f'Q {pts[i][0] * dpi_scale:.2f} {pts[i][1] * dpi_scale:.2f} {cx * dpi_scale:.2f} {cy * dpi_scale:.2f}')
+                    path.append(f'L {pts[-1][0] * dpi_scale:.2f} {pts[-1][1] * dpi_scale:.2f}')
+                    d_path = " ".join(path)
+                    elements.append(
+                        f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr}{marker_attr} fill="none"/>'
                     )
                 else:
                     path = [f'M {pts[0][0] * dpi_scale:.2f} {pts[0][1] * dpi_scale:.2f}']
                     for x, y in pts[1:]:
                         path.append(f'L {x * dpi_scale:.2f} {y * dpi_scale:.2f}')
-                    path.append("Z")
+                    if shape.shape_type != "polyline":
+                        path.append("Z")
                     d_path = " ".join(path)
-                    fill_attr = f'fill="{shape.color_hex}" fill-opacity="0.15"' if fill_shapes else 'fill="none"'
                     elements.append(
-                        f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{max(0.5, shape.stroke_width * dpi_scale):.2f}" stroke-linecap="round" stroke-linejoin="round" {fill_attr}/>'
+                        f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr}{marker_attr} {fill_attr}/>'
                     )
             else:
                 # Curves
@@ -198,7 +243,7 @@ def write_svg(
                         path.append(f'L {x * dpi_scale:.2f} {y * dpi_scale:.2f}')
                     d_path = " ".join(path)
                 elements.append(
-                    f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{max(0.5, shape.stroke_width * dpi_scale):.2f}" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'
+                    f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr}{marker_attr} {fill_attr}/>'
                 )
 
         shape_uuids = {shape.uuid for shape in page.shapes if shape.uuid}

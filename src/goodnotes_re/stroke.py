@@ -289,11 +289,11 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
                     parsed.append(StrokePoint(x1, y1, p1))
                 if not parsed or math.hypot(x2 - parsed[-1].x, y2 - parsed[-1].y) >= 1e-3:
                     parsed.append(StrokePoint(x2, y2, p2))
-            if ok and len(parsed) >= 2:
+            if ok and len(parsed) >= 1:
                 candidates.append((len(parsed), idx, parsed))
 
     for idx, v in enumerate(tpl_img.values):
-        if isinstance(v, list) and len(v) >= 6 and isinstance(v[0], int) and len(v) % 3 == 0:
+        if isinstance(v, list) and len(v) >= 3 and isinstance(v[0], int) and len(v) % 3 == 0:
             parsed = []
             ok = True
             for k in range(0, len(v), 3):
@@ -302,12 +302,12 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
                     ok = False; break
                 if not parsed or math.hypot(x - parsed[-1].x, y - parsed[-1].y) >= 1e-3:
                     parsed.append(StrokePoint(x, y, p))
-            if ok and len(parsed) >= 2:
+            if ok and len(parsed) >= 1:
                 candidates.append((len(parsed), idx, parsed))
 
     # 4. 5-float 五元組 (x, y, p, w, angle) - 常見於 v[10] (筆劃向量點陣)
     for idx, v in enumerate(tpl_img.values):
-        if isinstance(v, list) and len(v) >= 10 and isinstance(v[0], int) and len(v) % 5 == 0:
+        if isinstance(v, list) and len(v) >= 5 and isinstance(v[0], int) and len(v) % 5 == 0:
             parsed = []
             ok = True
             for k in range(0, len(v), 5):
@@ -316,7 +316,7 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
                     ok = False; break
                 if not parsed or math.hypot(x - parsed[-1].x, y - parsed[-1].y) >= 1e-3:
                     parsed.append(StrokePoint(x, y, p))
-            if ok and len(parsed) >= 2:
+            if ok and len(parsed) >= 1:
                 candidates.append((len(parsed), idx, parsed))
 
     # 註：先前這裡曾嘗試把 v[2]/v[4] 當成原生 MoveTo 分割標記（v[4]==7 或 v[2]==0）。
@@ -331,7 +331,7 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
         plausible = [c for c in scored if c[0] <= _JITTER_REJECT_THRESHOLD]
         best_pts = (plausible[0] if plausible else scored[0])[3]
         normal_pts = [p for p in best_pts if not (p.x < 10.0 and p.y < 10.0)]
-        target_pts = normal_pts if len(normal_pts) >= 2 else best_pts
+        target_pts = normal_pts if len(normal_pts) >= 1 else best_pts
 
         groups.append(target_pts)
         return groups, default_width

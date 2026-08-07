@@ -23,6 +23,10 @@ class ShapePath:
     rx: float | None = None
     ry: float | None = None
     rotation: float = 0.0
+    is_filled: bool = True
+    dash_pattern: tuple[float, ...] | None = None
+    start_arrow: bool = False
+    end_arrow: bool = False
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -39,6 +43,10 @@ class ShapePath:
             "rx": self.rx,
             "ry": self.ry,
             "rotation": self.rotation,
+            "is_filled": self.is_filled,
+            "dash_pattern": list(self.dash_pattern) if self.dash_pattern else None,
+            "start_arrow": self.start_arrow,
+            "end_arrow": self.end_arrow,
         }
 
 
@@ -120,7 +128,6 @@ def _parse_geometry_from_field9(field9: Message) -> dict[str, Any]:
 
                     geom["shape_type"] = "ellipse"
                     
-                    # 產生 144 邊形陣列，相容你的 gn-export-svg 工具
                     points_list = []
                     steps = 144
                     cos_rot = math.cos(geom["rotation"])
@@ -188,33 +195,301 @@ def _parse_geometry_from_field9(field9: Message) -> dict[str, Any]:
     
 
 def extract_move_offset_from_message(msg: Message) -> tuple[float, float]:
-    """Decode the (dx, dy) translation GoodNotes attaches to a shape record
-    (protobuf field 6, two fixed32 floats) after it has been repositioned with
-    the lasso/selection tool.
     """
-    field6 = msg.by_number(6)
-    if field6 and isinstance(field6[0].value, bytes) and field6[0].value:
-        try:
-            offset_msg = decode_message(field6[0].value)
-            f1 = offset_msg.by_number(1)
-            f2 = offset_msg.by_number(2)
-            dx = f1[0].fixed_float() if f1 else None
-            dy = f2[0].fixed_float() if f2 else None
-            return dx or 0.0, dy or 0.0
-        except Exception:
-            pass
+    Extract dx, dy move offset applied to a shape when selected or moved by user.
+    """
+    for f_num in (14, 6):
+        f = msg.by_number(f_num)
+        if f and isinstance(f[0].value, bytes) and f[0].value:
+            try:
+                offset_msg = decode_message(f[0].value)
+                f1 = offset_msg.by_number(1)
+                f2 = offset_msg.by_number(2)
+                dx = f1[0].fixed_float() if f1 else None
+                dy = f2[0].fixed_float() if f2 else None
+                if dx is not None or dy is not None:
+                    return dx or 0.0, dy or 0.0
+            except Exception:
+                pass
     return 0.0, 0.0
 
 
+def _parse_type31_shape(record_index: int, msg: Message) -> ShapePath | None:
+    uuid = _uuid_from_message(msg)
+
+    start_arrow = bool(msg.by_number(30) and msg.by_number(30)[0].value in (1, 2))
+    end_arrow = bool(msg.by_number(31) and msg.by_number(31)[0].value in (1, 2))
+
+    pts: list[tuple[float, float]] = []
+    f21 = msg.by_number(21)
+    if f21 and isinstance(f21[0].value, bytes):
+        m21 = try_decode_message(f21[0].value)
+        if m21:
+            for sub_tag in [1, 2, 3, 4, 5]:
+                fields = m21.by_number(sub_tag)
+                if fields and isinstance(fields[0].value, bytes):
+                    m_sub = try_decode_message(fields[0].value)
+                    if m_sub:
+                        for sf in m_sub.fields:
+                            if isinstance(sf.value, bytes):
+                                m_pt = try_decode_message(sf.value)
+                                if m_pt and m_pt.by_number(1) and m_pt.by_number(2):
+                                    fx = m_pt.by_number(1)[0].fixed_float()
+                                    fy = m_pt.by_number(2)[0].fixed_float()
+                                    if fx is not None and fy is not None:
+                                        pts.append((fx, fy))
+
+    if not pts:
+        f20 = msg.by_number(20)
+        if f20 and isinstance(f20[0].value, bytes):
+            m20 = try_decode_message(f20[0].value)
+            if m20:
+                for sf in m20.by_number(2):
+                    if isinstance(sf.value, bytes):
+                        m_pt = try_decode_message(sf.value)
+                        if m_pt and m_pt.by_number(1) and m_pt.by_number(2):
+                            fx = m_pt.by_number(1)[0].fixed_float()
+                            fy = m_pt.by_number(2)[0].fixed_float()
+                            if fx is not None and fy is not None:
+                                pts.append((fx, fy))
+
+    if not pts:
+        return None
+
+    stroke_width = 1.0
+    color_hex, alpha = "#1e1b1b", 1.0
+    dash_pattern: tuple[float, ...] | None = None
+    f32 = msg.by_number(32)
+    if f32 and isinstance(f32[0].value, bytes):
+        m32 = try_decode_message(f32[0].value)
+        if m32:
+            if m32.by_number(1):
+                stroke_width = m32.by_number(1)[0].fixed_float() or 1.0
+            f32_2 = m32.by_number(2)
+            if f32_2 and isinstance(f32_2[0].value, bytes):
+                m2 = try_decode_message(f32_2[0].value)
+                if m2 and m2.by_number(2) and isinstance(m2.by_number(2)[0].value, bytes):
+                    m_dash = try_decode_message(m2.by_number(2)[0].value)
+                    if m_dash:
+                        d_vals = [sf.fixed_float() for sf in m_dash.fields if sf.fixed_float() is not None]
+                        if d_vals:
+                            dash_pattern = tuple(d_vals)
+            if m32.by_number(3) and isinstance(m32.by_number(3)[0].value, bytes):
+                m_c = try_decode_message(m32.by_number(3)[0].value)
+                if m_c and m_c.by_number(1) and isinstance(m_c.by_number(1)[0].value, bytes):
+                    m_rgb = try_decode_message(m_c.by_number(1)[0].value)
+                    if m_rgb:
+                        r = m_rgb.by_number(1)
+                        g = m_rgb.by_number(2)
+                        b = m_rgb.by_number(3)
+                        if r and g and b:
+                            cr = min(255, max(0, int(round((r[0].fixed_float() or 0) * 255.0))))
+                            cg = min(255, max(0, int(round((g[0].fixed_float() or 0) * 255.0))))
+                            cb = min(255, max(0, int(round((b[0].fixed_float() or 0) * 255.0))))
+                            color_hex = f"#{cr:02x}{cg:02x}{cb:02x}"
+
+    return ShapePath(
+        record_index=record_index,
+        uuid=uuid,
+        points=tuple(pts),
+        stroke_width=stroke_width,
+        field_numbers=(1, 2, 8, 9, 14, 16),
+        color_hex=color_hex,
+        alpha=alpha,
+        shape_type="polyline" if len(pts) == 2 else "polygon",
+        is_filled=False,
+        dash_pattern=dash_pattern,
+        start_arrow=start_arrow,
+        end_arrow=end_arrow,
+    )
+
+
+def _parse_type35_shape(record_index: int, msg: Message) -> ShapePath | None:
+    uuid = _uuid_from_message(msg)
+
+    pos_x, pos_y = 0.0, 0.0
+    f20 = msg.by_number(20)
+    if f20 and isinstance(f20[0].value, bytes):
+        m20 = try_decode_message(f20[0].value)
+        if m20 and m20.by_number(1) and isinstance(m20.by_number(1)[0].value, bytes):
+            m_pt = try_decode_message(m20.by_number(1)[0].value)
+            if m_pt:
+                fx = m_pt.by_number(1)
+                fy = m_pt.by_number(2)
+                pos_x = fx[0].fixed_float() if fx else 0.0
+                pos_y = fy[0].fixed_float() if fy else 0.0
+
+    w, h = 0.0, 0.0
+    f21_size = msg.by_number(21)
+    if f21_size and isinstance(f21_size[0].value, bytes):
+        m21 = try_decode_message(f21_size[0].value)
+        if m21 and m21.by_number(2) and isinstance(m21.by_number(2)[0].value, bytes):
+            m_sz = try_decode_message(m21.by_number(2)[0].value)
+            if m_sz:
+                fw = m_sz.by_number(1)
+                fh = m_sz.by_number(2)
+                w = fw[0].fixed_float() if fw else 0.0
+                h = fh[0].fixed_float() if fh else 0.0
+
+    if w <= 0.0 or h <= 0.0:
+        return None
+
+    color_hex, alpha = "#1e1b1b", 1.0
+    f30 = msg.by_number(30)
+    if f30 and isinstance(f30[0].value, bytes):
+        m30 = try_decode_message(f30[0].value)
+        if m30 and m30.by_number(1) and isinstance(m30.by_number(1)[0].value, bytes):
+            m_c = try_decode_message(m30.by_number(1)[0].value)
+            if m_c and m_c.by_number(1) and isinstance(m_c.by_number(1)[0].value, bytes):
+                m_rgb = try_decode_message(m_c.by_number(1)[0].value)
+                if m_rgb:
+                    r = m_rgb.by_number(1)
+                    g = m_rgb.by_number(2)
+                    b = m_rgb.by_number(3)
+                    if r and g and b:
+                        cr = min(255, max(0, int(round((r[0].fixed_float() or 0) * 255.0))))
+                        cg = min(255, max(0, int(round((g[0].fixed_float() or 0) * 255.0))))
+                        cb = min(255, max(0, int(round((b[0].fixed_float() or 0) * 255.0))))
+                        color_hex = f"#{cr:02x}{cg:02x}{cb:02x}"
+
+    stroke_width = 1.0
+    dash_pattern: tuple[float, ...] | None = None
+    f31 = msg.by_number(31)
+    if f31 and isinstance(f31[0].value, bytes):
+        m31 = try_decode_message(f31[0].value)
+        if m31:
+            if m31.by_number(1):
+                stroke_width = m31.by_number(1)[0].fixed_float() or 1.0
+            f31_2 = m31.by_number(2)
+            if f31_2 and isinstance(f31_2[0].value, bytes):
+                m2 = try_decode_message(f31_2[0].value)
+                if m2 and m2.by_number(2) and isinstance(m2.by_number(2)[0].value, bytes):
+                    m_dash = try_decode_message(m2.by_number(2)[0].value)
+                    if m_dash:
+                        d_vals = [sf.fixed_float() for sf in m_dash.fields if sf.fixed_float() is not None]
+                        if d_vals:
+                            dash_pattern = tuple(d_vals)
+            if m31.by_number(3) and isinstance(m31.by_number(3)[0].value, bytes):
+                m3 = try_decode_message(m31.by_number(3)[0].value)
+                if m3 and m3.by_number(1) and isinstance(m3.by_number(1)[0].value, bytes):
+                    m1 = try_decode_message(m3.by_number(1)[0].value)
+                    if m1 and m1.by_number(4):
+                        a_val = m1.by_number(4)[0].fixed_float()
+                        if a_val is not None:
+                            alpha = a_val
+
+    shape_subtype = 0
+    f7 = msg.by_number(7)
+    if f7 and isinstance(f7[0].value, bytes):
+        m7 = try_decode_message(f7[0].value)
+        if m7 and m7.by_number(1) and isinstance(m7.by_number(1)[0].value, bytes):
+            m7_1 = try_decode_message(m7.by_number(1)[0].value)
+            if m7_1 and m7_1.by_number(1):
+                shape_subtype = int(m7_1.by_number(1)[0].value)
+    
+    is_filled = shape_subtype in range(5, 24)
+
+    norm_pts = []
+    f22 = msg.by_number(22)
+    if f22 and isinstance(f22[0].value, bytes):
+        m22 = try_decode_message(f22[0].value)
+        if m22 and m22.by_number(3) and isinstance(m22.by_number(3)[0].value, bytes):
+            m3 = try_decode_message(m22.by_number(3)[0].value)
+            if m3 and m3.by_number(1) and isinstance(m3.by_number(1)[0].value, bytes):
+                m1 = try_decode_message(m3.by_number(1)[0].value)
+                if m1:
+                    for item in m1.by_number(1):
+                        if isinstance(item.value, bytes):
+                            m_pt = try_decode_message(item.value)
+                            if m_pt:
+                                f_inner = m_pt.by_number(1)
+                                if f_inner and isinstance(f_inner[0].value, bytes):
+                                    m_xy = try_decode_message(f_inner[0].value)
+                                    if m_xy:
+                                        px = m_xy.by_number(1)[0].fixed_float() if m_xy.by_number(1) else 0.0
+                                        py = m_xy.by_number(2)[0].fixed_float() if m_xy.by_number(2) else 0.0
+                                        norm_pts.append((px, py))
+
+    cx = pos_x + w / 2.0
+    cy = pos_y + h / 2.0
+    rx = w / 2.0
+    ry = h / 2.0
+
+    if shape_subtype in (2, 3, 8, 9, 10, 12, 13):
+        steps = 144
+        pts = [(cx + rx * math.cos(2 * math.pi * i / steps), cy + ry * math.sin(2 * math.pi * i / steps)) for i in range(steps)]
+        pts.append(pts[0])
+        shape_type = "ellipse"
+    elif norm_pts:
+        pts = [(pos_x + nx * w, pos_y + ny * h) for nx, ny in norm_pts]
+        pts.append(pts[0])
+        shape_type = "polygon"
+    else:
+        left, top, right, bottom = pos_x, pos_y, pos_x + w, pos_y + h
+        pts = [(left, top), (right, top), (right, bottom), (left, bottom), (left, top)]
+        shape_type = "rectangle"
+
+    return ShapePath(
+        record_index=record_index,
+        uuid=uuid,
+        points=tuple(pts),
+        stroke_width=stroke_width,
+        field_numbers=(1, 2, 8, 9, 14, 16),
+        color_hex=color_hex,
+        alpha=alpha,
+        shape_type=shape_type,
+        cx=cx,
+        cy=cy,
+        rx=rx,
+        ry=ry,
+        rotation=0.0,
+        is_filled=is_filled,
+        dash_pattern=dash_pattern,
+    )
+
+
 def parse_shape_record(record_index: int, record: Message) -> ShapePath | None:
-    """Parse the explicit field-9 geometry used by GoodNotes shape-like records."""
+    """Parse explicit field-9, field-21, or field-22 geometry used by GoodNotes shape/line records."""
+    f22 = record.by_number(22)
+    if f22 and isinstance(f22[0].value, bytes):
+        msg22 = try_decode_message(f22[0].value)
+        if msg22 and msg22.by_number(2) and msg22.by_number(2)[0].value == 31:
+            t31 = _parse_type31_shape(record_index, msg22)
+            if t31 is not None:
+                return t31
+
+    f21 = record.by_number(21)
+    if f21 and isinstance(f21[0].value, bytes):
+        msg21 = try_decode_message(f21[0].value)
+        if msg21:
+            t35 = _parse_type35_shape(record_index, msg21)
+            if t35 is not None:
+                return t35
+
     field7 = record.by_number(7)
     if not field7 or not isinstance(field7[0].value, bytes):
         return None
-    
+
     outer = try_decode_message(field7[0].value)
     if outer is None:
         return None
+
+    f22_outer = outer.by_number(22)
+    if f22_outer and isinstance(f22_outer[0].value, bytes):
+        msg22 = try_decode_message(f22_outer[0].value)
+        if msg22 and msg22.by_number(2) and msg22.by_number(2)[0].value == 31:
+            t31 = _parse_type31_shape(record_index, msg22)
+            if t31 is not None:
+                return t31
+
+    f21_outer = outer.by_number(21)
+    if f21_outer and isinstance(f21_outer[0].value, bytes):
+        msg21 = try_decode_message(f21_outer[0].value)
+        if msg21:
+            t35 = _parse_type35_shape(record_index, msg21)
+            if t35 is not None:
+                return t35
+
     field9 = outer.by_number(9)
     if not field9 or not isinstance(field9[0].value, bytes):
         return None
@@ -223,7 +498,7 @@ def parse_shape_record(record_index: int, record: Message) -> ShapePath | None:
         return None
 
     geom_data = _parse_geometry_from_field9(shape_msg)
-    
+
     if len(geom_data["points"]) < 2:
         return None
 
@@ -285,5 +560,6 @@ def parse_shape_record(record_index: int, record: Message) -> ShapePath | None:
         cy=cy,
         rx=geom_data["rx"],
         ry=geom_data["ry"],
-        rotation=geom_data["rotation"]
+        rotation=geom_data["rotation"],
+        is_filled=False
     )
