@@ -182,220 +182,6 @@ def _path_jitter_ratio(points: Sequence[StrokePoint]) -> float:
 _JITTER_REJECT_THRESHOLD = 0.35
 
 
-def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]], float]:
-    """Extract stroke points grouped by underlying arrays, and default width."""
-    fmt = tpl_img.format
-    groups: list[list[StrokePoint]] = []
-    default_width = 1.0
-
-    for val in tpl_img.values:
-        if isinstance(val, int):
-            w = uint32_to_float32(val)
-            if 0.05 <= w <= 100.0:
-                default_width = w
-                break
-        elif isinstance(val, list) and len(val) > 1 and isinstance(val[1], int):
-            w = uint32_to_float32(val[1])
-            if 0.05 <= w <= 100.0:
-                default_width = w
-                break
-            
-    default_radius = default_width / 2.0
-    candidates: list[tuple[int, int, list[StrokePoint]]] = []
-
-    # 1. Schema 1: vuA(v)A(S(uu))A(S(uuuu))vA(f) (四元組 (x1, y1, x2, y2))
-    if "uuuu" in fmt and "uuuuu" not in fmt:
-        if len(tpl_img.values) > 4 and isinstance(tpl_img.values[4], list) and len(tpl_img.values[4]) > 0:
-            # values[2] is the A(v) pen-up/down flag array:
-            #   0 = pen up (start new sub-stroke / group)
-            #   1 = pen down (continue current group)
-            # Index 0 is the stroke-start marker (always 0), so only indices ≥ 1
-            # equal to 0 trigger a new group split.
-            vis_flags = (tpl_img.values[2]
-                         if len(tpl_img.values) > 2 and isinstance(tpl_img.values[2], list)
-                         else [])
-
-            g: list[StrokePoint] = []
-            seg_idx = 0  # 1-based index into vis_flags for each quad segment
-
-            # Start points (values[3]) — always the first group, no split check
-            if len(tpl_img.values) > 3 and isinstance(tpl_img.values[3], list):
-                for pair in tpl_img.values[3]:
-                    if isinstance(pair, (tuple, list)) and len(pair) >= 2:
-                        x0, y0 = uint32_to_float32(pair[0]), uint32_to_float32(pair[1])
-                        if is_valid_coord(x0) and is_valid_coord(y0):
-                            if not g or math.hypot(x0 - g[-1].x, y0 - g[-1].y) >= 1e-3:
-                                g.append(StrokePoint(x0, y0, default_radius))
-
-            # Quad segments (values[4]) — check vis_flags[seg_idx] for pen-up before each
-            for quad in tpl_img.values[4]:
-                seg_idx += 1
-                if not (isinstance(quad, (tuple, list)) and len(quad) >= 4):
-                    continue
-                # Pen-up check: flag 0 at this index means start a new group
-                if seg_idx < len(vis_flags) and vis_flags[seg_idx] == 0 and g:
-                    if len(g) >= 1:
-                        groups.append(g)
-                    g = []
-                x1, y1 = uint32_to_float32(quad[0]), uint32_to_float32(quad[1])
-                x2, y2 = uint32_to_float32(quad[2]), uint32_to_float32(quad[3])
-                if is_valid_coord(x1) and is_valid_coord(y1):
-                    if not g or math.hypot(x1 - g[-1].x, y1 - g[-1].y) >= 1e-3:
-                        g.append(StrokePoint(x1, y1, default_radius))
-                if is_valid_coord(x2) and is_valid_coord(y2):
-                    if not g or math.hypot(x2 - g[-1].x, y2 - g[-1].y) >= 1e-3:
-                        g.append(StrokePoint(x2, y2, default_radius))
-
-            # Flush the last group
-            if g:
-                groups.append(g)
-
-            # Return all non-empty groups
-            groups = [gr for gr in groups if gr]
-            if groups:
-                return groups, default_width
-
-        if len(tpl_img.values) > 3 and isinstance(tpl_img.values[3], list) and len(tpl_img.values[3]) > 0:
-            g = []
-            for pair in tpl_img.values[3]:
-                if isinstance(pair, (tuple, list)) and len(pair) >= 2:
-                    x, y = uint32_to_float32(pair[0]), uint32_to_float32(pair[1])
-                    if is_valid_coord(x) and is_valid_coord(y):
-                        if not g or math.hypot(x - g[-1].x, y - g[-1].y) >= 1e-3:
-                            g.append(StrokePoint(x, y, default_radius))
-            if len(g) >= 2:
-                groups.append(g)
-                return groups, default_width
-
-    # 2. Schema 2: vuA(v)A(S(uuuuu))A(S(uuuuuuuuuuu))... (11 元組)
-    if "uuuuuuuuuuu" in fmt:
-        if len(tpl_img.values) > 4 and isinstance(tpl_img.values[4], list) and len(tpl_img.values[4]) > 0:
-            g = []
-            if len(tpl_img.values) > 3 and isinstance(tpl_img.values[3], list) and len(tpl_img.values[3]) > 0:
-                for p5 in tpl_img.values[3]:
-                    if isinstance(p5, (tuple, list)) and len(p5) >= 5:
-                        x0, y0, raw_p0 = uint32_to_float32(p5[0]), uint32_to_float32(p5[1]), uint32_to_float32(p5[4])
-                        p0 = raw_p0 if is_valid_pressure(raw_p0) else default_radius
-                        if is_valid_coord(x0) and is_valid_coord(y0):
-                            if not g or math.hypot(x0 - g[-1].x, y0 - g[-1].y) >= 1e-3:
-                                g.append(StrokePoint(x0, y0, p0))
-                    elif isinstance(p5, (tuple, list)) and len(p5) >= 2:
-                        x0, y0 = uint32_to_float32(p5[0]), uint32_to_float32(p5[1])
-                        if is_valid_coord(x0) and is_valid_coord(y0):
-                            if not g or math.hypot(x0 - g[-1].x, y0 - g[-1].y) >= 1e-3:
-                                g.append(StrokePoint(x0, y0, default_radius))
-            for p11 in tpl_img.values[4]:
-                if isinstance(p11, (tuple, list)) and len(p11) >= 11:
-                    x1, y1, raw_p1 = uint32_to_float32(p11[1]), uint32_to_float32(p11[2]), uint32_to_float32(p11[5])
-                    x2, y2, raw_p2 = uint32_to_float32(p11[6]), uint32_to_float32(p11[7]), uint32_to_float32(p11[10])
-                    p1 = raw_p1 if is_valid_pressure(raw_p1) else default_radius
-                    p2 = raw_p2 if is_valid_pressure(raw_p2) else default_radius
-                    if is_valid_coord(x1) and is_valid_coord(y1):
-                        if not g or math.hypot(x1 - g[-1].x, y1 - g[-1].y) >= 1e-3:
-                            g.append(StrokePoint(x1, y1, p1))
-                    if is_valid_coord(x2) and is_valid_coord(y2):
-                        if not g or math.hypot(x2 - g[-1].x, y2 - g[-1].y) >= 1e-3:
-                            g.append(StrokePoint(x2, y2, p2))
-            if len(g) >= 2:
-                groups.append(g)
-                return groups, default_width
-
-    # 3. 高密度動態壓感格式 (6-float 六元組 x1,y1,x2,y2,p1,p2 與 3-float 三元組 x,y,p)
-    for idx, v in enumerate(tpl_img.values):
-        if isinstance(v, list) and len(v) >= 12 and isinstance(v[0], int) and len(v) % 6 == 0:
-            parsed: list[StrokePoint] = []
-            ok = True
-            for k in range(0, len(v), 6):
-                x1, y1 = uint32_to_float32(v[k]), uint32_to_float32(v[k + 1])
-                x2, y2 = uint32_to_float32(v[k + 2]), uint32_to_float32(v[k + 3])
-                p1, p2 = uint32_to_float32(v[k + 4]), uint32_to_float32(v[k + 5])
-                if not (is_valid_coord(x1) and is_valid_coord(y1) and is_valid_coord(x2) and is_valid_coord(y2)):
-                    ok = False; break
-                if not (is_valid_pressure(p1) and is_valid_pressure(p2)):
-                    ok = False; break
-                if not parsed or math.hypot(x1 - parsed[-1].x, y1 - parsed[-1].y) >= 1e-3:
-                    parsed.append(StrokePoint(x1, y1, p1))
-                if not parsed or math.hypot(x2 - parsed[-1].x, y2 - parsed[-1].y) >= 1e-3:
-                    parsed.append(StrokePoint(x2, y2, p2))
-            if ok and len(parsed) >= 1:
-                candidates.append((len(parsed), idx, parsed))
-
-    for idx, v in enumerate(tpl_img.values):
-        if isinstance(v, list) and len(v) >= 3 and isinstance(v[0], int) and len(v) % 3 == 0:
-            parsed = []
-            ok = True
-            for k in range(0, len(v), 3):
-                x, y, p = uint32_to_float32(v[k]), uint32_to_float32(v[k + 1]), uint32_to_float32(v[k + 2])
-                if not (is_valid_coord(x) and is_valid_coord(y) and is_valid_pressure(p)):
-                    ok = False; break
-                if not parsed or math.hypot(x - parsed[-1].x, y - parsed[-1].y) >= 1e-3:
-                    parsed.append(StrokePoint(x, y, p))
-            if ok and len(parsed) >= 1:
-                candidates.append((len(parsed), idx, parsed))
-
-    # 4. 5-float 五元組 (x, y, p, w, angle) - 常見於 v[10] (筆劃向量點陣)
-    for idx, v in enumerate(tpl_img.values):
-        if isinstance(v, list) and len(v) >= 5 and isinstance(v[0], int) and len(v) % 5 == 0:
-            parsed = []
-            ok = True
-            for k in range(0, len(v), 5):
-                x, y, p = uint32_to_float32(v[k]), uint32_to_float32(v[k + 1]), uint32_to_float32(v[k + 2])
-                if not (is_valid_coord(x) and is_valid_coord(y) and is_valid_pressure(p)):
-                    ok = False; break
-                if not parsed or math.hypot(x - parsed[-1].x, y - parsed[-1].y) >= 1e-3:
-                    parsed.append(StrokePoint(x, y, p))
-            if ok and len(parsed) >= 1:
-                candidates.append((len(parsed), idx, parsed))
-
-    # 註：先前這裡曾嘗試把 v[2]/v[4] 當成原生 MoveTo 分割標記（v[4]==7 或 v[2]==0）。
-    # 實測發現 v[4] 其實是逐點的分類碼（絕大多數為 5，偶爾出現 4/6/7/9），
-    # 與實際落筆/抬筆位置無關；而且該陣列的索引是「原始紀錄數」，每筆紀錄會展開成
-    # 2 個座標點，直接拿它當 target_pts 的切割索引還會有 2 倍的尺度誤差。
-    # 這個假訊號會把單一連續筆畫切成好幾段，並讓切點被誤判為橡皮擦切口而畫成平頭，
-    # 因此移除，改為保留完整筆畫（僅由後續距離安全防護 split_stroke_points 負責防呆）。
-    if candidates:
-        scored = [(_path_jitter_ratio(pts), -length, idx, pts) for length, idx, pts in candidates]
-        scored.sort()
-        plausible = [c for c in scored if c[0] <= _JITTER_REJECT_THRESHOLD]
-        best_pts = (plausible[0] if plausible else scored[0])[3]
-        normal_pts = [p for p in best_pts if not (p.x < 10.0 and p.y < 10.0)]
-        target_pts = normal_pts if len(normal_pts) >= 1 else best_pts
-
-        groups.append(target_pts)
-        return groups, default_width
-
-    return groups, default_width
-
-
-# def extract_outline_polygons_from_tpl(tpl_img: TplImage) -> list[list[tuple[float, float]]]:
-#     """Extract native outline mesh polygons (v9) pre-computed by GoodNotes for erased strokes."""
-#     v9 = None
-#     if len(tpl_img.values) > 9 and isinstance(tpl_img.values[9], list):
-#         v = tpl_img.values[9]
-#         if len(v) >= 50 and len(v) % 2 == 0:
-#             floats = [uint32_to_float32(u) if isinstance(u, int) else 0.0 for u in v]
-#             if len(floats) >= 4 and all(50.0 <= abs(fl) <= 5000.0 for fl in floats[:4]):
-#                 if abs(floats[2]) >= 50.0:
-#                     v9 = floats
-
-#     if not v9:
-#         return []
-
-#     pts = [(v9[i], v9[i + 1]) for i in range(0, len(v9), 2)]
-#     polys: list[list[tuple[float, float]]] = []
-#     curr = [pts[0]]
-#     for i in range(1, len(pts)):
-#         d = math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])
-#         if d > 20.0:
-#             if len(curr) >= 3:
-#                 polys.append(curr)
-#             curr = [pts[i]]
-#         else:
-#             curr.append(pts[i])
-#     if len(curr) >= 3: 
-#         polys.append(curr)
-
-#     return polys
 
 def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]], float]:
     """Extract stroke points grouped by underlying arrays, and default width."""
@@ -420,7 +206,18 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
 
     # 1. Schema 1: vuA(v)A(S(uu))A(S(uuuu))vA(f) (四元組 (x1, y1, x2, y2))
     # 嚴格匹配 Schema 1 標籤，防止其他格式被誤攔截
-    if "A(S(uuuu))" in fmt:
+    #
+    # 修復重點：這裡原本只用 "A(S(uuuu))" in fmt 判斷，但這是「不管位置」的
+    # 子字串搜尋。鉛筆的複合格式 (vuA(v)A(S(uuuuu))A(S(uuuuuuuuuuu))...
+    # ...A(S(uuuu))A(u)) 剛好在字串「後段」也含有一模一樣的 "A(S(uuuu))"
+    # token（對應到 values[8]），導致這個分支被錯誤觸發，卻仍然寫死去讀
+    # values[4]——而 values[4] 在這個格式裡實際上是 Schema 2 的 11 元組
+    # 陣列 (A(S(uuuuuuuuuuu)))，不是四元組。四元組的欄位被硬解成 x1,y1,x2,y2，
+    # 壓力則整段被 default_radius 蓋掉，這正是鋸齒筆跡與壓力/寬度錯誤的根因。
+    #
+    # 加回 "A(S(uuuuuuuuuuu" not in fmt 排除條件，讓含有 11 元組的複合格式
+    # 改為落入下面正確的 Schema 2 分支處理。
+    if "A(S(uuuu))" in fmt and "A(S(uuuuuuuuuuu" not in fmt:
         if len(tpl_img.values) > 4 and isinstance(tpl_img.values[4], list) and len(tpl_img.values[4]) > 0:
             vis_flags = (tpl_img.values[2]
                          if len(tpl_img.values) > 2 and isinstance(tpl_img.values[2], list)

@@ -79,6 +79,98 @@ def _extract_point(msg: Message) -> tuple[float, float] | None:
         return valid_floats[0], valid_floats[1]
     return None
 
+def _get_point(msg: Message) -> tuple[float, float] | None:
+    """自動處理不同層級的 Protobuf 巢狀結構以提取座標"""
+    pt = _extract_point(msg)
+    if pt: return pt
+    for field in sorted(msg.fields, key=lambda x: x.number):
+        if isinstance(field.value, bytes):
+            sub = try_decode_message(field.value)
+            if sub:
+                pt = _extract_point(sub)
+                if pt: return pt
+    return None
+
+def _parse_curves(container: Message) -> list[tuple[float, float]]:
+    """通用的路徑解析：同時支援 Tag ID 對應 (Type 31) 與序列指令 (Field 9)"""
+    pts_dict = {}
+    for f in container.fields:
+        if isinstance(f.value, bytes):
+            sub = try_decode_message(f.value)
+            if sub:
+                pt = _get_point(sub)
+                if pt: pts_dict[f.number] = pt
+
+    # 情況 A：單一貝茲曲線片段 (通常存在於 Type 31 的 f21)
+    if 1 in pts_dict and 2 in pts_dict and (3 in pts_dict or 4 in pts_dict):
+        pts = [pts_dict[1]]
+        p_start = pts_dict[1]
+        if 3 in pts_dict and 4 not in pts_dict:
+            # 二次貝茲曲線 (Quadratic)
+            p_c, p_end = pts_dict[2], pts_dict[3]
+            for j in range(1, 31):
+                t = j / 30.0
+                u = 1.0 - t
+                x = u**2 * p_start[0] + 2 * u * t * p_c[0] + t**2 * p_end[0]
+                y = u**2 * p_start[1] + 2 * u * t * p_c[1] + t**2 * p_end[1]
+                pts.append((x, y))
+        elif 3 in pts_dict and 4 in pts_dict:
+            # 三次貝茲曲線 (Cubic)
+            p_c1, p_c2, p_end = pts_dict[2], pts_dict[3], pts_dict[4]
+            print("Type1")
+            for j in range(1, 31):
+                t = j / 30.0
+                u = 1.0 - t
+                x = u**3 * p_start[0] + 3 * u**2 * t * p_c1[0] + 3 * u * t**2 * p_c2[0] + t**3 * p_end[0]
+                y = u**3 * p_start[1] + 3 * u**2 * t * p_c1[1] + 3 * u * t**2 * p_c2[1] + t**3 * p_end[1]
+                pts.append((x, y))
+        else:
+            pts.append(pts_dict[2])
+        return pts
+
+    # 情況 B：連續路徑指令 (通常存在於 Field 9)
+    commands = []
+    for item_field in container.fields:
+        if not isinstance(item_field.value, bytes): continue
+        item = try_decode_message(item_field.value)
+        if not item: continue
+        cmd = item_field.number
+        if item.fields:
+            inner_cmd = item.fields[0].number
+            if inner_cmd in (1, 2, 3, 4, 5): cmd = inner_cmd
+        pt = _get_point(item)
+        if pt: commands.append((cmd, pt))
+    
+    pts = []
+    i = 0
+    while i < len(commands):
+        cmd, pt = commands[i]
+        if cmd == 3 and i + 1 < len(commands): # Quad
+            p_c, p_end = pt, commands[i+1][1]
+            p_start = pts[-1] if pts else p_c
+            for j in range(1, 31):
+                t = j / 30.0
+                u = 1.0 - t
+                x = u**2 * p_start[0] + 2 * u * t * p_c[0] + t**2 * p_end[0]
+                y = u**2 * p_start[1] + 2 * u * t * p_c[1] + t**2 * p_end[1]
+                pts.append((x, y))
+            i += 2
+            continue
+        elif cmd == 4 and i + 2 < len(commands): # Cubic
+            p_c1, p_c2, p_end = pt, commands[i+1][1], commands[i+2][1]
+            p_start = pts[-1] if pts else p_c1
+            for j in range(1, 31):
+                t = j / 30.0
+                u = 1.0 - t
+                x = u**3 * p_start[0] + 3 * u**2 * t * p_c1[0] + 3 * u * t**2 * p_c2[0] + t**3 * p_end[0]
+                y = u**3 * p_start[1] + 3 * u**2 * t * p_c1[1] + 3 * u * t**2 * p_c2[1] + t**3 * p_end[1]
+                pts.append((x, y))
+            i += 3
+            continue
+        pts.append(pt)
+        i += 1
+    return pts
+
 
 def _parse_geometry_from_field9(field9: Message) -> dict[str, Any]:
     geom = {
@@ -91,18 +183,9 @@ def _parse_geometry_from_field9(field9: Message) -> dict[str, Any]:
     container_fields = field9.by_number(1) or field9.by_number(2)
     if container_fields and isinstance(container_fields[0].value, bytes):
         container = decode_message(container_fields[0].value)
-        points: list[tuple[float, float]] = []
-        for item_field in container.fields:
-            if not isinstance(item_field.value, bytes):
-                continue
-            item = decode_message(item_field.value)
-            pt = _extract_point(item)
-            if pt:
-                points.append(pt)
-        
-        # 若成功解析出點陣，則回傳。若無點位，則繼續往下嘗試 Tag 4 或 Tag 3
-        if len(points) >= 2:
-            geom["points"] = tuple(points)
+        pts = _parse_curves(container)
+        if len(pts) >= 2:
+            geom["points"] = tuple(pts)
             return geom
 
     # 2. 處理傾斜物件 (例如傾斜紅色橢圓 Tag 4)
@@ -227,19 +310,8 @@ def _parse_type31_shape(record_index: int, msg: Message) -> ShapePath | None:
     if f21 and isinstance(f21[0].value, bytes):
         m21 = try_decode_message(f21[0].value)
         if m21:
-            for sub_tag in [1, 5, 3, 2, 4]:
-                fields = m21.by_number(sub_tag)
-                if fields and isinstance(fields[0].value, bytes):
-                    m_sub = try_decode_message(fields[0].value)
-                    if m_sub:
-                        for sf in m_sub.fields:
-                            if isinstance(sf.value, bytes):
-                                m_pt = try_decode_message(sf.value)
-                                if m_pt and m_pt.by_number(1) and m_pt.by_number(2):
-                                    fx = m_pt.by_number(1)[0].fixed_float()
-                                    fy = m_pt.by_number(2)[0].fixed_float()
-                                    if fx is not None and fy is not None:
-                                        pts.append((fx, fy))
+            pts = _parse_curves(m21)
+
 
     if not pts:
         f20 = msg.by_number(20)
