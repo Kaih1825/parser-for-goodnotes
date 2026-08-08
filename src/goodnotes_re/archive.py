@@ -83,7 +83,7 @@ class GoodNotesDocument:
             if not info.is_dir()
         )
 
-    def pages(self) -> tuple[Page, ...]:
+    def pages(self,parse_all:bool = False) -> tuple[Page, ...]:
         """Extract and parse all document pages, preserving page order and attachments."""
         page_entries: list[tuple[str, str]] = []
         if "index.notes.pb" in self.member_names():

@@ -181,7 +181,8 @@ def write_svg(
     directory: str | Path,
     fill_shapes: bool = True,
     sticky_note_state: str | None = None,
-    textbox_state: str | None = None,
+    textbox_state: bool = False,
+    parse_all: bool = False
 ) -> list[Path]:
     """Export SVG vector pages for each page in the GoodNotes document.
 
@@ -192,7 +193,8 @@ def write_svg(
     output.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
 
-    pages = document.pages()
+    pages = document.pages(parse_all=parse_all)
+    
     # GoodNotes internal coordinates are 132 DPI, PDF canvas is 72 DPI
     dpi_scale = 72.0 / 132.0
 
@@ -283,13 +285,6 @@ def write_svg(
                 state_override = True
             elif st_lower in ("close", "closed"):
                 state_override = False
-
-        # Determine text box border toggle
-        draw_textbox_border: bool = False
-        if textbox_state:
-            tb_lower = textbox_state.lower().strip()
-            if tb_lower in ("open", "true", "1", "yes"):
-                draw_textbox_border = True
 
         # Render sticky notes (便條紙) cards and icons
         sticky_note_map = {note.uuid: note for note in page.sticky_notes}
@@ -624,7 +619,7 @@ def write_svg(
             ly_0 = fit_by + top_pad + (primary_fs * 0.75)
 
             # Draw text box border matching GoodNotes UI selection bounds
-            if draw_textbox_border:
+            if textbox_state:
                 elements.append(f'<!-- Text Box Border ({html.escape(uuid)}) -->')
                 elements.append(
                     f'<rect x="{box_x:.2f}" y="{fit_by:.2f}" width="{bw:.2f}" height="{fit_bh:.2f}" fill="none" stroke="#38BDF8" stroke-width="0.8"/>'

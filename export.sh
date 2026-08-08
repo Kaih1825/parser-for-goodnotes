@@ -18,9 +18,9 @@ files=(
     # "muti.goodnotes"
     # "abcd.goodnotes"
     # "shape2.goodnotes"
-    # "shape3.goodnotes"
+    "shape3.goodnotes"
     # "blue.goodnotes"
-    "shapeTest.goodnotes"
+    # "shapeTest.goodnotes"
 )
 
 mkdir -p output_svgs

@@ -50,7 +50,10 @@ def export_svg_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("document", type=Path)
     parser.add_argument("-o", "--output", type=Path, required=True)
     parser.add_argument("-s", "--sticky-note-state", choices=["open", "close", "auto"], default=None, help="Force sticky notes state: open (expand all) or close (collapse all)")
-    parser.add_argument("-b", "--textbox", choices=["open", "close"], default="close", help="Toggle text box bounding borders: open (show borders) or close (hide borders)")
+    # parser.add_argument("-b", "--textbox", choices=["open", "close"], default="close", help="Toggle text box bounding borders: open (show borders) or close (hide borders)")
+    # parser.add_argument("-a", "--parse-all", choices=["true", "false"], default="false", help="Parse all page or only active page: true (parse all) or false (only active page)")
+    parser.add_argument("-b", "--textbox", action="store_true", help="Show text box bounding borders")
+    parser.add_argument("-a", "--parse-all", action="store_true", help="Parse all pages instead of only active page")
     parser.add_argument("--no-fill", dest="fill_shapes", action="store_false", help="Do not fill vector shapes")
     parser.set_defaults(fill_shapes=True)
     args = parser.parse_args(argv)
@@ -61,6 +64,7 @@ def export_svg_main(argv: Sequence[str] | None = None) -> int:
             fill_shapes=args.fill_shapes,
             sticky_note_state=args.sticky_note_state,
             textbox_state=args.textbox,
+            parse_all=args.parse_all,
         )
     print("\n".join(str(path) for path in paths))
     return 0
