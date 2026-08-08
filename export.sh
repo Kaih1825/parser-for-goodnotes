@@ -1,26 +1,30 @@
 #!/bin/bash
 # 自動匯出 GoodNotes 筆記為 SVG
 files=(
-    # "Ch3P1.goodnotes"
-    # "shape.goodnotes"
-    # "Teat.goodnotes"
-    # "pencil.goodnotes"
-    # "tri.goodnotes"
-    # "ooo.goodnotes"
-    # "國際情勢.goodnotes"
-    # "aaa.goodnotes"
-    # "aaa2.goodnotes"
-    # "Move.goodnotes"
-    # "p5.goodnotes"
-    # "tri2.goodnotes"
-    # "Small.goodnotes"
-    # "sticker.goodnotes"
-    # "muti.goodnotes"
-    # "abcd.goodnotes"
-    # "shape2.goodnotes"
+    "Ch3P1.goodnotes"
+    "shape.goodnotes"
+    "Teat.goodnotes"
+    "pencil.goodnotes"
+    "tri.goodnotes"
+    "ooo.goodnotes"
+    "國際情勢.goodnotes"
+    "aaa.goodnotes"
+    "aaa2.goodnotes"
+    "Move.goodnotes"
+    "p5.goodnotes"
+    "tri2.goodnotes"
+    "Small.goodnotes"
+    "sticker.goodnotes"
+    "muti.goodnotes"
+    "abcd.goodnotes"
+    "shape2.goodnotes"
+    "blue.goodnotes"
+    "shapeTest.goodnotes"
     "shape3.goodnotes"
-    # "blue.goodnotes"
-    # "shapeTest.goodnotes"
+    "pageTest.goodnotes"
+    # "pageatset2.goodnotes"
+    # "order_after.goodnotes"
+    # "order_before.goodnotes"
 )
 
 mkdir -p output_svgs
@@ -35,7 +39,7 @@ for file in "${files[@]}"; do
 
     if [ -n "$target" ]; then
         echo "正在匯出: $target -> output_svgs/"
-        uv run gn-export-svg "$target" -o "output_svgs" 
+        uv run gn-export-svg "$target" -o "output_svgs"
         # uv run gn-export-svg "$target" -o "output_svgs" -b open -s open
     else
         echo "找不到檔案: $file，跳過。"

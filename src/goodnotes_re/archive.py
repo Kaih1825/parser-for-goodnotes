@@ -11,6 +11,16 @@ from .wire import DecodeError, Message, decode_delimited_messages, decode_messag
 from .text import TextFragment, extract_text
 
 
+# NOTE: GoodNotes appends a per-revision version suffix as the final
+# character of a page UUID. The *same* logical page therefore shows up
+# with different trailing characters in index.events.pb vs.
+# index.notes.pb (e.g. "...907A" in events, "...907B" in notes). Compare
+# using the UUID minus its trailing version character instead of exact
+# string equality.
+def _uuid_key(u: str) -> str:
+    return u[:-1] if len(u) == 36 else u
+
+
 @dataclass(frozen=True)
 class ArchiveMember:
     path: str
@@ -83,9 +93,100 @@ class GoodNotesDocument:
             if not info.is_dir()
         )
 
+    def _page_order_keys(self) -> dict[str, tuple[int, str]]:
+        """Return {uuid_key: (timestamp, order_key)} - the current sort
+        position of each page, sourced from index.events.pb.
+
+        Each page gets a short, lexicographically-sortable "order key"
+        string when it's created (event field 54, order key nested at
+        field 4). Dragging a page to a new spot in GoodNotes does NOT
+        touch index.notes.pb - it only appends a "page order changed"
+        event (field 55, order key nested at field 3) carrying a fresh
+        key for that page, chosen to sort between its new neighbours.
+        The page listing order is therefore: sort all pages by their
+        *latest* known order key (reorder event if present, otherwise
+        the key from page creation).
+        """
+        order_keys: dict[str, tuple[int, str]] = {}
+        if "index.events.pb" not in self.member_names():
+            return order_keys
+
+        def _record_order_key(msg: Message, page_field_no: int, key_field_no: int) -> None:
+            page_field = msg.by_number(page_field_no)
+            key_field = msg.by_number(key_field_no)
+            if not (page_field and key_field and isinstance(page_field[0].value, bytes) and isinstance(key_field[0].value, bytes)):
+                return
+            page_uuid = page_field[0].value.decode("utf-8", errors="ignore")
+            if not (len(page_uuid) == 36 and "-" in page_uuid):
+                return
+            wrapper = try_decode_message(key_field[0].value)
+            if not wrapper:
+                return
+            key_str_field = wrapper.by_number(1)
+            if not (key_str_field and isinstance(key_str_field[0].value, bytes)):
+                return
+            try:
+                order_key = key_str_field[0].value.decode("utf-8")
+            except UnicodeDecodeError:
+                return
+            ts_field = msg.by_number(14)
+            ts = ts_field[0].value if ts_field and isinstance(ts_field[0].value, int) else 0
+            uuid_key = _uuid_key(page_uuid)
+            prior = order_keys.get(uuid_key)
+            # >= so that, among same-timestamp events, the one that
+            # appears later in the log (the more recent edit) wins.
+            if prior is None or ts >= prior[0]:
+                order_keys[uuid_key] = (ts, order_key)
+
+        try:
+            records = self.decode_records("index.events.pb")
+        except (DecodeError, ValueError):
+            return order_keys
+
+        for rec in records:
+            # Field 54 = page created; order key nested at field 4.
+            for f in rec.by_number(54):
+                if isinstance(f.value, bytes):
+                    msg = try_decode_message(f.value)
+                    if msg:
+                        _record_order_key(msg, page_field_no=2, key_field_no=4)
+            # Field 55 = page order changed (dragged to a new spot);
+            # order key nested at field 3.
+            for f in rec.by_number(55):
+                if isinstance(f.value, bytes):
+                    msg = try_decode_message(f.value)
+                    if msg:
+                        _record_order_key(msg, page_field_no=2, key_field_no=3)
+
+        return order_keys
+
     def pages(self,parse_all:bool = False) -> tuple[Page, ...]:
         """Extract and parse all document pages, preserving page order and attachments."""
         page_entries: list[tuple[str, str]] = []
+
+        # Field 56 in index.events.pb is the "PageDeleted" event; its nested
+        # field 2 holds the target page UUID *as recorded at deletion time*,
+        # which will not match the notes-index UUID via exact string
+        # equality, hence the _uuid_key() comparison below.
+        inactive_page_ids = set()
+        if "index.events.pb" in self.member_names() and not parse_all:
+            try:
+                records = self.decode_records("index.events.pb")
+                for rec in records:
+                    # Field 56 = PageDeleted event; its nested field 2 is the
+                    # deleted page's UUID.
+                    field_data = rec.by_number(56)
+                    for data in field_data:
+                        nested_msg = try_decode_message(data.value)
+                        if nested_msg:
+                            f2 = nested_msg.by_number(2)
+                            if f2 and isinstance(f2[0].value, bytes):
+                                target_value = f2[0].value.decode("utf-8", errors="ignore")
+                                if len(target_value) == 36 and "-" in target_value:
+                                    inactive_page_ids.add(_uuid_key(target_value))
+            except (DecodeError, ValueError):
+                pass
+
         if "index.notes.pb" in self.member_names():
             try:
                 records = self.decode_records("index.notes.pb")
@@ -102,7 +203,7 @@ class GoodNotesDocument:
                                     p_uuid = val_str
                             except UnicodeDecodeError:
                                 pass
-                    if p_path and p_path in self.member_names():
+                    if p_path and p_path in self.member_names() and _uuid_key(p_uuid) not in inactive_page_ids:
                         page_entries.append((p_uuid or p_path.replace("notes/", ""), p_path))
             except (DecodeError, ValueError):
                 pass
@@ -111,6 +212,27 @@ class GoodNotesDocument:
             note_members = sorted(m for m in self.member_names() if m.startswith("notes/"))
             for m in note_members:
                 page_entries.append((m.replace("notes/", ""), m))
+
+        # index.notes.pb records the page *listing*, but GoodNotes does NOT
+        # rewrite it when the user drags a page to a new position - only
+        # index.events.pb gets a new "page order changed" event. Without
+        # this step, page_entries always reflects the order pages were
+        # originally created in, never a later reorder.
+        order_keys = self._page_order_keys()
+        if order_keys:
+            original_pos = {p_uuid: i for i, (p_uuid, _) in enumerate(page_entries)}
+
+            def _order_sort_key(entry: tuple[str, str]) -> tuple:
+                p_uuid, _ = entry
+                found = order_keys.get(_uuid_key(p_uuid))
+                if found is not None:
+                    return (0, found[1], 0)
+                # No order key on record (shouldn't normally happen): keep
+                # it in its original relative position, after any pages
+                # that do have a known key.
+                return (1, "", original_pos[p_uuid])
+
+            page_entries.sort(key=_order_sort_key)
 
         # Build attachment maps
         att_map: dict[str, str] = {}
