@@ -26,6 +26,7 @@ files=(
     # "order_after.goodnotes"
     # "order_before.goodnotes"
     "imgTest.goodnotes"
+    "imgTest2.goodnotes"
     # "text.goodnotes"
     "bacTest.goodnotes"
 )

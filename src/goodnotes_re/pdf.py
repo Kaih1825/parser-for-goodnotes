@@ -48,6 +48,17 @@ def render_pdf_page_to_svg(
                 )
                 cleaned = cleaned.replace(f"#{old}", f"#{new}")
         
+        # PDF soft masks can use either alpha or luminance semantics. PyMuPDF
+        # emits SVG masks using the SVG default (luminance), which is wrong for
+        # PDF masks declared with ``/S /Alpha``. Preserve the PDF mask semantics
+        # explicitly so opaque black mask paths remain visible.
+        if b"/S /Alpha" in pdf_bytes and "<mask" in cleaned:
+            cleaned = re.sub(
+                r'(<mask\b[^>]*)(>)',
+                r'\1 mask-type="alpha"\2',
+                cleaned,
+            )
+
         if width is not None and height is not None and cleaned.startswith("<svg"):
             end_idx = cleaned.find(">")
             if end_idx != -1:

@@ -17,6 +17,7 @@ class ShapePath:
     field_numbers: tuple[int, ...]
     color_hex: str = "#1e1b1b"
     alpha: float = 1.0
+    fill_alpha: float = 1.0
     shape_type: str = "polygon"
     cx: float | None = None
     cy: float | None = None
@@ -39,6 +40,7 @@ class ShapePath:
             "field_numbers": list(self.field_numbers),
             "color_hex": self.color_hex,
             "alpha": self.alpha,
+            "fill_alpha": self.fill_alpha,
             "shape_type": self.shape_type,
             "cx": self.cx,
             "cy": self.cy,
@@ -410,7 +412,7 @@ def _parse_type35_shape(record_index: int, msg: Message) -> ShapePath | None:
     if w <= 0.0 or h <= 0.0:
         return None
 
-    color_hex, alpha = "#1e1b1b", 1.0
+    color_hex, alpha, fill_alpha = "#1e1b1b", 1.0, 1.0
     f30 = msg.by_number(30)
     if f30 and isinstance(f30[0].value, bytes):
         m30 = try_decode_message(f30[0].value)
@@ -422,6 +424,11 @@ def _parse_type35_shape(record_index: int, msg: Message) -> ShapePath | None:
                     r = m_rgb.by_number(1)
                     g = m_rgb.by_number(2)
                     b = m_rgb.by_number(3)
+                    if m_rgb.by_number(4):
+                        parsed_alpha = m_rgb.by_number(4)[0].fixed_float()
+                        if parsed_alpha is not None:
+                            fill_alpha = max(0.0, min(1.0, parsed_alpha))
+                            alpha = fill_alpha
                     if r and g and b:
                         cr = min(255, max(0, int(round((r[0].fixed_float() or 0) * 255.0))))
                         cg = min(255, max(0, int(round((g[0].fixed_float() or 0) * 255.0))))
@@ -536,6 +543,7 @@ def _parse_type35_shape(record_index: int, msg: Message) -> ShapePath | None:
         field_numbers=(1, 2, 8, 9, 14, 16),
         color_hex=color_hex,
         alpha=alpha,
+        fill_alpha=fill_alpha,
         shape_type=shape_type,
         cx=cx,
         cy=cy,

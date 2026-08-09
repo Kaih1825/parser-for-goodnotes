@@ -448,8 +448,8 @@ def write_svg(
 
             is_filled = getattr(shape, "is_filled", True)
             if fill_shapes and is_filled:
-                fill_opacity = "1.0" if getattr(shape, "is_text_box_background", False) else "0.08"
-                fill_attr = f'fill="{shape.color_hex}" fill-opacity="{fill_opacity}"'
+                fill_opacity = getattr(shape, "fill_alpha", getattr(shape, "alpha", 1.0))
+                fill_attr = f'fill="{shape.color_hex}" fill-opacity="{fill_opacity:.2f}"'
             else:
                 fill_attr = 'fill="none"'
 
