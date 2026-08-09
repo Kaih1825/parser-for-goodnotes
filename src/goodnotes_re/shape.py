@@ -383,6 +383,7 @@ def _parse_type31_shape(record_index: int, msg: Message) -> ShapePath | None:
 
 
 def _parse_type35_shape(record_index: int, msg: Message) -> ShapePath | None:
+    """Parse a Type 35 geometric shape payload."""
     uuid = _uuid_from_message(msg)
 
     pos_x, pos_y = 0.0, 0.0
@@ -560,11 +561,17 @@ def parse_shape_record(record_index: int, record: Message) -> ShapePath | None:
 
     f21 = record.by_number(21)
     if f21 and isinstance(f21[0].value, bytes):
-        msg21 = try_decode_message(f21[0].value)
-        if msg21:
-            t35 = _parse_type35_shape(record_index, msg21)
-            if t35 is not None:
-                return t35
+        # Type 35 stores both text boxes and geometric shapes in the same envelope.
+        # Only suppress a shape when the dedicated text parser can actually decode
+        # text from this exact record; empty/metadata-only bv41 payloads are kept.
+        from .text import parse_text_elements
+
+        if not parse_text_elements([record]):
+            msg21 = try_decode_message(f21[0].value)
+            if msg21:
+                t35 = _parse_type35_shape(record_index, msg21)
+                if t35 is not None:
+                    return t35
 
     field7 = record.by_number(7)
     if not field7 or not isinstance(field7[0].value, bytes):
