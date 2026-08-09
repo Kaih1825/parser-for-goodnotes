@@ -22,6 +22,8 @@ class TextElement:
     font_size: float = 14.0
     color_hex: str = "#000000"
     alpha: float = 1.0
+    background_color_hex: str | None = None
+    background_alpha: float = 0.0
     is_bold: bool = False
     is_italic: bool = False
     is_underline: bool = False
@@ -59,6 +61,8 @@ def _parse_text_elements_from_dec_msg(
     height: float,
     default_font: str = "Helvetica Neue",
     default_size: float = 14.0,
+    background_color_hex: str | None = None,
+    background_alpha: float = 0.0,
 ) -> list[TextElement]:
     elements: list[TextElement] = []
     for field in dec_msg.fields:
@@ -167,6 +171,8 @@ def _parse_text_elements_from_dec_msg(
                 font_size=font_size,
                 color_hex=color_hex,
                 alpha=alpha,
+                background_color_hex=background_color_hex,
+                background_alpha=background_alpha,
                 is_bold=bold,
                 is_italic=italic,
                 is_underline=underline,
@@ -315,8 +321,41 @@ def parse_text_elements(records: Sequence[Message]) -> tuple[TextElement, ...]:
         if not dec_msg:
             continue
 
+        # Extract the text-box background color from msg f30 -> f1 -> f1.
+        # This is distinct from the glyph color stored in the rich-text payload.
+        background_color_hex = None
+        background_alpha = 0.0
+        f30_background = msg.by_number(30)
+        if f30_background and isinstance(f30_background[0].value, bytes):
+            m30 = try_decode_message(f30_background[0].value)
+            if m30 and m30.by_number(1) and isinstance(m30.by_number(1)[0].value, bytes):
+                m30_f1 = try_decode_message(m30.by_number(1)[0].value)
+                if m30_f1 and m30_f1.by_number(1) and isinstance(m30_f1.by_number(1)[0].value, bytes):
+                    bg_msg = try_decode_message(m30_f1.by_number(1)[0].value)
+                    if bg_msg:
+                        br, bg, bb = bg_msg.by_number(1), bg_msg.by_number(2), bg_msg.by_number(3)
+                        ba = bg_msg.by_number(4)
+                        if br and bg and bb:
+                            r = int(max(0.0, min(1.0, br[0].fixed_float() or 0.0)) * 255)
+                            g = int(max(0.0, min(1.0, bg[0].fixed_float() or 0.0)) * 255)
+                            b = int(max(0.0, min(1.0, bb[0].fixed_float() or 0.0)) * 255)
+                            background_color_hex = f"#{r:02X}{g:02X}{b:02X}"
+                        if ba and ba[0].fixed_float() is not None:
+                            background_alpha = max(0.0, min(1.0, ba[0].fixed_float()))
+
         text_elements.extend(
-            _parse_text_elements_from_dec_msg(dec_msg, rec_uuid, x, y, width, height, default_font, default_size)
+            _parse_text_elements_from_dec_msg(
+                dec_msg,
+                rec_uuid,
+                x,
+                y,
+                width,
+                height,
+                default_font,
+                default_size,
+                background_color_hex,
+                background_alpha,
+            )
         )
 
     # 2. Parse Sticky Note (Type 35) rich text payloads in f20 records

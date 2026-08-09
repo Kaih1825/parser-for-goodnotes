@@ -678,6 +678,40 @@ def write_svg(
 
             ly_top = fit_by + top_pad + vertical_offset
 
+            # GoodNotes sticker text is rendered above the sticker artwork with
+            # an opaque text-box background. Identify it only when the parsed
+            # text box substantially overlaps a parsed image attachment; this
+            # keeps ordinary page text and unrelated shapes unchanged.
+            text_area = max_box_width * max_box_height
+            sticker_text_background = False
+            if text_area > 0.0:
+                text_left = box_x
+                text_top = fit_by
+                text_right = text_left + bw
+                text_bottom = text_top + fit_bh
+                for image in page.image_elements:
+                    image_left = image.x * dpi_scale
+                    image_top = image.y * dpi_scale
+                    image_right = image_left + image.width * dpi_scale
+                    image_bottom = image_top + image.height * dpi_scale
+                    overlap_w = max(0.0, min(text_right, image_right) - max(text_left, image_left))
+                    overlap_h = max(0.0, min(text_bottom, image_bottom) - max(text_top, image_top))
+                    if overlap_w * overlap_h >= text_area * 0.90:
+                        sticker_text_background = True
+                        break
+
+            if sticker_text_background:
+                # Use the color explicitly stored in the text payload instead of
+                # assuming a white sticker background.
+                background_color = te_list[0].background_color_hex
+                background_alpha = te_list[0].background_alpha
+                if background_color is not None and background_alpha > 0.0:
+                    elements.append(f'<!-- Sticker Text Background ({html.escape(uuid)}) -->')
+                    elements.append(
+                        f'<rect x="{box_x:.2f}" y="{fit_by:.2f}" width="{bw:.2f}" height="{fit_bh:.2f}" '
+                        f'fill="{background_color}" fill-opacity="{background_alpha:.3f}"/>'
+                    )
+
             # Draw text box border matching GoodNotes UI selection bounds
             if textbox_state:
                 elements.append(f'<!-- Text Box Border ({html.escape(uuid)}) -->')

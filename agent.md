@@ -1,0 +1,1 @@
+請使用 uv 來執行 python 腳本，不要使用 python 或 python3，因為會導致環境錯誤
