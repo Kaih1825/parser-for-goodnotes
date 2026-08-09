@@ -447,7 +447,11 @@ def write_svg(
                 marker_attr += f' marker-end="url(#arrow-end-dot-{c_clean})"'
 
             is_filled = getattr(shape, "is_filled", True)
-            fill_attr = f'fill="{shape.color_hex}" fill-opacity="0.08"' if (fill_shapes and is_filled) else 'fill="none"'
+            if fill_shapes and is_filled:
+                fill_opacity = "1.0" if getattr(shape, "is_text_box_background", False) else "0.08"
+                fill_attr = f'fill="{shape.color_hex}" fill-opacity="{fill_opacity}"'
+            else:
+                fill_attr = 'fill="none"'
 
             c_rad = getattr(shape, "corner_radius", 0.0)
             is_dotted = bool(dash_pattern and dash_pattern[0] <= 2.5)

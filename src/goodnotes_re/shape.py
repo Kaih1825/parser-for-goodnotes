@@ -28,6 +28,7 @@ class ShapePath:
     start_arrow: int | bool = False
     end_arrow: int | bool = False
     corner_radius: float = 0.0
+    is_text_box_background: bool = False
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -49,6 +50,7 @@ class ShapePath:
             "start_arrow": self.start_arrow,
             "end_arrow": self.end_arrow,
             "corner_radius": self.corner_radius,
+            "is_text_box_background": self.is_text_box_background,
         }
 
 

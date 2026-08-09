@@ -186,17 +186,19 @@ def parse_page_from_records(
                 if meta.get("is_erased"):
                     continue
 
-            # GoodNotes stores an invisible Text Box rectangle as a separate
-            # rectangle record. Suppress only an exact text-box-sized rectangle
-            # whose top-left corner and dimensions match a parsed TextElement.
-            # Real user-drawn rectangles remain untouched.
+            # GoodNotes stores both visible Text Box backgrounds and invisible
+            # Text Box border records as separate rectangle shapes. Only suppress
+            # an unfilled rectangle identified as the Text Box backing border;
+            # filled rectangles are the actual visible Text Box background.
             if shape.shape_type == "rectangle":
                 # Strongest signal: the shape UUID appears at the start of a
                 # field-21 rich-text payload, identifying this rectangle as the
-                # backing object for a Text Box. This handles boxes whose
-                # rectangle height differs from the complete text layout box.
-                if shape.uuid in text_box_shape_uuids:
+                # backing object for a Text Box. Keep it when it is filled.
+                if not shape.is_filled and shape.uuid in text_box_shape_uuids:
                     continue
+
+                if shape.is_filled and shape.uuid in text_box_shape_uuids:
+                    shape = replace(shape, is_text_box_background=True)
 
                 if len(shape.points) >= 4:
                     xs = [point[0] for point in shape.points]
@@ -205,7 +207,7 @@ def parse_page_from_records(
                     sy = round(min(ys), 3)
                     sw = round(max(xs) - min(xs), 3)
                     sh = round(max(ys) - min(ys), 3)
-                    if (sx, sy, sw, sh) in text_box_rects:
+                    if not shape.is_filled and (sx, sy, sw, sh) in text_box_rects:
                         continue
 
             shapes.append(shape)
