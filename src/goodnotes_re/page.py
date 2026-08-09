@@ -164,14 +164,50 @@ def parse_page_from_records(
     # Those payloads begin with the UUID of the text-box object itself. Keep
     # those UUIDs so the companion rectangle can be identified without using
     # color or geometry heuristics.
+    # IMPORTANT: Type35 shape records have a single top-level field-21 whose
+    # inner protobuf message starts with f1=<shape-own-UUID>. This matches the
+    # text-box link pattern exactly, but is NOT a text-box link — it's the
+    # shape's own geometry. Avoid false suppression by also checking whether the
+    # UUID inside field-21 matches the inner msg21.f1 (self-referential record).
     text_box_shape_uuids: set[str] = set()
     for record in records:
+        # UUID of this record (from top-level f1), if any
+        rec_uuid: str | None = None
+        top_f1 = record.by_number(1)
+        if top_f1 and isinstance(top_f1[0].value, bytes):
+            try:
+                u_str = top_f1[0].value.decode("utf-8")
+                if len(u_str) == 36 and "-" in u_str:
+                    rec_uuid = u_str
+            except UnicodeDecodeError:
+                pass
+
         for field in record.by_number(21) or ():
             if not isinstance(field.value, bytes):
                 continue
+            # Extract the UUID embedded at the start of this field-21 payload.
+            # For type35 geometry records the inner msg21.f1 IS the shape UUID.
+            inner_msg21_uuid: str | None = None
+            inner = try_decode_message(field.value)
+            if inner:
+                inner_f1 = inner.by_number(1)
+                if inner_f1 and isinstance(inner_f1[0].value, bytes):
+                    try:
+                        u_inner = inner_f1[0].value.decode("utf-8")
+                        if len(u_inner) == 36 and "-" in u_inner:
+                            inner_msg21_uuid = u_inner
+                    except UnicodeDecodeError:
+                        pass
+
             for candidate in uuid_metadata:
-                if candidate.encode("utf-8") in field.value:
-                    text_box_shape_uuids.add(candidate)
+                if candidate.encode("utf-8") not in field.value:
+                    continue
+                # Skip if this is a self-referential geometry payload:
+                # the UUID in field-21 matches the record's own UUID or
+                # the inner msg21's own f1 UUID.
+                if candidate == rec_uuid or candidate == inner_msg21_uuid:
+                    continue
+                text_box_shape_uuids.add(candidate)
 
     for r_idx, record in enumerate(records):
         rec_path = f"{member_path}.record[{r_idx}]"

@@ -412,7 +412,7 @@ def _parse_type35_shape(record_index: int, msg: Message) -> ShapePath | None:
     if w <= 0.0 or h <= 0.0:
         return None
 
-    color_hex, alpha, fill_alpha = "#1e1b1b", 1.0, 1.0
+    color_hex, alpha, fill_alpha = "#1e1b1b", 1.0, 0.0
     f30 = msg.by_number(30)
     if f30 and isinstance(f30[0].value, bytes):
         m30 = try_decode_message(f30[0].value)
@@ -427,8 +427,8 @@ def _parse_type35_shape(record_index: int, msg: Message) -> ShapePath | None:
                     if m_rgb.by_number(4):
                         parsed_alpha = m_rgb.by_number(4)[0].fixed_float()
                         if parsed_alpha is not None:
+                            # fill_alpha controls fill opacity only; do NOT copy to alpha (stroke opacity)
                             fill_alpha = max(0.0, min(1.0, parsed_alpha))
-                            alpha = fill_alpha
                     if r and g and b:
                         cr = min(255, max(0, int(round((r[0].fixed_float() or 0) * 255.0))))
                         cg = min(255, max(0, int(round((g[0].fixed_float() or 0) * 255.0))))
@@ -457,20 +457,12 @@ def _parse_type35_shape(record_index: int, msg: Message) -> ShapePath | None:
                 if m3 and m3.by_number(1) and isinstance(m3.by_number(1)[0].value, bytes):
                     m1 = try_decode_message(m3.by_number(1)[0].value)
                     if m1 and m1.by_number(4):
+                        # Stroke color alpha is the authoritative stroke opacity
                         a_val = m1.by_number(4)[0].fixed_float()
-    # Generic Fill Status Detection from tag 30 alpha
-    is_filled = False
-    f30 = msg.by_number(30)
-    if f30 and isinstance(f30[0].value, bytes):
-        m30 = try_decode_message(f30[0].value)
-        if m30 and m30.by_number(1) and isinstance(m30.by_number(1)[0].value, bytes):
-            m_c = try_decode_message(m30.by_number(1)[0].value)
-            if m_c and m_c.by_number(1) and isinstance(m_c.by_number(1)[0].value, bytes):
-                m_rgb = try_decode_message(m_c.by_number(1)[0].value)
-                if m_rgb and m_rgb.by_number(4):
-                    alpha_f = m_rgb.by_number(4)[0].fixed_float()
-                    if alpha_f is not None and alpha_f > 0.0:
-                        is_filled = True
+                        if a_val is not None:
+                            alpha = max(0.0, min(1.0, a_val))
+    # Fill detection: fill_alpha > 0 means the fill color field with opacity was present
+    is_filled = fill_alpha > 0.0
 
     # Generic Geometry & Shape Type Detection from tag 22
     norm_pts = []

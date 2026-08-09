@@ -25,8 +25,8 @@ files=(
     # "pageatset2.goodnotes"
     # "order_after.goodnotes"
     # "order_before.goodnotes"
-    "imgTest.goodnotes"
-    "imgTest2.goodnotes"
+    # "imgTest.goodnotes"
+    # "imgTest2.goodnotes"
     # "text.goodnotes"
     "bacTest.goodnotes"
 )

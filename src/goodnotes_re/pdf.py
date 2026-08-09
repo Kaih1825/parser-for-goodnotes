@@ -20,6 +20,7 @@ def render_pdf_page_to_svg(
             return None
         target_idx = min(max(0, page_index), len(doc) - 1)
         page = doc[target_idx]
+
         svg_code = page.get_svg_image(matrix=fitz.Identity, text_as_path=True)
         if not svg_code:
             return None

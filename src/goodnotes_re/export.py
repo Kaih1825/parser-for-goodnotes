@@ -657,25 +657,24 @@ def write_svg(
             bw = max_box_width if max_box_width > 0 else 50.0
             primary_fs = line_font_sizes[0]
             is_sticky = any(uuid == note.uuid for note in page.sticky_notes)
-            top_pad = (22.0 * dpi_scale) if is_sticky else (6.0 * dpi_scale)
-            left_pad = (16.0 * dpi_scale) if is_sticky else (6.0 * dpi_scale)
-            right_pad = (16.0 * dpi_scale) if is_sticky else (6.0 * dpi_scale)
+            top_pad = (10.0 * dpi_scale) if is_sticky else (6.0 * dpi_scale)
+            left_pad = (10.0 * dpi_scale) if is_sticky else (6.0 * dpi_scale)
+            right_pad = (10.0 * dpi_scale) if is_sticky else (6.0 * dpi_scale)
 
             bw = max_box_width if max_box_width > 0 else 50.0
             primary_fs = line_font_sizes[0]
             fit_bh = max_box_height if max_box_height > 0 else sum(line_heights)
             fit_by = box_y
 
-            # Vertically center the text block within the box: compare total
-            # content height against the space available between top/bottom
-            # padding, and split the slack evenly above/below. When content
-            # overflows the box (available < content height), fall back to
-            # top-anchored (offset clamped to 0) instead of pushing text
-            # above the box.
+            # Sticky Note text is top-anchored; regular text boxes remain
+            # vertically centered within their available content area.
             bottom_pad = top_pad
             total_content_height = sum(line_heights)
             available_height = fit_bh - top_pad - bottom_pad
-            vertical_offset = max(0.0, (available_height - total_content_height) / 2.0)
+            if is_sticky:
+                vertical_offset = 0.0
+            else:
+                vertical_offset = max(0.0, (available_height - total_content_height) / 2.0)
 
             ly_top = fit_by + top_pad + vertical_offset
 
