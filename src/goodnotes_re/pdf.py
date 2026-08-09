@@ -4,8 +4,15 @@ from __future__ import annotations
 import re
 
 
-def render_pdf_page_to_svg(pdf_bytes: bytes, page_index: int = 0, width: float | None = None, height: float | None = None) -> str | None:
-    """Render a single page of PDF bytes to SVG string using PyMuPDF (fitz)."""
+def render_pdf_page_to_svg(
+    pdf_bytes: bytes,
+    page_index: int = 0,
+    width: float | None = None,
+    height: float | None = None,
+    id_prefix: str | None = None,
+    fragment: bool = False,
+) -> str | None:
+    """Render a single PDF page to SVG while isolating generated resource IDs."""
     try:
         import fitz
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -25,6 +32,21 @@ def render_pdf_page_to_svg(pdf_bytes: bytes, page_index: int = 0, width: float |
                 continue
             lines.append(line)
         cleaned = "\n".join(lines).strip()
+
+        # PyMuPDF reuses generic IDs such as ``clip_1`` in every SVG it
+        # generates. SVG IDs are document-global, so embedded PDF SVGs can
+        # otherwise collide and apply the wrong clipping path to later objects.
+        if id_prefix:
+            safe_prefix = re.sub(r"[^A-Za-z0-9_.-]", "_", id_prefix)
+            declared_ids = set(re.findall(r'\bid=["\']([A-Za-z_][A-Za-z0-9_.:-]*)["\']', cleaned))
+            for old in declared_ids:
+                new = f"{safe_prefix}_{old}"
+                cleaned = re.sub(
+                    rf'(\bid=["\']){re.escape(old)}(["\'])',
+                    rf'\g<1>{new}\g<2>',
+                    cleaned,
+                )
+                cleaned = cleaned.replace(f"#{old}", f"#{new}")
         
         if width is not None and height is not None and cleaned.startswith("<svg"):
             end_idx = cleaned.find(">")
@@ -35,7 +57,7 @@ def render_pdf_page_to_svg(pdf_bytes: bytes, page_index: int = 0, width: float |
                 tag_cleaned = re.sub(r"\s*\b(x|y|width|height|preserveAspectRatio)\s*=\s*'[^']*'", '', tag_cleaned)
                 new_tag = f'{tag_cleaned} x="0" y="0" width="{width:.2f}" height="{height:.2f}" preserveAspectRatio="none"'
                 return new_tag + rest
-        
+
         return cleaned
     except Exception:
         return None

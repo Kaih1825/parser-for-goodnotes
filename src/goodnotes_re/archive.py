@@ -359,21 +359,25 @@ class GoodNotesDocument:
                                 template_to_att[tmpl_uuid] = att_uuid
 
                     # 2. Field 54 (Page node creation): maps page_node_uuid -> tmpl_uuid
-                    f54 = rec.by_number(54)
-                    if f54 and isinstance(f54[0].value, bytes):
-                        msg = try_decode_message(f54[0].value)
-                        if msg:
-                            page_node_uuid = ""
-                            tmpl_uuid = ""
-                            for mf in msg.fields:
-                                if mf.number == 2 and isinstance(mf.value, bytes):
-                                    page_node_uuid = mf.value.decode("utf-8", errors="ignore")
-                                elif mf.number == 3 and isinstance(mf.value, bytes):
-                                    sub = try_decode_message(mf.value)
-                                    if sub and sub.by_number(1) and isinstance(sub.by_number(1)[0].value, bytes):
-                                        tmpl_uuid = sub.by_number(1)[0].value.decode("utf-8", errors="ignore")
-                            if page_node_uuid and tmpl_uuid:
-                                page_to_template[page_node_uuid] = tmpl_uuid
+                    # Page/template creation has appeared under different event field numbers.
+                    for page_field_number in (54, 3):
+                        f_page = rec.by_number(page_field_number)
+                        if not f_page or not isinstance(f_page[0].value, bytes):
+                            continue
+                        msg = try_decode_message(f_page[0].value)
+                        if not msg:
+                            continue
+                        page_node_uuid = ""
+                        tmpl_uuid = ""
+                        for mf in msg.fields:
+                            if mf.number == 2 and isinstance(mf.value, bytes):
+                                page_node_uuid = mf.value.decode("utf-8", errors="ignore")
+                            elif mf.number == 3 and isinstance(mf.value, bytes):
+                                sub = try_decode_message(mf.value)
+                                if sub and sub.by_number(1) and isinstance(sub.by_number(1)[0].value, bytes):
+                                    tmpl_uuid = sub.by_number(1)[0].value.decode("utf-8", errors="ignore")
+                        if page_node_uuid and tmpl_uuid:
+                            page_to_template[page_node_uuid] = tmpl_uuid
 
                     # 3. Direct scanning across record fields as fallback
                     p_uuid = ""

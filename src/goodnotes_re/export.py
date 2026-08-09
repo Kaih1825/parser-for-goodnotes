@@ -219,7 +219,13 @@ def write_svg(
                         f'<image href="data:{mime};base64,{img_b64}" x="0" y="0" width="{pw:.2f}" height="{ph:.2f}" preserveAspectRatio="none"/>'
                     )
                 elif bdata.startswith(b"%PDF"):
-                    pdf_svg = render_pdf_page_to_svg(bdata, page_index=page.index, width=pw, height=ph)
+                    pdf_svg = render_pdf_page_to_svg(
+                        bdata,
+                        page_index=page.index,
+                        width=pw,
+                        height=ph,
+                        id_prefix=f"background_{page.index}",
+                    )
                     if pdf_svg:
                         elements.append(pdf_svg)
             except Exception:
@@ -233,8 +239,9 @@ def write_svg(
             if att_path:
                 try:
                     idata = document.read(att_path)
+                    is_pdf_attachment = idata.startswith(b"%PDF")
                     mime = "image/jpeg" if idata.startswith(b"\xff\xd8\xff") else "image/png"
-                    img_b64 = base64.b64encode(idata).decode("ascii")
+                    img_b64 = None if is_pdf_attachment else base64.b64encode(idata).decode("ascii")
                     crop_x = img.x * dpi_scale
                     crop_y = img.y * dpi_scale
                     crop_w = img.width * dpi_scale
@@ -259,21 +266,59 @@ def write_svg(
 
                         transform = f' transform="rotate({rot_deg:.2f}, {cx:.2f}, {cy:.2f})"' if abs(rot_deg) > 0.01 else ""
 
-                        elements.append(
-                            f'<g{transform}>'
-                            f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" viewBox="0 0 {crop_w:.2f} {crop_h:.2f}" overflow="hidden">'
-                            f'<image href="data:{mime};base64,{img_b64}" x="{img_x:.2f}" y="{img_y:.2f}" width="{orig_w:.2f}" height="{orig_h:.2f}" preserveAspectRatio="none"/>'
-                            f'</svg>'
-                            f'</g>'
-                        )
+                        if is_pdf_attachment:
+                            # Vector sticker/attachment: rasterizing to PNG/JPEG would
+                            # mislabel the mime type and fail to decode, so render the
+                            # PDF page as an SVG fragment sized to the *original*
+                            # (uncropped) attachment box, then reuse the same
+                            # translate + viewBox-clip technique used for raster crops.
+                            inner_svg = render_pdf_page_to_svg(
+                                idata,
+                                page_index=0,
+                                width=orig_w,
+                                height=orig_h,
+                                id_prefix=f"attachment_{img.uuid}_crop",
+                            )
+                            if inner_svg:
+                                elements.append(
+                                    f'<g{transform}>'
+                                    f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" viewBox="0 0 {crop_w:.2f} {crop_h:.2f}" overflow="hidden">'
+                                    f'<g transform="translate({img_x:.2f},{img_y:.2f})">{inner_svg}</g>'
+                                    f'</svg>'
+                                    f'</g>'
+                                )
+                        else:
+                            elements.append(
+                                f'<g{transform}>'
+                                f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" viewBox="0 0 {crop_w:.2f} {crop_h:.2f}" overflow="hidden">'
+                                f'<image href="data:{mime};base64,{img_b64}" x="{img_x:.2f}" y="{img_y:.2f}" width="{orig_w:.2f}" height="{orig_h:.2f}" preserveAspectRatio="none"/>'
+                                f'</svg>'
+                                f'</g>'
+                            )
                     else:
                         transform_attr = ""
                         if abs(rot_deg) > 0.01:
                             cx, cy = crop_x + crop_w / 2.0, crop_y + crop_h / 2.0
                             transform_attr = f' transform="rotate({rot_deg:.2f}, {cx:.2f}, {cy:.2f})"'
-                        elements.append(
-                            f'<image href="data:{mime};base64,{img_b64}" x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" preserveAspectRatio="none"{transform_attr}/>'
-                        )
+
+                        if is_pdf_attachment:
+                            inner_svg = render_pdf_page_to_svg(
+                                idata,
+                                page_index=0,
+                                width=crop_w,
+                                height=crop_h,
+                                id_prefix=f"attachment_{img.uuid}",
+                            )
+                            if inner_svg:
+                                elements.append(
+                                    f'<g{transform_attr}>'
+                                    f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}">{inner_svg}</svg>'
+                                    f'</g>'
+                                )
+                        else:
+                            elements.append(
+                                f'<image href="data:{mime};base64,{img_b64}" x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" preserveAspectRatio="none"{transform_attr}/>'
+                            )
                 except Exception:
                     pass
 
@@ -616,7 +661,19 @@ def write_svg(
             primary_fs = line_font_sizes[0]
             fit_bh = max_box_height if max_box_height > 0 else sum(line_heights)
             fit_by = box_y
-            ly_0 = fit_by + top_pad + (primary_fs * 0.75)
+
+            # Vertically center the text block within the box: compare total
+            # content height against the space available between top/bottom
+            # padding, and split the slack evenly above/below. When content
+            # overflows the box (available < content height), fall back to
+            # top-anchored (offset clamped to 0) instead of pushing text
+            # above the box.
+            bottom_pad = top_pad
+            total_content_height = sum(line_heights)
+            available_height = fit_bh - top_pad - bottom_pad
+            vertical_offset = max(0.0, (available_height - total_content_height) / 2.0)
+
+            ly_top = fit_by + top_pad + vertical_offset
 
             # Draw text box border matching GoodNotes UI selection bounds
             if textbox_state:
@@ -625,13 +682,21 @@ def write_svg(
                     f'<rect x="{box_x:.2f}" y="{fit_by:.2f}" width="{bw:.2f}" height="{fit_bh:.2f}" fill="none" stroke="#38BDF8" stroke-width="0.8"/>'
                 )
 
-            current_y = ly_0
+            current_row_top = ly_top
             numbered_counter = 0
 
             for line_idx, line_items in enumerate(lines):
                 has_numbered = any(te.list_type == "numbered" for te, _ in line_items)
                 if has_numbered:
                     numbered_counter += 1
+
+                # Center of this line's row. Using dominant-baseline="central"
+                # below hands the actual glyph-to-baseline offset to the SVG
+                # renderer, which uses the real font metrics -- unlike a fixed
+                # 0.75*font-size guess, this centers correctly regardless of
+                # whether the text has descenders (e.g. all-caps or digits
+                # like "WFH"/"2011" vs lowercase text with "g"/"y"/"p").
+                row_center_y = current_row_top + line_heights[line_idx] / 2.0
 
                 for te, line_str in line_items:
                     if not line_str.strip() and len(line_items) == 1 and line_idx == len(lines) - 1:
@@ -645,6 +710,7 @@ def write_svg(
                         f'font-family="{html.escape(te.font_family)}"',
                         f'font-size="{font_size_pt:.2f}"',
                         f'fill="{te.color_hex}"',
+                        'dominant-baseline="central"',
                     ]
                     if te.alpha < 1.0:
                         style_attrs.append(f'fill-opacity="{te.alpha:.2f}"')
@@ -661,20 +727,26 @@ def write_svg(
                     if decorations:
                         style_attrs.append(f'text-decoration="{" ".join(decorations)}"')
 
-                    line_width = (te.width * dpi_scale) if te.width > 0 else max_box_width
+                    # Use `bw` (the box's authoritative width, same value used
+                    # to draw the box/debug border) rather than this single
+                    # TextElement's own te.width. Individual runs within the
+                    # same box can report slightly different widths, which
+                    # previously caused center/right alignment to drift off
+                    # the box's true center by however much that run's width
+                    # fell short of the box.
                     line_style_attrs = list(style_attrs)
 
                     tx = box_x + left_pad
                     if te.alignment == "center":
                         line_style_attrs.append('text-anchor="middle"')
-                        if line_width > 0:
-                            tx = box_x + line_width / 2.0
+                        if bw > 0:
+                            tx = box_x + bw / 2.0
                         else:
                             tx = box_x + left_pad + 50.0
                     elif te.alignment == "right":
                         line_style_attrs.append('text-anchor="end"')
-                        if line_width > 0:
-                            tx = box_x + line_width - right_pad
+                        if bw > 0:
+                            tx = box_x + bw - right_pad
                     else:
                         line_style_attrs.append('text-anchor="start"')
 
@@ -689,11 +761,10 @@ def write_svg(
 
                     if escaped_text:
                         elements.append(
-                            f'<text x="{tx:.2f}" y="{current_y:.2f}" {style_str}>{escaped_text}</text>'
+                            f'<text x="{tx:.2f}" y="{row_center_y:.2f}" {style_str}>{escaped_text}</text>'
                         )
 
-                if line_idx < len(lines) - 1:
-                    current_y += line_heights[line_idx]
+                current_row_top += line_heights[line_idx]
 
         # Render fallback text fragments if no structured text elements found
         if not page.text_elements:
@@ -709,4 +780,3 @@ def write_svg(
         written.append(target)
 
     return written
-

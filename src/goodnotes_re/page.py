@@ -20,12 +20,20 @@ class PageDimensions:
 
     @classmethod
     def from_pdf_mediabox(cls, pdf_bytes: bytes) -> "PageDimensions":
-        """Extract width, height, and orientation from PDF /MediaBox [0 0 w h]."""
-        m = re.search(b"/MediaBox\\s*\\[\\s*([\\d\\.]+)\\s+([\\d\\.]+)\\s+([\\d\\.]+)\\s+([\\d\\.]+)\\s*\\]", pdf_bytes)
-        if m:
-            w = float(m.group(3))
-            h = float(m.group(4))
-            return cls(width=w, height=h, is_landscape=w > h)
+        """Extract dimensions from a PDF MediaBox, including inherited /Pages MediaBox values."""
+        pattern = re.compile(
+            rb"/MediaBox\s*\[\s*([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s*\]"
+        )
+        for match in pattern.finditer(pdf_bytes):
+            x0 = float(match.group(1))
+            y0 = float(match.group(2))
+            x1 = float(match.group(3))
+            y1 = float(match.group(4))
+            width = abs(x1 - x0)
+            height = abs(y1 - y0)
+            if width <= 0.0 or height <= 0.0:
+                continue
+            return cls(width=width, height=height, is_landscape=width > height)
         return cls()
 
 
@@ -139,6 +147,32 @@ def parse_page_from_records(
             except UnicodeDecodeError:
                 pass
 
+    # Text box rectangles are stored as separate shape records by GoodNotes.
+    # Build a conservative set from exact TextElement geometry so only rectangles
+    # that overlap a parsed text box are candidates for suppression.
+    text_box_rects: set[tuple[float, float, float, float]] = set()
+    for text_element in text_elements:
+        if text_element.width > 0 and text_element.height > 0:
+            text_box_rects.add((
+                round(text_element.x, 3),
+                round(text_element.y, 3),
+                round(text_element.width, 3),
+                round(text_element.height, 3),
+            ))
+
+    # GoodNotes stores rich-text payloads in a following field-21 record.
+    # Those payloads begin with the UUID of the text-box object itself. Keep
+    # those UUIDs so the companion rectangle can be identified without using
+    # color or geometry heuristics.
+    text_box_shape_uuids: set[str] = set()
+    for record in records:
+        for field in record.by_number(21) or ():
+            if not isinstance(field.value, bytes):
+                continue
+            for candidate in uuid_metadata:
+                if candidate.encode("utf-8") in field.value:
+                    text_box_shape_uuids.add(candidate)
+
     for r_idx, record in enumerate(records):
         rec_path = f"{member_path}.record[{r_idx}]"
         # Extract text fragments / sticky note content
@@ -151,6 +185,29 @@ def parse_page_from_records(
                 meta = uuid_metadata.get(shape.uuid, {})
                 if meta.get("is_erased"):
                     continue
+
+            # GoodNotes stores an invisible Text Box rectangle as a separate
+            # rectangle record. Suppress only an exact text-box-sized rectangle
+            # whose top-left corner and dimensions match a parsed TextElement.
+            # Real user-drawn rectangles remain untouched.
+            if shape.shape_type == "rectangle":
+                # Strongest signal: the shape UUID appears at the start of a
+                # field-21 rich-text payload, identifying this rectangle as the
+                # backing object for a Text Box. This handles boxes whose
+                # rectangle height differs from the complete text layout box.
+                if shape.uuid in text_box_shape_uuids:
+                    continue
+
+                if len(shape.points) >= 4:
+                    xs = [point[0] for point in shape.points]
+                    ys = [point[1] for point in shape.points]
+                    sx = round(min(xs), 3)
+                    sy = round(min(ys), 3)
+                    sw = round(max(xs) - min(xs), 3)
+                    sh = round(max(ys) - min(ys), 3)
+                    if (sx, sy, sw, sh) in text_box_rects:
+                        continue
+
             shapes.append(shape)
 
         def process_stroke_bytes(val: bytes):

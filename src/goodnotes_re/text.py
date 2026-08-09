@@ -241,19 +241,8 @@ def parse_text_elements(records: Sequence[Message]) -> tuple[TextElement, ...]:
                         x = fx[0].fixed_float() or 0.0
                         y = fy[0].fixed_float() or 0.0
 
-        # Extract box dimensions (width, height) from msg32 f10
-        width, height = 0.0, 0.0
-        f10_size = msg32.by_number(10)
-        if f10_size and isinstance(f10_size[0].value, bytes):
-            m10 = try_decode_message(f10_size[0].value)
-            if m10:
-                fw = m10.by_number(1)
-                fh = m10.by_number(2)
-                if fw and fh:
-                    width = fw[0].fixed_float() or 0.0
-                    height = fh[0].fixed_float() or 0.0
-
-        # Text box dimensions from msg32 f2
+        # Extract the *content* box dimensions (width, height) from msg32 f2.
+        content_width, content_height = 0.0, 0.0
         f2_dim = msg32.by_number(2)
         if f2_dim and isinstance(f2_dim[0].value, bytes):
             m2_dim = try_decode_message(f2_dim[0].value)
@@ -261,9 +250,28 @@ def parse_text_elements(records: Sequence[Message]) -> tuple[TextElement, ...]:
                 fw = m2_dim.by_number(1)
                 fh = m2_dim.by_number(2)
                 if fw and fw[0].fixed_float() and fw[0].fixed_float() > 0:
-                    width = fw[0].fixed_float()
+                    content_width = fw[0].fixed_float()
                 if fh and fh[0].fixed_float() and fh[0].fixed_float() > 0:
-                    height = fh[0].fixed_float()
+                    content_height = fh[0].fixed_float()
+
+        # msg32 f10 is *not* a second box size -- it's the per-side inset
+        # (padding) between the content box and the box GoodNotes actually
+        # draws in its UI. Confirmed against real samples: the visible box
+        # consistently equals content_size + 2 * inset (e.g. content 91.14 +
+        # 2*5.45 inset = 102.04, matching the drawn box's 102.05 width).
+        inset_width, inset_height = 0.0, 0.0
+        f10_size = msg32.by_number(10)
+        if f10_size and isinstance(f10_size[0].value, bytes):
+            m10 = try_decode_message(f10_size[0].value)
+            if m10:
+                fw = m10.by_number(1)
+                fh = m10.by_number(2)
+                if fw and fh:
+                    inset_width = fw[0].fixed_float() or 0.0
+                    inset_height = fh[0].fixed_float() or 0.0
+
+        width = content_width + 2.0 * inset_width
+        height = content_height + 2.0 * inset_height
 
         # Default font family & font size from msg32 f5
         default_font = "Helvetica Neue"
@@ -443,5 +451,3 @@ def extract_text(message: Message, path: str = "$") -> Iterator[TextFragment]:
         nested = try_decode_message(field.value)
         if nested is not None:
             yield from extract_text(nested, field_path)
-
-
