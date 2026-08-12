@@ -1,5 +1,9 @@
 # GoodNotes Reverse Engineering Toolkit
 
+![CI](https://github.com/<your-org>/goodnotes-reverse-engineering-toolkit/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/python-3.9%2B-blue)
+![License: MIT](https://img.shields.io/badge/License-MIT-green)
+
 An open-source, fully typed Python toolkit for reverse-engineering and parsing GoodNotes 5 and 6 `.goodnotes` archives. It decodes protobuf **wire format** directly, parses Apple LZ4 framed streams, decodes Troy Hanson TPL memory images, extracts exact RGBA stroke colors and opacity, and exports documents to JSON and SVG.
 
 It **deliberately does NOT use heuristic float scanning**.
@@ -33,11 +37,13 @@ Run the unit test suite with:
 uv run pytest
 ```
 
+> **Note:** `samples/` is not included in this repository (it contains personal data). Tests that depend on sample files will automatically skip if the file is absent.
+
 ## CLI Usage
 
 ```sh
 # Inspect archive inventory and sha256 checksums
- 
+gn-inspect sample.goodnotes
 
 # Lossless dump of any protobuf member to JSON
 gn-dump sample.goodnotes index.notes.pb
@@ -55,15 +61,17 @@ gn-export-svg sample.goodnotes -o pages-svg
 Or via module invocation:
 
 ```sh
-PYTHONPATH=src python3 -m goodnotes_re.cli export-svg samples/Teat.goodnotes -o pages-svg
+PYTHONPATH=src python3 -m goodnotes_re.cli export-svg sample.goodnotes -o pages-svg
 ```
+
+For the full CLI reference (including all flags and batch export examples), see [`docs/cli-zh.md`](docs/cli-zh.md) (Traditional Chinese).
 
 ## Python Library API
 
 ```python
 from goodnotes_re import GoodNotesDocument
 
-with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
+with GoodNotesDocument.open("sample.goodnotes") as doc:
     # Inventory
     members = doc.inventory()
     
@@ -86,4 +94,13 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
             print(element.kind, element.uuid, element.attachment_uuid, element.related_uuids)
 ```
 
-See [the reverse-engineering knowledge base](docs/knowledge-base.md) and [contributing guide](CONTRIBUTING.md).
+## Documentation
+
+| Document | Description |
+|---|---|
+| [`docs/knowledge-base.md`](docs/knowledge-base.md) | Reverse-engineering findings and field annotations |
+| [`docs/corpus-protocol.md`](docs/corpus-protocol.md) | Protocol for adding new wire-format observations |
+| [`docs/cli-zh.md`](docs/cli-zh.md) | Full CLI reference (Traditional Chinese) |
+| [`wiki/`](wiki/) | Deep-dive technical wiki (architecture, formats, rendering) |
+
+See also the [Contributing Guide](CONTRIBUTING.md) and [Changelog](CHANGELOG.md).
