@@ -37,22 +37,22 @@ flowchart TD
 
 ## 核心模組職責對照表 (Module Breakdown)
 
-專案源碼位於 [`src/goodnotes_re/`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/)，各模組職責劃分如下：
+專案源碼位於 [`src/goodnotes_re/`](../src/goodnotes_re/)，各模組職責劃分如下：
 
 | 模組名稱 | 絕對路徑 / Clickable Link | 核心職責與功能 |
 | :--- | :--- | :--- |
-| **`wire.py`** | [`src/goodnotes_re/wire.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/wire.py) | **Protobuf Wire 解碼器**。實現 7-bit Varint 讀取、WireType 判定、Length-Delimited 解碼與串流分幀 (`decode_delimited_messages`)。不需 `.proto` 即可保持完整位元組結構。 |
-| **`archive.py`** | [`src/goodnotes_re/archive.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/archive.py) | **ZIP 檔案封裝管理**。提供 `GoodNotesDocument` 類別，負責讀取內部成員檔（如 `index.notes.pb`, `notes/<UUID>`）、生成 Inventory 清單與計算 SHA256。 |
-| **`compression.py`** | [`src/goodnotes_re/compression.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/compression.py) | **Apple Framed LZ4 解壓縮**。解碼以 `bv41`/`bv4-` 為標頭、`bv4$` 為結尾的 Apple 專有 LZ4 串流，維護 64KB 歷史視窗。 |
-| **`tpl.py`** | [`src/goodnotes_re/tpl.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/tpl.py) | **Troy Hanson TPL 記憶體映像解析**。解析 C 語言 TPL 庫寫出的二進制點陣與字串格式描述符（ Format Strings，如 `vuA(v)...`）。 |
-| **`stroke.py`** | [`src/goodnotes_re/stroke.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/stroke.py) | **筆跡與顏色解析**。結合 TPL 控制點提取壓感、計算平滑法向量；並解析 `bv4$` 後方的 Protobuf Trailer 提取 RGBA 顏色與 Lasso 移動偏移量 `(dx, dy)`；處理 v9 橡皮擦切口。 |
-| **`shape.py`** | [`src/goodnotes_re/shape.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/shape.py) | **向量圖形解析**。從 Protobuf Record（Tag 9, 21, 22 等）解析矩形、橢圓、多邊形、虛線模式 (`dash_pattern`) 與箭頭樣式。 |
-| **`text.py`** | [`src/goodnotes_re/text.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/text.py) | **富文本與 RTF 解析**。解碼 Type 35 / bv41 打字機文字框的字型、字號、顏色、對齊方式、列表樣式，以及舊版 RTF Payload。 |
-| **`element.py`** | [`src/goodnotes_re/element.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/element.py) | **頁面元素特徵抽象**。解析圖片貼圖（包含邊界框、裁切 Crop 參數與旋轉角度）、便條紙 (Sticky Notes) 狀態（展開/折疊）與記錄墓碑 (Tombstone)。 |
-| **`page.py`** | [`src/goodnotes_re/page.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/page.py) | **頁面模型 (Page Model)**。結合 PDF `/MediaBox` 尺寸解析（132 DPI 到 72 DPI 轉換），聚合單頁中的筆跡、圖形、文字、圖片與背景。 |
-| **`pdf.py`** | [`src/goodnotes_re/pdf.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/pdf.py) | **PDF 背景繪製**。利用 PyMuPDF (fitz) 將 `.goodnotes` 內嵌的 PDF 附件頁面渲染為向量 SVG path 或圖像背景。 |
-| **`export.py`** | [`src/goodnotes_re/export.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/export.py) | **匯出器 (JSON & SVG)**。將頁面模型轉換為完整 JSON 結構或高忠實度 SVG 向量圖。 |
-| **`cli.py`** | [`src/goodnotes_re/cli.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/cli.py) | **命令行工具集**。提供 `gn-inspect`、`gn-dump`、`gn-diff`、`gn-export-json` 與 `gn-export-svg` 進入點。 |
+| **`wire.py`** | [`src/goodnotes_re/wire.py`](../src/goodnotes_re/wire.py) | **Protobuf Wire 解碼器**。實現 7-bit Varint 讀取、WireType 判定、Length-Delimited 解碼與串流分幀 (`decode_delimited_messages`)。不需 `.proto` 即可保持完整位元組結構。 |
+| **`archive.py`** | [`src/goodnotes_re/archive.py`](../src/goodnotes_re/archive.py) | **ZIP 檔案封裝管理**。提供 `GoodNotesDocument` 類別，負責讀取內部成員檔（如 `index.notes.pb`, `notes/<UUID>`）、生成 Inventory 清單與計算 SHA256。 |
+| **`compression.py`** | [`src/goodnotes_re/compression.py`](../src/goodnotes_re/compression.py) | **Apple Framed LZ4 解壓縮**。解碼以 `bv41`/`bv4-` 為標頭、`bv4$` 為結尾的 Apple 專有 LZ4 串流，維護 64KB 歷史視窗。 |
+| **`tpl.py`** | [`src/goodnotes_re/tpl.py`](../src/goodnotes_re/tpl.py) | **Troy Hanson TPL 記憶體映像解析**。解析 C 語言 TPL 庫寫出的二進制點陣與字串格式描述符（ Format Strings，如 `vuA(v)...`）。 |
+| **`stroke.py`** | [`src/goodnotes_re/stroke.py`](../src/goodnotes_re/stroke.py) | **筆跡與顏色解析**。結合 TPL 控制點提取壓感、計算平滑法向量；並解析 `bv4$` 後方的 Protobuf Trailer 提取 RGBA 顏色與 Lasso 移動偏移量 `(dx, dy)`；處理 v9 橡皮擦切口。 |
+| **`shape.py`** | [`src/goodnotes_re/shape.py`](../src/goodnotes_re/shape.py) | **向量圖形解析**。從 Protobuf Record（Tag 9, 21, 22 等）解析矩形、橢圓、多邊形、虛線模式 (`dash_pattern`) 與箭頭樣式。 |
+| **`text.py`** | [`src/goodnotes_re/text.py`](../src/goodnotes_re/text.py) | **富文本與 RTF 解析**。解碼 Type 35 / bv41 打字機文字框的字型、字號、顏色、對齊方式、列表樣式，以及舊版 RTF Payload。 |
+| **`element.py`** | [`src/goodnotes_re/element.py`](../src/goodnotes_re/element.py) | **頁面元素特徵抽象**。解析圖片貼圖（包含邊界框、裁切 Crop 參數與旋轉角度）、便條紙 (Sticky Notes) 狀態（展開/折疊）與記錄墓碑 (Tombstone)。 |
+| **`page.py`** | [`src/goodnotes_re/page.py`](../src/goodnotes_re/page.py) | **頁面模型 (Page Model)**。結合 PDF `/MediaBox` 尺寸解析（132 DPI 到 72 DPI 轉換），聚合單頁中的筆跡、圖形、文字、圖片與背景。 |
+| **`pdf.py`** | [`src/goodnotes_re/pdf.py`](../src/goodnotes_re/pdf.py) | **PDF 背景繪製**。利用 PyMuPDF (fitz) 將 `.goodnotes` 內嵌的 PDF 附件頁面渲染為向量 SVG path 或圖像背景。 |
+| **`export.py`** | [`src/goodnotes_re/export.py`](../src/goodnotes_re/export.py) | **匯出器 (JSON & SVG)**。將頁面模型轉換為完整 JSON 結構或高忠實度 SVG 向量圖。 |
+| **`cli.py`** | [`src/goodnotes_re/cli.py`](../src/goodnotes_re/cli.py) | **命令行工具集**。提供 `gn-inspect`、`gn-dump`、`gn-diff`、`gn-export-json` 與 `gn-export-svg` 進入點。 |
 
 ---
 
@@ -107,4 +107,4 @@ GoodNotes 5 (GN5) 與 GoodNotes 6 (GN6) 在底層儲存結構上保持高度相�
 
 ---
 
-在下一章 **[02 - ZIP 容器與 Protobuf Wire 解析](file:///Users/kai/Documents/Goodnotes/wiki/02-archive-and-wire-format.md)** 中，我們將深入剖析 ZIP 包內的檔案分佈以及無模式 Protobuf Wire 解碼器的低階位元組讀取原理。
+在下一章 **[02 - ZIP 容器與 Protobuf Wire 解析](02-archive-and-wire-format.md)** 中，我們將深入剖析 ZIP 包內的檔案分佈以及無模式 Protobuf Wire 解碼器的低階位元組讀取原理。

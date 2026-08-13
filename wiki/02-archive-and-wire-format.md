@@ -63,7 +63,7 @@ Varint 採用 Base-128 編碼。每個 Byte 的最高位 (MSB, Bit 7) 是 **Cont
 
 其餘低 7 位 (Bits 0..6) 按照小端序 (Little-Endian) 組合出最終的無符號整數。
 
-在 [`src/goodnotes_re/wire.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/wire.py) 中的實現如下：
+在 [`src/goodnotes_re/wire.py`](../src/goodnotes_re/wire.py) 中的實現如下：
 
 ```python
 def _read_varint(data: bytes, pos: int) -> tuple[int, int]:
@@ -100,7 +100,7 @@ def _read_varint(data: bytes, pos: int) -> tuple[int, int]:
 - 接續讀取 82 位元組作為獨立的 Protobuf Message。
 - 再讀取下一個 Varint 獲取下一筆 Record 長度。
 
-在 [`wire.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/wire.py) 中，`decode_delimited_messages()` 負責解開此結構：
+在 [`wire.py`](../src/goodnotes_re/wire.py) 中，`decode_delimited_messages()` 負責解開此結構：
 
 ```python
 def decode_delimited_messages(data: bytes) -> tuple[Message, ...]:
@@ -120,7 +120,7 @@ def decode_delimited_messages(data: bytes) -> tuple[Message, ...]:
 
 ## 5. 無模式 (Schema-Free) 遞迴解析與未知欄位保留
 
-為確保解析時不會丟失未定義的欄位，[`wire.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/wire.py) 中的 `decode_message()` 採用無模式解析：
+為確保解析時不會丟失未定義的欄位，[`wire.py`](../src/goodnotes_re/wire.py) 中的 `decode_message()` 採用無模式解析：
 1. 依序讀取 Key (`number` 與 `wire_type`)。
 2. 根據 `wire_type` 讀取對應長度（`VARINT` 讀取 Varint，`FIXED32` 讀 4 bytes，`FIXED64` 讀 8 bytes，`LENGTH_DELIMITED` 讀 $L$ bytes）。
 3. 保存原始位元組切片 `raw` 與檔案偏移量 `offset` 到 `Field` dataclass。
@@ -148,4 +148,4 @@ class Field:
 
 ---
 
-在下一章 **[03 - Apple LZ4 壓縮與 TPL 記憶體映像](file:///Users/kai/Documents/Goodnotes/wiki/03-compression-and-tpl-binary.md)** 中，我們將詳細探討筆跡 Payload 中的 Apple LZ4 串流規格以及 Troy Hanson TPL 二進位格式。
+在下一章 **[03 - Apple LZ4 壓縮與 TPL 記憶體映像](03-compression-and-tpl-binary.md)** 中，我們將詳細探討筆跡 Payload 中的 Apple LZ4 串流規格以及 Troy Hanson TPL 二進位格式。

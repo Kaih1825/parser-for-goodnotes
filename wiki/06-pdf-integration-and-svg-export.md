@@ -8,7 +8,7 @@
 
 GoodNotes 筆記的頁面尺寸（如 A4, Letter, 橫向 Landscape, 直向 Portrait）是由內嵌的 PDF 範本或背景檔案決定的。
 
-在 [`src/goodnotes_re/page.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/page.py) 中，`PageDimensions.from_pdf_mediabox()` 透過正則表達式直接讀取 PDF 二進位檔中的 `/MediaBox` 定義：
+在 [`src/goodnotes_re/page.py`](../src/goodnotes_re/page.py) 中，`PageDimensions.from_pdf_mediabox()` 透過正則表達式直接讀取 PDF 二進位檔中的 `/MediaBox` 定義：
 
 ```python
 @dataclass(frozen=True)
@@ -50,13 +50,13 @@ $$S = \frac{72.0}{132.0} \approx 0.54545454...$$
 
 $$\begin{bmatrix} x_{\text{svg}} \\ y_{\text{svg}} \end{bmatrix} = \begin{bmatrix} \frac{72}{132} & 0 \\ 0 & \frac{72}{132} \end{bmatrix} \begin{bmatrix} x_{\text{gn}} \\ y_{\text{gn}} \end{bmatrix}$$
 
-在 [`export.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/export.py) 中，所有 Stroke 控制點、Shape 座標、Text Box 位置與 Image 尺寸，均乘以 `dpi_scale = 72.0 / 132.0`。這使得導出的向量 SVG 與 GoodNotes 導出的原廠 PDF **達到 100% 完全重合**。
+在 [`export.py`](../src/goodnotes_re/export.py) 中，所有 Stroke 控制點、Shape 座標、Text Box 位置與 Image 尺寸，均乘以 `dpi_scale = 72.0 / 132.0`。這使得導出的向量 SVG 與 GoodNotes 導出的原廠 PDF **達到 100% 完全重合**。
 
 ---
 
 ## 3. PyMuPDF 向量 PDF 底圖渲染 (`pdf.py`)
 
-當 `.goodnotes` 檔案的 `attachments/` 中包含背景 PDF 檔案時，[`src/goodnotes_re/pdf.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/pdf.py) 利用 `fitz` (PyMuPDF) 庫提取該頁面的矢量圖形：
+當 `.goodnotes` 檔案的 `attachments/` 中包含背景 PDF 檔案時，[`src/goodnotes_re/pdf.py`](../src/goodnotes_re/pdf.py) 利用 `fitz` (PyMuPDF) 庫提取該頁面的矢量圖形：
 
 ```python
 def render_pdf_page_to_svg(pdf_bytes: bytes, page_index: int, width: float, height: float) -> str | None:
@@ -82,7 +82,7 @@ def render_pdf_page_to_svg(pdf_bytes: bytes, page_index: int, width: float, heig
 
 ## 4. SVG DOM 分層繪製順序 (SVG Layering Architecture)
 
-為了實現視覺上的正確覆蓋關係（如筆跡畫在背景上、文字位在最上層），[`write_svg()`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/export.py) 嚴格按照以下圖層順序寫入 SVG DOM：
+為了實現視覺上的正確覆蓋關係（如筆跡畫在背景上、文字位在最上層），[`write_svg()`](../src/goodnotes_re/export.py) 嚴格按照以下圖層順序寫入 SVG DOM：
 
 ```
 +-------------------------------------------------------------------+
@@ -114,4 +114,4 @@ def render_pdf_page_to_svg(pdf_bytes: bytes, page_index: int, width: float, heig
 
 ---
 
-在下一章 **[07 - CLI 工具與 Python API 指南](file:///Users/kai/Documents/Goodnotes/wiki/07-cli-and-api-guide.md)** 中，我們將詳細示範各命令列指令的使用方式與 Python 程式庫的調用範例。
+在下一章 **[07 - CLI 工具與 Python API 指南](07-cli-and-api-guide.md)** 中，我們將詳細示範各命令列指令的使用方式與 Python 程式庫的調用範例。

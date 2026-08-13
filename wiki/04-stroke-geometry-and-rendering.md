@@ -6,7 +6,7 @@
 
 ## 1. 筆跡點與壓感模型 (Stroke Point & Pressure Model)
 
-每一條筆跡由一系列帶有壓感值的控制點組成。在 [`src/goodnotes_re/stroke.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/stroke.py) 中定義為 `StrokePoint`：
+每一條筆跡由一系列帶有壓感值的控制點組成。在 [`src/goodnotes_re/stroke.py`](../src/goodnotes_re/stroke.py) 中定義為 `StrokePoint`：
 
 ```python
 @dataclass(frozen=True)
@@ -55,7 +55,7 @@ $$L_i = P_i + r_i \cdot \hat{n}_i, \quad R_i = P_i - r_i \cdot \hat{n}_i$$
 
 ## 3. SVG Smooth Path 與圓角端點構建
 
-獲得 $L_i$ 與 $R_i$ 點集後，[`build_stroke_ribbon()`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/stroke.py) 使用 SVG 繪製指令組合出封閉路徑：
+獲得 $L_i$ 與 $R_i$ 點集後，[`build_stroke_ribbon()`](../src/goodnotes_re/stroke.py) 使用 SVG 繪製指令組合出封閉路徑：
 
 ```
 [Start Cap (Arc A)] ──► [Right Side Smooth Quad Curves (Q)] ──► [End Cap (Arc A)] ──► [Left Side Smooth Quad Curves (Q)] ──► Close (Z)
@@ -128,4 +128,4 @@ $$\text{Jitter Ratio} = \frac{\text{方向反轉次數 (Cos angle } < -0.3\text{
 
 ---
 
-在下一章 **[05 - 圖形、文字與頁面元素](file:///Users/kai/Documents/Goodnotes/wiki/05-shapes-text-and-elements.md)** 中，我們將介紹向量圖形 (Shapes)、箭頭 Marker、富文本框與圖片裁切 (Crop) 的解析細節。
+在下一章 **[05 - 圖形、文字與頁面元素](05-shapes-text-and-elements.md)** 中，我們將介紹向量圖形 (Shapes)、箭頭 Marker、富文本框與圖片裁切 (Crop) 的解析細節。

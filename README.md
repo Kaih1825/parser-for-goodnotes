@@ -4,7 +4,9 @@
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
-An open-source, fully typed Python toolkit for reverse-engineering and parsing GoodNotes 5 and 6 `.goodnotes` archives. It decodes protobuf **wire format** directly, parses Apple LZ4 framed streams, decodes Troy Hanson TPL memory images, extracts exact RGBA stroke colors and opacity, and exports documents to JSON and SVG.
+An independent, open-source, fully typed Python toolkit for inspecting and parsing user-supplied GoodNotes 5 and 6 `.goodnotes` archives. It decodes protobuf **wire format** directly, parses Apple LZ4 framed streams, decodes Troy Hanson TPL memory images, extracts observed RGBA stroke data, and exports documents to JSON and SVG.
+
+**This project is not affiliated with, endorsed by, sponsored by, or officially connected to Goodnotes Limited.** See [`LEGAL-NOTICE.md`](LEGAL-NOTICE.md) for release and usage notes.
 
 It **deliberately does NOT use heuristic float scanning**.
 
@@ -13,7 +15,7 @@ It **deliberately does NOT use heuristic float scanning**.
 - **Protobuf Wire Decoder**: Lossless parsing of framed and unframed protobuf messages, preserving unknown fields.
 - **Apple LZ4 & Troy Hanson TPL Decoder**: Decompresses `bv41` LZ4 streams and decodes embedded TPL format strings (`vuA(v)A(S(uu))...`) into structured stroke points and variable-width ribbons.
 - **Stroke & Color Parsing**: Direct protobuf trailer decoding after `bv4$` to extract exact RGBA colors and highlighter transparency.
-- **Complete Stroke Support**: Single dots, straight lines, curves, long/short strokes, fast scribbles, ballpoint, fountain, brush pens, highlighters, erasers, shapes, and moved/copied elements.
+- **Stroke Support**: Parses a growing set of dots, lines, curves, pen tools, highlighters, erasers, shapes, and moved/copied elements observed in the test corpus.
 - **Page & Background Resolution**: Automatic PDF background `/MediaBox` dimension detection (A4, Letter, landscape vs. portrait), page ordering, text fragments, and sticky notes (便條紙) content extraction.
 - **CLI Tools**: `gn-inspect`, `gn-dump`, `gn-diff`, `gn-export-json`, `gn-export-svg`.
 
@@ -37,7 +39,7 @@ Run the unit test suite with:
 uv run pytest
 ```
 
-> **Note:** `samples/` is not included in this repository (it contains personal data). Tests that depend on sample files will automatically skip if the file is absent.
+> **Note:** `samples/` is intentionally ignored and is not part of the public source tree. Do not publish `.goodnotes` files or extracted assets unless you have permission to redistribute them.
 
 ## CLI Usage
 
@@ -101,6 +103,7 @@ with GoodNotesDocument.open("sample.goodnotes") as doc:
 | [`docs/knowledge-base.md`](docs/knowledge-base.md) | Reverse-engineering findings and field annotations |
 | [`docs/corpus-protocol.md`](docs/corpus-protocol.md) | Protocol for adding new wire-format observations |
 | [`docs/cli-zh.md`](docs/cli-zh.md) | Full CLI reference (Traditional Chinese) |
-| [`wiki/`](wiki/) | Deep-dive technical wiki (architecture, formats, rendering) |
+| [`wiki/`](wiki/) | Deep-dive technical documentation (architecture, formats, rendering) |
+| [`LEGAL-NOTICE.md`](LEGAL-NOTICE.md) | Legal, trademark, privacy, and redistribution notice |
 
 See also the [Contributing Guide](CONTRIBUTING.md) and [Changelog](CHANGELOG.md).

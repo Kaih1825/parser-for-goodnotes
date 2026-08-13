@@ -68,7 +68,7 @@ uv run mypy src/goodnotes_re
 
 ## 3. 受控逆向工程實驗協議 (Controlled Corpus Protocol)
 
-為確保語意解析的正確性、避免引入未經證實的猜測，本專案嚴格遵循 [`docs/corpus-protocol.md`](file:///Users/kai/Documents/Goodnotes/docs/corpus-protocol.md) 訂定的受控實驗協議：
+為確保語意解析的正確性、避免引入未經證實的猜測，本專案嚴格遵循 [`docs/corpus-protocol.md`](../docs/corpus-protocol.md) 訂定的受控實驗協議：
 
 ### 實驗捕獲步驟 (Capture Procedure)
 

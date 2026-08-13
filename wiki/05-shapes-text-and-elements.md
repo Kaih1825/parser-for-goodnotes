@@ -27,7 +27,7 @@ GoodNotes 支援在線條或箭頭兩端加上不同的 Marker 樣式（如開�
 
 在 SVG 中使用 `<defs>` 定義 `<marker>`，其 `orient="auto"` 能自動沿線條切線旋轉。但箭頭頂點必須精準對齊線條端點，否則會產生重疊或懸空。
 
-[`export.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/export.py) 實現了動態 `refX` 計算函數 `_get_marker_ref_x()`：
+[`export.py`](../src/goodnotes_re/export.py) 實現了動態 `refX` 計算函數 `_get_marker_ref_x()`：
 
 ```python
 def _get_marker_ref_x(path_d: str, align: str = "tip") -> float:
@@ -61,7 +61,7 @@ GoodNotes 中的打字機文字框（Text Element）儲存於 Type 35 Record 內
   - `f3`: 段落控制。`f3_3` 為列表類型（`"bullet"` 項目符號 或 `"numbered"` 編號列表）；`f4` 為對齊方式（`1` 左對齊、`2` 居中、`3` 右對齊）。
 
 ### 舊版 RTF 備用解析 (`rtf_to_text`)
-對於早期或簡單文字，GoodNotes 使用 RTF 格式。[`rtf_to_text()`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/text.py) 使用特製正則表達式，優先以 Traditional Chinese (CP950) 進行編碼解碼，精準提取中文文本並去除 `\fonttbl` 與 RTF 控制字元。
+對於早期或簡單文字，GoodNotes 使用 RTF 格式。[`rtf_to_text()`](../src/goodnotes_re/text.py) 使用特製正則表達式，優先以 Traditional Chinese (CP950) 進行編碼解碼，精準提取中文文本並去除 `\fonttbl` 與 RTF 控制字元。
 
 ---
 
@@ -69,7 +69,7 @@ GoodNotes 中的打字機文字框（Text Element）儲存於 Type 35 Record 內
 
 便條紙（Sticky Note）在 GoodNotes 中是黃色/彩色卡片，上方可供使用者貼上記錄或留言。
 
-在 [`element.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/element.py) 的 `parse_sticky_notes()` 中：
+在 [`element.py`](../src/goodnotes_re/element.py) 的 `parse_sticky_notes()` 中：
 - **卡片屬性**：提取 $(x, y)$ 座標、預設尺寸 (256x256)、背景顏色 `color_hex` (預設黃色 `#FAE778`) 以及作者 `author`。
 - **折疊/展開狀態 (`is_open`)**：檢視 Tag 7 內是否有隱藏標誌。若折疊 (`is_folded=True`)，SVG 繪製時會將其渲染為右下角帶有折角的便條紙小圖示；若展開，則渲染為完整的半透明背景卡片。
 
@@ -79,7 +79,7 @@ GoodNotes 中的打字機文字框（Text Element）儲存於 Type 35 Record 內
 
 圖片貼圖 (Image Attachment) 儲存在 `attachments/<UUID>` 目錄中（JPEG 或 PNG）。
 
-在 [`element.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/element.py) 的 `parse_image_elements()` 中：
+在 [`element.py`](../src/goodnotes_re/element.py) 的 `parse_image_elements()` 中：
 
 ### 1. 墓碑標誌 (Tombstone Detection)
 當圖片在 GoodNotes 中被刪除或剪下移動到其他頁面時，舊頁面上會留下一筆 Record 作為墓碑（相同的 Record UUID 與 Attachment UUID），但其 **Field 3 被設為 1** (`f3 == 1`)。解析器會自動過濾 `f3 == 1` 的記錄，避免繪製已刪除的圖片。
@@ -89,10 +89,10 @@ GoodNotes 中的打字機文字框（Text Element）儲存於 Type 35 Record 內
 - **原始邊界框 (Original Bounding Box)**：$(orig_x, orig_y, orig_w, orig_h)$。
 - **裁切邊界框 (Crop Bounding Box)**：$(cx, cy, crop_w, crop_h)$ 及旋轉角度 $\theta$ (`rotation_rad`)。
 
-在匯出 SVG 時（[`export.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/export.py)）：
+在匯出 SVG 時（[`export.py`](../src/goodnotes_re/export.py)）：
 若檢測到圖片被裁切（`crop_w != orig_w`）：
 利用 SVG 的 `<g transform="rotate(...)">` 與子 `<svg overflow="hidden">` 容器視窗，實作視窗遮罩（Clipping Window），準確還原 GoodNotes 內圖片的任意形狀裁切與旋轉效果。
 
 ---
 
-在下一章 **[06 - PDF 底圖與 SVG 向量匯出](file:///Users/kai/Documents/Goodnotes/wiki/06-pdf-integration-and-svg-export.md)** 中，我們將詳細說明 PDF 背景尺寸解析、132 DPI 與 72 DPI 坐標轉換矩陣，以及 SVG 畫布的分層繪製邏輯。
+在下一章 **[06 - PDF 底圖與 SVG 向量匯出](06-pdf-integration-and-svg-export.md)** 中，我們將詳細說明 PDF 背景尺寸解析、132 DPI 與 72 DPI 坐標轉換矩陣，以及 SVG 畫布的分層繪製邏輯。

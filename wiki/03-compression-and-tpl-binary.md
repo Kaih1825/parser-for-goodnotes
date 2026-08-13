@@ -29,7 +29,7 @@
 
 ## 2. Pure-Python LZ4 解壓縮演算法 (`compression.py`)
 
-為了保持零外部 C 程式庫依賴，[`src/goodnotes_re/compression.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/compression.py) 實現了完整的 LZ4 解壓器。解壓時維護 64KB (65,536 Bytes) 的歷史滑動視窗 (History Window)：
+為了保持零外部 C 程式庫依賴，[`src/goodnotes_re/compression.py`](../src/goodnotes_re/compression.py) 實現了完整的 LZ4 解壓器。解壓時維護 64KB (65,536 Bytes) 的歷史滑動視窗 (History Window)：
 
 ### LZ4 Token 解碼邏輯
 
@@ -90,7 +90,7 @@ def decode_apple_lz4(data: bytes) -> tuple[bytes, int]:
 
 ## 4. TPL Format String 語法與點陣型別解析
 
-在 [`src/goodnotes_re/tpl.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/tpl.py) 中，`decode_tpl()` 會先解析 Format String，構建出語法樹 (Format Tree)，再根據結構讀取二進制數據。
+在 [`src/goodnotes_re/tpl.py`](../src/goodnotes_re/tpl.py) 中，`decode_tpl()` 會先解析 Format String，構建出語法樹 (Format Tree)，再根據結構讀取二進制數據。
 
 ### TPL Format 字元對照表
 
@@ -128,7 +128,7 @@ def decode_apple_lz4(data: bytes) -> tuple[bytes, int]:
 
 當 `decode_apple_lz4()` 在 `position` 處讀到 `bv4$` 結尾標記時，`field_data[position:]` 剩餘的位元組**並非廢棄數據**，而是標準的 Protobuf Message (稱為 Trailer)。
 
-在 [`src/goodnotes_re/stroke.py`](file:///Users/kai/Documents/Goodnotes/src/goodnotes_re/stroke.py) 中，透過解碼 Trailer 提取出筆跡的真實顏色與移動矩陣：
+在 [`src/goodnotes_re/stroke.py`](../src/goodnotes_re/stroke.py) 中，透過解碼 Trailer 提取出筆跡的真實顏色與移動矩陣：
 
 ```
 [Apple LZ4 Stream ("bv41" ... "bv4$")] [Protobuf Trailer Bytes]
@@ -172,4 +172,4 @@ def extract_color_from_trailer(trailer_bytes: bytes) -> tuple[str, float]:
 
 ---
 
-在下一章 **[04 - 筆跡幾何與向量 Ribbon 重建](file:///Users/kai/Documents/Goodnotes/wiki/04-stroke-geometry-and-rendering.md)** 中，我們將詳細介紹法向量計算、向量 Ribbon 繪製以及 v9 橡皮擦切口凸包演算法。
+在下一章 **[04 - 筆跡幾何與向量 Ribbon 重建](04-stroke-geometry-and-rendering.md)** 中，我們將詳細介紹法向量計算、向量 Ribbon 繪製以及 v9 橡皮擦切口凸包演算法。

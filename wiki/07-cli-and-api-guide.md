@@ -178,4 +178,4 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
 
 ---
 
-在下一章 **[08 - 開發、測試、打包與發佈](file:///Users/kai/Documents/Goodnotes/wiki/08-testing-building-publishing.md)** 中，我們將說明如何設置開發環境、執行單元測試、維護受控逆向實驗協議以及打包發佈至 PyPI。
+在下一章 **[08 - 開發、測試、打包與發佈](08-testing-building-publishing.md)** 中，我們將說明如何設置開發環境、執行單元測試、維護受控逆向實驗協議以及打包發佈至 PyPI。

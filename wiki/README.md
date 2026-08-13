@@ -30,14 +30,15 @@
 
 | 章節檔案 | 主題說明 | 關鍵內容 |
 | :--- | :--- | :--- |
-| **[01-architecture-overview.md](file:///Users/kai/Documents/Goodnotes/wiki/01-architecture-overview.md)** | **系統架構與資料流** | 模組職責分工、解析管道 (Pipeline)、GoodNotes 5 vs 6 檔案格式演進 |
-| **[02-archive-and-wire-format.md](file:///Users/kai/Documents/Goodnotes/wiki/02-archive-and-wire-format.md)** | **ZIP 容器與 Protobuf Wire 解析** | ZIP 檔案結構、Varint 編碼規則、Length-Delimited 串流分幀解碼 |
-| **[03-compression-and-tpl-binary.md](file:///Users/kai/Documents/Goodnotes/wiki/03-compression-and-tpl-binary.md)** | **Apple LZ4 壓縮與 TPL 記憶體映像** | `bv41`/`bv4$` 串流規約、Pure-Python LZ4 解壓、Troy Hanson TPL Format 語法與 RGBA Trailer 解析 |
-| **[04-stroke-geometry-and-rendering.md](file:///Users/kai/Documents/Goodnotes/wiki/04-stroke-geometry-and-rendering.md)** | **筆跡幾何與向量 Ribbon 重建** | 控制點壓感、法向量平滑、Catmull-Rom 與 Bézier 曲線、v9 橡皮擦切口凸包演算法 |
-| **[05-shapes-text-and-elements.md](file:///Users/kai/Documents/Goodnotes/wiki/05-shapes-text-and-elements.md)** | **圖形、文字與頁面元素** | 多邊形/矩形/橢圓形解析、箭頭端點 Marker、RTF/UTF-8 文字區塊、便條紙與圖片 Crop 裁切 |
-| **[06-pdf-integration-and-svg-export.md](file:///Users/kai/Documents/Goodnotes/wiki/06-pdf-integration-and-svg-export.md)** | **PDF 底圖與 SVG 向量匯出** | PDF `/MediaBox` 解析、132 DPI 與 72 DPI 坐標轉換矩陣、SVG DOM 圖層堆疊邏輯 |
-| **[07-cli-and-api-guide.md](file:///Users/kai/Documents/Goodnotes/wiki/07-cli-and-api-guide.md)** | **CLI 工具與 Python API 指南** | `gn-inspect`, `gn-dump`, `gn-diff`, `gn-export-json`, `gn-export-svg` 指令與程式庫調用 API |
-| **[08-testing-building-publishing.md](file:///Users/kai/Documents/Goodnotes/wiki/08-testing-building-publishing.md)** | **開發、測試、打包與發佈** | `uv` 環境設置、Pytest 單元測試、受控逆向實驗協議 (Corpus Protocol)、PyPI 發佈流程 |
+| **[01-architecture-overview.md](01-architecture-overview.md)** | **系統架構與資料流** | 模組職責分工、解析管道 (Pipeline)、GoodNotes 5 vs 6 檔案格式演進 |
+| **[02-archive-and-wire-format.md](02-archive-and-wire-format.md)** | **ZIP 容器與 Protobuf Wire 解析** | ZIP 檔案結構、Varint 編碼規則、Length-Delimited 串流分幀解碼 |
+| **[03-compression-and-tpl-binary.md](03-compression-and-tpl-binary.md)** | **Apple LZ4 壓縮與 TPL 記憶體映像** | `bv41`/`bv4$` 串流規約、Pure-Python LZ4 解壓、Troy Hanson TPL Format 語法與 RGBA Trailer 解析 |
+| **[04-stroke-geometry-and-rendering.md](04-stroke-geometry-and-rendering.md)** | **筆跡幾何與向量 Ribbon 重建** | 控制點壓感、法向量平滑、Catmull-Rom 與 Bézier 曲線、v9 橡皮擦切口凸包演算法 |
+| **[05-shapes-text-and-elements.md](05-shapes-text-and-elements.md)** | **圖形、文字與頁面元素** | 多邊形/矩形/橢圓形解析、箭頭端點 Marker、RTF/UTF-8 文字區塊、便條紙與圖片 Crop 裁切 |
+| **[06-pdf-integration-and-svg-export.md](06-pdf-integration-and-svg-export.md)** | **PDF 底圖與 SVG 向量匯出** | PDF `/MediaBox` 解析、132 DPI 與 72 DPI 坐標轉換矩陣、SVG DOM 圖層堆疊邏輯 |
+| **[07-cli-and-api-guide.md](07-cli-and-api-guide.md)** | **CLI 工具與 Python API 指南** | `gn-inspect`, `gn-dump`, `gn-diff`, `gn-export-json`, `gn-export-svg` 指令與程式庫調用 API |
+| **[08-testing-building-publishing.md](08-testing-building-publishing.md)** | **開發、測試、打包與發佈** | `uv` 環境設置、Pytest 單元測試、受控逆向實驗協議 (Corpus Protocol)、PyPI 發佈流程 |
+| **[09-current-re-findings.md](09-current-re-findings.md)** | **目前逆向工程發現** | GN6 頁面排序、刪除事件、PDF 關聯、Type 35 文字、貼圖背景、圖片 Crop、Sticky Note parent-child 與目前限制 |
 
 ---
 
@@ -77,5 +78,11 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
         for stroke in page.strokes:
             print(f"    - Stroke {stroke.uuid}: color={stroke.color_hex}, alpha={stroke.alpha}, points={len(stroke.points)}")
 ```
+
+## 目前逆向工程狀態
+
+目前專案已實際驗證 GN6 文件的頁面排序、刪除事件、PDF 背景關聯、Type 35 富文本、便條紙與圖片裁切等資料路徑。最新的驗證與已知限制整理於 **[09 - Current Reverse-Engineering Findings](09-current-re-findings.md)**。
+
+> Wiki 描述以目前 source code 為準；尚未被 corpus 驗證的欄位會標示為推測，不視為 GoodNotes 官方格式規格。
 
 欲瞭解更多技術細節，請點選上方目錄導覽至具體章節！
