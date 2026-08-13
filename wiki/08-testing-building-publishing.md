@@ -1,6 +1,6 @@
 # 08 - 開發、測試、打包與發佈 (Testing, Building & Publishing)
 
-本章節介紹 **GoodNotes Reverse Engineering Toolkit** 的開發環境配置、單元測試、受控逆向工程實驗協議 (Controlled Corpus Protocol)、wheel 套件打包以及發佈至 PyPI 的標準流程。
+本章節介紹 **GoodNotes Document Parser** 的開發環境配置、單元測試、受控格式分析實驗協議 (Controlled Corpus Protocol)、wheel 套件打包以及發佈至 PyPI 的標準流程。
 
 ---
 
@@ -12,8 +12,8 @@
 
 ```sh
 # 1. 複製專案庫
-git clone https://github.com/your-org/goodnotes-reverse-engineering-toolkit.git
-cd goodnotes-reverse-engineering-toolkit
+git clone https://github.com/your-org/goodnotes-document-parser.git
+cd goodnotes-document-parser
 
 # 2. 自動建立虛擬環境並安裝所有依賴 (包含 PyMuPDF, pytest, mypy)
 uv sync
@@ -66,7 +66,7 @@ uv run mypy src/goodnotes_re
 
 ---
 
-## 3. 受控逆向工程實驗協議 (Controlled Corpus Protocol)
+## 3. 受控格式分析實驗協議 (Controlled Corpus Protocol)
 
 為確保語意解析的正確性、避免引入未經證實的猜測，本專案嚴格遵循 [`docs/corpus-protocol.md`](../docs/corpus-protocol.md) 訂定的受控實驗協議：
 
@@ -99,7 +99,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "goodnotes-reverse-engineering-toolkit"
+name = "goodnotes-document-parser"
 version = "0.1.0"
 description = "A typed, schema-free protobuf inspector and exporter for GoodNotes documents."
 requires-python = ">=3.9"
@@ -126,8 +126,8 @@ python3 -m build
 ```
 
 執行後會在 `dist/` 目錄下生成打包好的檔案：
-- `dist/goodnotes_reverse_engineering_toolkit-0.1.0-py3-none-any.whl`
-- `dist/goodnotes_reverse_engineering_toolkit-0.1.0.tar.gz`
+- `dist/goodnotes_document_parser-0.1.0-py3-none-any.whl`
+- `dist/goodnotes_document_parser-0.1.0.tar.gz`
 
 ---
 
@@ -152,7 +152,7 @@ twine upload --repository testpypi dist/*
 
 驗證安裝：
 ```sh
-pip install --index-url https://test.pypi.org/simple/ goodnotes-reverse-engineering-toolkit
+pip install --index-url https://test.pypi.org/simple/ goodnotes-document-parser
 ```
 
 ### 步驟 3：正式發佈至 PyPI
@@ -161,8 +161,8 @@ pip install --index-url https://test.pypi.org/simple/ goodnotes-reverse-engineer
 twine upload dist/*
 ```
 
-發佈成功後，全球 Python 開發者即可透過 `pip install goodnotes-reverse-engineering-toolkit` 輕鬆安裝使用！
+發佈成功後，全球 Python 開發者即可透過 `pip install goodnotes-document-parser` 輕鬆安裝使用！
 
 ---
 
-至此，您已完成了 **GoodNotes Reverse Engineering Toolkit** 的完整 Wiki 閱讀！如有任何問題或發現新的二進位特徵，歡迎提交 Issue 或 PR 貢獻至專案庫。
+至此，您已完成了 **GoodNotes Document Parser** 的完整 Wiki 閱讀！如有任何問題或發現新的二進位特徵，歡迎提交 Issue 或 PR 貢獻至專案庫。

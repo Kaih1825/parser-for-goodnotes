@@ -1,6 +1,6 @@
-# 09 - 目前逆向工程發現 (Current Reverse-Engineering Findings)
+# 09 - 目前格式分析發現 (Current Format Analysis Findings)
 
-本章記錄目前已由專案 source code 與測試 corpus 實際落地的 GoodNotes 格式觀察。這不是 GoodNotes 官方格式規格；未經多份 corpus 驗證的欄位只應視為目前的 reverse-engineering hypothesis。
+本章記錄目前已由專案 source code 與測試 corpus 實際落地的 GoodNotes 格式觀察。這不是 GoodNotes 官方格式規格；未經多份 corpus 驗證的欄位只應視為目前的 binary format analysis hypothesis。
 
 ---
 
@@ -26,7 +26,7 @@
 
 `index.events.pb` 的特定事件 Record（目前實作使用 Field 56）包含被刪除頁面的 UUID。`pages(parse_all=False)` 會先建立 inactive page set，再從正常頁面清單排除這些頁面。
 
-`parse_all=True` 則保留解析所有可找到的 page records，適合 reverse engineering 與 corpus 比對。
+`parse_all=True` 則保留解析所有可找到的 page records，適合 binary format analysis 與 corpus 比對。
 
 > **Confidence:** High（已有 parser 與測試邏輯）。
 
@@ -151,7 +151,7 @@ SVG export 時，子元素會加上 sticky note 的 `(x, y)` offset；折疊便�
 
 ## 11. 目前尚未完全定義的部分
 
-以下項目仍應視為持續逆向工程，而不是穩定格式規格：
+以下項目仍應視為持續格式分析，而不是穩定格式規格：
 
 - 所有 GoodNotes 版本的完整 field schema。
 - 所有 stroke TPL format string 的完整集合。

@@ -1,6 +1,6 @@
-# Contributing to GoodNotes Reverse Engineering Toolkit
+# Contributing to GoodNotes Document Parser
 
-Thank you for your interest in contributing! This project is built on careful, evidence-based reverse engineering. Please read this guide before submitting a pull request.
+Thank you for your interest in contributing! This project is built on careful, evidence-based binary format analysis. Please read this guide before submitting a pull request.
 
 ---
 
@@ -18,8 +18,8 @@ Thank you for your interest in contributing! This project is built on careful, e
 
 ```sh
 # Clone the repository
-git clone https://github.com/<your-org>/goodnotes-reverse-engineering-toolkit.git
-cd goodnotes-reverse-engineering-toolkit
+git clone https://github.com/<your-org>/goodnotes-document-parser.git
+cd goodnotes-document-parser
 
 # Install dependencies with uv (recommended)
 uv sync
@@ -52,7 +52,7 @@ uv run mypy src/goodnotes_re
 Use the GitHub Issue templates:
 
 - **Bug Report** — for parsing errors, incorrect SVG output, or crashes.
-- **Feature Request / Finding** — for proposing new functionality or sharing a reverse-engineering discovery.
+- **Feature Request / Format Finding** — for proposing new functionality or sharing a format-analysis discovery.
 
 > **Privacy reminder:** Do not attach `.goodnotes` files containing personal data. Use a minimal synthetic sample whenever possible.
 

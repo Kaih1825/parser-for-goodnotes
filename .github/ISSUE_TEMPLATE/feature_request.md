@@ -1,5 +1,5 @@
 ---
-name: Feature Request / Reverse Engineering Finding
+name: Feature Request / Format Finding
 about: Propose a new feature or share a newly discovered wire-format field
 title: "[Feature] "
 labels: enhancement
@@ -20,7 +20,7 @@ If you have a concrete proposal, describe it here. Reference relevant source fil
 
 ## Evidence / Sample
 
-If this is a reverse-engineering finding, please provide:
+If this is a format-analysis finding, please provide:
 
 - The archive member path (e.g. `notes/<UUID>`)
 - The protobuf field numbers involved

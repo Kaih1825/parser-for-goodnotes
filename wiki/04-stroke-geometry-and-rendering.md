@@ -1,6 +1,6 @@
 # 04 - 筆跡幾何與向量 Ribbon 重建 (Stroke Geometry & Rendering)
 
-本章節詳細說明 **GoodNotes Reverse Engineering Toolkit** 如何將 Troy Hanson TPL 提取出的控制點與壓感資料，數學化重建為平滑、具備自然寬度變化的向量 SVG Path Ribbon（帶狀路徑），以及處理被橡皮擦局部擦除切開的筆跡（`v9` Native Mesh）。
+本章節詳細說明 **GoodNotes Document Parser** 如何將 Troy Hanson TPL 提取出的控制點與壓感資料，數學化重建為平滑、具備自然寬度變化的向量 SVG Path Ribbon（帶狀路徑），以及處理被橡皮擦局部擦除切開的筆跡（`v9` Native Mesh）。
 
 ---
 
@@ -81,8 +81,8 @@ d.append("Z")
 
 當使用者在 GoodNotes 中使用橡皮擦擦除筆跡的一部分時，GoodNotes 會生成 `v9` 陣列（位於 TPL `values[9]`）。
 
-### `v9` 陣列的逆向工程發現
-經由 `dump_v9_to_svg_html` 視覺化逆向分析發現：`v9` 陣列**並不是外框的連續走訪順序**，而是每 6 個點為一組、代表沿筆劃前進方向橫截面左右兩側的取樣點。在筆跡彎曲劇烈或收尖處，直接用 `L` (Line) 連接會產生鋸齒與自我交叉缺口。
+### `v9` 陣列的格式分析發現
+經由 `dump_v9_to_svg_html` 視覺化格式分析發現：`v9` 陣列**並不是外框的連續走訪順序**，而是每 6 個點為一組、代表沿筆劃前進方向橫截面左右兩側的取樣點。在筆跡彎曲劇烈或收尖處，直接用 `L` (Line) 連接會產生鋸齒與自我交叉缺口。
 
 ### 解法：滑動視窗凸包 (Sliding-Window Convex Hull)
 

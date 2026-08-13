@@ -37,7 +37,7 @@ What actually happened. Include the full error traceback if applicable.
 
 - OS: (e.g. macOS 14, Ubuntu 22.04)
 - Python version: `python --version`
-- Package version: `pip show goodnotes-reverse-engineering-toolkit`
+- Package version: `pip show goodnotes-document-parser`
 
 ## Additional Context
 

@@ -1,6 +1,6 @@
-# GoodNotes Reverse Engineering Toolkit
+# GoodNotes Document Parser
 
-![CI](https://github.com/<your-org>/goodnotes-reverse-engineering-toolkit/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/<your-org>/goodnotes-document-parser/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
@@ -90,7 +90,7 @@ with GoodNotesDocument.open("sample.goodnotes") as doc:
     for frag in fragments:
         print(f"[{frag.source_path}] {frag.format}: {frag.text}")
 
-    # Structural page-element summaries for reverse engineering
+    # Structural page-element summaries for format analysis
     for page in pages:
         for element in page.elements:
             print(element.kind, element.uuid, element.attachment_uuid, element.related_uuids)
@@ -100,7 +100,7 @@ with GoodNotesDocument.open("sample.goodnotes") as doc:
 
 | Document | Description |
 |---|---|
-| [`docs/knowledge-base.md`](docs/knowledge-base.md) | Reverse-engineering findings and field annotations |
+| [`docs/knowledge-base.md`](docs/knowledge-base.md) | Format analysis findings and field annotations |
 | [`docs/corpus-protocol.md`](docs/corpus-protocol.md) | Protocol for adding new wire-format observations |
 | [`docs/cli-zh.md`](docs/cli-zh.md) | Full CLI reference (Traditional Chinese) |
 | [`wiki/`](wiki/) | Deep-dive technical documentation (architecture, formats, rendering) |

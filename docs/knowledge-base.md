@@ -1,4 +1,4 @@
-# Reverse-engineering knowledge base
+# Binary format knowledge base
 
 ## Evidence baseline (2026-08-04)
 
@@ -15,7 +15,7 @@
 | Protobuf trailer following `bv4$` contains RGBA stroke color and opacity. | Direct protobuf wire decoding of bytes after `bv4$` reveals tag `0x22` (field 4) containing nested FIXED32 fields for Red, Green, Blue, Alpha (e.g. `alpha=0.50` for highlighters). |
 | Coordinate space & PDF MediaBox resolution. | GoodNotes stroke coordinates are in 132 DPI space. Scaling by `72.0 / 132.0` aligns strokes with PDF background `/MediaBox` dimensions (A4, Letter, landscape). |
 | Page records also carry non-stroke element metadata. | Teat page 2 contains a record with `field 4` set to attachment UUID `31BE4069-02E5-4C5D-BFF9-2A8DCBC744E9`, which points at the 1.08 MB JPEG attachment in `attachments/31BE4069-02E5-4C5D-BFF9-2A8DCBC744E9`. |
-| Page record summaries are useful for reverse-engineering. | Each decoded page record is now summarized as a typed `PageElement` with `kind`, `type_code`, `attachment_uuid`, related UUIDs, and field numbers while preserving the raw protobuf tree separately. |
+| Page record summaries are useful for format analysis. | Each decoded page record is now summarized as a typed `PageElement` with `kind`, `type_code`, `attachment_uuid`, related UUIDs, and field numbers while preserving the raw protobuf tree separately. |
 | Shape geometry lives in nested protobuf inside `field 9`. | Teat records `7`, `21`, `23`, and `39` contain `field 9` messages with child field `1` or `2`, which then contain repeated submessages of FIXED32 x/y pairs. These decode to explicit line/shape geometry without float scanning. |
 
 ## Interpretation policy

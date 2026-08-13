@@ -478,7 +478,7 @@ def _v9_polygon_to_hull_panels(
 
 
 def dump_v9_to_svg_html(v9_floats: list[float], output_path="v9_debug.html"):
-    """將 v9 原生網格轉換為帶有頂點編號的 SVG，用於肉眼逆向分析"""
+    """將 v9 原生網格轉換為帶有頂點編號的 SVG，用於視覺化格式分析"""
     if not v9_floats:
         return
         
@@ -494,7 +494,7 @@ def dump_v9_to_svg_html(v9_floats: list[float], output_path="v9_debug.html"):
 
     svg = []
     svg.append(f'<html><body style="background-color: #eee;">')
-    svg.append(f'<h2>GoodNotes v9 Mesh Reverse Engineering</h2>')
+    svg.append(f'<h2>GoodNotes v9 Mesh Analysis</h2>')
     # 使用 SVG 繪製，設定 viewBox 自動縮放
     svg.append(f'<svg viewBox="{min_x} {min_y} {width} {height}" style="width: 100%; height: 80vh; background: white; border: 1px solid black;" xmlns="http://www.w3.org/2000/svg">')
     

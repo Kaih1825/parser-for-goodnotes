@@ -93,7 +93,7 @@ wheels = [
 ]
 
 [[package]]
-name = "goodnotes-reverse-engineering-toolkit"
+name = "goodnotes-document-parser"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

@@ -4,7 +4,7 @@
 
 ## Project status
 
-GoodNotes Reverse Engineering Toolkit is an independent, community-developed open-source project. It is **not affiliated with, endorsed by, sponsored by, or officially connected to Goodnotes Limited**.
+GoodNotes Document Parser is an independent, community-developed open-source project. It is **not affiliated with, endorsed by, sponsored by, or officially connected to Goodnotes Limited**.
 
 “Goodnotes” and related names, logos, and marks are the property of their respective owners. They are used only to identify the software and document format this project is intended to work with.
 

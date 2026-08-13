@@ -1,6 +1,6 @@
-# GoodNotes Reverse Engineering Toolkit Wiki
+# GoodNotes Document Format Wiki
 
-歡迎來到 **GoodNotes Reverse Engineering Toolkit** 的官方開發者與逆向工程 Wiki！
+歡迎來到 **GoodNotes Document Parser** 的技術 Wiki！
 
 本 Wiki 旨在提供全面且極度詳細的技術文檔。讀者可透過閱讀本 Wiki，完全理解 `.goodnotes` 檔案的內部二進制結構、Protobuf Wire 格式解碼原理、Apple LZ4 壓縮串流、Troy Hanson TPL 記憶體映像、筆跡動態壓感 ribbon 構建算法、向量圖形與富文本提取、PDF 底圖繪製、幾何座標轉換矩陣、Python API、CLI 工具使用方式、單元測試以及打包發佈流程。
 
@@ -38,7 +38,7 @@
 | **[06-pdf-integration-and-svg-export.md](06-pdf-integration-and-svg-export.md)** | **PDF 底圖與 SVG 向量匯出** | PDF `/MediaBox` 解析、132 DPI 與 72 DPI 坐標轉換矩陣、SVG DOM 圖層堆疊邏輯 |
 | **[07-cli-and-api-guide.md](07-cli-and-api-guide.md)** | **CLI 工具與 Python API 指南** | `gn-inspect`, `gn-dump`, `gn-diff`, `gn-export-json`, `gn-export-svg` 指令與程式庫調用 API |
 | **[08-testing-building-publishing.md](08-testing-building-publishing.md)** | **開發、測試、打包與發佈** | `uv` 環境設置、Pytest 單元測試、受控逆向實驗協議 (Corpus Protocol)、PyPI 發佈流程 |
-| **[09-current-re-findings.md](09-current-re-findings.md)** | **目前逆向工程發現** | GN6 頁面排序、刪除事件、PDF 關聯、Type 35 文字、貼圖背景、圖片 Crop、Sticky Note parent-child 與目前限制 |
+| **[09-current-re-findings.md](09-current-re-findings.md)** | **目前格式分析發現** | GN6 頁面排序、刪除事件、PDF 關聯、Type 35 文字、貼圖背景、圖片 Crop、Sticky Note parent-child 與目前限制 |
 
 ---
 
@@ -79,9 +79,9 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
             print(f"    - Stroke {stroke.uuid}: color={stroke.color_hex}, alpha={stroke.alpha}, points={len(stroke.points)}")
 ```
 
-## 目前逆向工程狀態
+## 目前格式分析狀態
 
-目前專案已實際驗證 GN6 文件的頁面排序、刪除事件、PDF 背景關聯、Type 35 富文本、便條紙與圖片裁切等資料路徑。最新的驗證與已知限制整理於 **[09 - Current Reverse-Engineering Findings](09-current-re-findings.md)**。
+目前專案已實際驗證 GN6 文件的頁面排序、刪除事件、PDF 背景關聯、Type 35 富文本、便條紙與圖片裁切等資料路徑。最新的驗證與已知限制整理於 **[09 - Current Format Analysis Findings](09-current-re-findings.md)**。
 
 > Wiki 描述以目前 source code 為準；尚未被 corpus 驗證的欄位會標示為推測，不視為 GoodNotes 官方格式規格。
 

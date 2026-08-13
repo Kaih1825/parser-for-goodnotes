@@ -1,6 +1,6 @@
-# GoodNotes Reverse Engineering Toolkit — CLI 使用指南
+# GoodNotes Document Parser — CLI 使用指南
 
-`GoodNotes Reverse Engineering Toolkit` 提供了一套完整的命令列工具（CLI），用於檢視、解碼、比對以及匯出 GoodNotes 5 與 GoodNotes 6 的 `.goodnotes` 文件檔案。
+`GoodNotes Document Parser` 提供了一套完整的命令列工具（CLI），用於檢視、解碼、比對以及匯出 GoodNotes 5 與 GoodNotes 6 的 `.goodnotes` 文件檔案。
 
 本工具能直接解碼未公開的 Protobuf wire 格式、解壓縮 Apple LZ4 (bv41) 與 Troy Hanson TPL 筆劃資料，並可將 GoodNotes 筆跡與頁面結構無損轉換為 JSON 或高品質向量 SVG。
 
@@ -54,7 +54,7 @@ pip install -e .
 | 命令 | 說明 | 主要用途 |
 | :--- | :--- | :--- |
 | `gn-inspect` | 列出 `.goodnotes` 壓縮檔內所有成員檔案與 SHA-256 雜湊值 | 快速了解文件結構與內部資源 |
-| `gn-dump` | 無損印出指定 Protobuf 成員的 JSON 解碼樹 | 逆向工程分析特定 `.pb` 檔案 |
+| `gn-dump` | 無損印出指定 Protobuf 成員的 JSON 解碼樹 | 格式分析特定 `.pb` 檔案 |
 | `gn-diff` | 比對兩個 `.goodnotes` 檔案內部成員的增刪與修改狀態 | 分析編輯操作（如新增筆跡、黏貼貼紙）前後的變化 |
 | `gn-export-json` | 匯出整份文件的頁面、筆跡點位、顏色、文字與元資料為單一 JSON | 程式化資料處理或第三方格式轉換 |
 | `gn-export-svg` | 將文件頁面匯出為高品質向量 SVG 圖檔（含 PDF 背景、筆跡、便條紙等） | 視覺化檢視與高品質列印 / 網頁呈現 |

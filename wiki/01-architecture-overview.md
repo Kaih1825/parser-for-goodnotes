@@ -1,6 +1,6 @@
 # 01 - 系統架構與資料流 (Architecture Overview)
 
-本章節介紹 **GoodNotes Reverse Engineering Toolkit** 的整體系統設計、內部模組劃分、數據處理管道 (Data Pipeline)，以及 GoodNotes 5 與 GoodNotes 6 檔案格式的演進關聯。
+本章節介紹 **GoodNotes Document Parser** 的整體系統設計、內部模組劃分、數據處理管道 (Data Pipeline)，以及 GoodNotes 5 與 GoodNotes 6 檔案格式的演進關聯。
 
 ---
 

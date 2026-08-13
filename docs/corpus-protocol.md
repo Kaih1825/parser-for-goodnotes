@@ -1,4 +1,4 @@
-# Controlled reverse-engineering corpus protocol
+# Controlled binary-format corpus protocol
 
 Semantic parsing is accepted only when one controlled operation changes between two
 otherwise identical documents. For every case, retain both the exported `.goodnotes`

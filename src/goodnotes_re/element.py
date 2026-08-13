@@ -1,4 +1,4 @@
-"""Typed page element summaries for reverse-engineering GoodNotes records."""
+"""Typed page element summaries for analyzed GoodNotes document records."""
 from __future__ import annotations
 
 from dataclasses import dataclass

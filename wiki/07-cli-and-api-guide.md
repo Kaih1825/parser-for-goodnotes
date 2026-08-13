@@ -1,6 +1,6 @@
 # 07 - CLI 工具與 Python API 指南 (CLI & API Guide)
 
-本章節提供 **GoodNotes Reverse Engineering Toolkit** 的命令行 CLI 工具說明與 Python API 程式庫調用指南。
+本章節提供 **GoodNotes Document Parser** 的命令行 CLI 工具說明與 Python API 程式庫調用指南。
 
 ---
 
@@ -49,7 +49,7 @@ gn-dump samples/Teat.goodnotes index.notes.pb
 
 ### 1.3 `gn-diff` - 比較兩個 `.goodnotes` 檔案差異
 
-在進行逆向工程控制實驗 (Controlled Experiments) 時，比較兩個僅有一處修改的檔案（如操作前 `before.goodnotes` 與操作後 `after.goodnotes`）。
+在進行格式分析控制實驗 (Controlled Experiments) 時，比較兩個僅有一處修改的檔案（如操作前 `before.goodnotes` 與操作後 `after.goodnotes`）。
 
 ```sh
 gn-diff before.goodnotes after.goodnotes

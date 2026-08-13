@@ -3,13 +3,13 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "goodnotes-reverse-engineering-toolkit"
+name = "goodnotes-document-parser"
 version = "0.1.0"
 description = "A typed, schema-free protobuf inspector and exporter for GoodNotes documents."
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
-authors = [{name = "GoodNotes Reverse Engineering Toolkit contributors"}]
+authors = [{name = "GoodNotes Document Parser contributors"}]
 classifiers = ["Programming Language :: Python :: 3", "Typing :: Typed"]
 dependencies = [
     "PyMuPDF>=1.23.0",
