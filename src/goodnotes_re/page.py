@@ -44,6 +44,7 @@ class Page:
     member_path: str
     dimensions: PageDimensions
     background_attachment_path: str | None = None
+    pdf_page_index: int = 1
     elements: tuple[PageElement, ...] = field(default_factory=tuple)
     shapes: list[ShapePath] = field(default_factory=list)
     strokes: list[Stroke] = field(default_factory=list)
@@ -63,6 +64,7 @@ class Page:
                 "is_landscape": self.dimensions.is_landscape,
             },
             "background_attachment_path": self.background_attachment_path,
+            "pdf_page_index": self.pdf_page_index,
             "element_count": len(self.elements),
             "shape_count": len(self.shapes),
             "stroke_count": len(self.strokes),
@@ -89,6 +91,7 @@ def parse_page_from_records(
     records: Sequence[Message],
     pdf_attachment_bytes: bytes | None = None,
     attachment_path: str | None = None,
+    pdf_page_index: int = 1,
 ) -> Page:
     """Construct a Page instance from note protobuf records and optional background PDF bytes."""
     dimensions = PageDimensions.from_pdf_mediabox(pdf_attachment_bytes) if pdf_attachment_bytes else PageDimensions()
@@ -334,6 +337,7 @@ def parse_page_from_records(
         member_path=member_path,
         dimensions=dimensions,
         background_attachment_path=attachment_path,
+        pdf_page_index=pdf_page_index,
         elements=elements,
         shapes=shapes,
         strokes=strokes,

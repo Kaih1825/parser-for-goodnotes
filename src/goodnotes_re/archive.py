@@ -18,7 +18,8 @@ from .text import TextFragment, extract_text
 # using the UUID minus its trailing version character instead of exact
 # string equality.
 def _uuid_key(u: str) -> str:
-    return u[:-1] if len(u) == 36 else u
+    return u[:32] if len(u) >= 32 else u
+
 
 
 @dataclass(frozen=True)
@@ -336,27 +337,33 @@ class GoodNotesDocument:
 
         # Match page to attachment PDF/image via index.events.pb
         attachment_by_page: dict[str, str] = {}
+        pdf_page_index_by_page: dict[str, int] = {}
         if "index.events.pb" in self.member_names():
             try:
                 template_to_att: dict[str, str] = {}
+                template_to_pdf_page: dict[str, int] = {}
                 page_to_template: dict[str, str] = {}
                 direct_page_to_att: dict[str, str] = {}
 
                 for rec in self.decode_records("index.events.pb"):
-                    # 1. Field 2 (Template node creation): maps tmpl_uuid -> att_uuid
+                    # 1. Field 2 (Template node creation): maps tmpl_uuid -> att_uuid & pdf_page_index
                     f2 = rec.by_number(2)
                     if f2 and isinstance(f2[0].value, bytes):
                         msg = try_decode_message(f2[0].value)
                         if msg:
                             tmpl_uuid = ""
                             att_uuid = ""
+                            pdf_page_idx = 1
                             for mf in msg.fields:
                                 if mf.number == 2 and isinstance(mf.value, bytes):
                                     tmpl_uuid = mf.value.decode("utf-8", errors="ignore")
                                 elif mf.number == 4 and isinstance(mf.value, bytes):
                                     att_uuid = mf.value.decode("utf-8", errors="ignore")
+                                elif mf.number == 5 and isinstance(mf.value, int):
+                                    pdf_page_idx = mf.value
                             if tmpl_uuid and att_uuid:
                                 template_to_att[tmpl_uuid] = att_uuid
+                                template_to_pdf_page[tmpl_uuid] = pdf_page_idx
 
                     # 2. Field 54 (Page node creation): maps page_node_uuid -> tmpl_uuid
                     # Page/template creation has appeared under different event field numbers.
@@ -396,28 +403,31 @@ class GoodNotesDocument:
                     if p_uuid and att_id and att_id in att_map:
                         direct_page_to_att[p_uuid] = att_map[att_id]
 
-                # 【關鍵修正 1】：移出 for rec 迴圈外（減少 1 階縮排）
-                # 【關鍵修正 2】：優先採用 direct_page_to_att (實際 PDF/圖片背景)
                 for p_uuid, member_path in page_entries:
                     matched_path = None
+                    matched_pdf_page = 1
+                    p_key = _uuid_key(p_uuid)
 
                     # 優先尋找直接對應的附件
                     for p_cand, a_path in direct_page_to_att.items():
-                        if p_uuid == p_cand or (len(p_uuid) >= 32 and p_uuid[:32] == p_cand[:32]):
+                        if _uuid_key(p_cand) == p_key:
                             matched_path = a_path
+                            matched_pdf_page = 1
                             break
 
                     # 若沒有直接對應的附件，才回退尋找預設模板
                     if not matched_path:
                         for p_node_uuid, tmpl_uuid in page_to_template.items():
-                            if p_uuid == p_node_uuid or (len(p_uuid) >= 32 and p_uuid[:32] == p_node_uuid[:32]):
+                            if _uuid_key(p_node_uuid) == p_key:
                                 att_uuid = template_to_att.get(tmpl_uuid)
                                 if att_uuid and att_uuid in att_map:
                                     matched_path = att_map[att_uuid]
+                                    matched_pdf_page = template_to_pdf_page.get(tmpl_uuid, 1)
                                     break
 
                     if matched_path:
                         attachment_by_page[p_uuid] = matched_path
+                        pdf_page_index_by_page[p_uuid] = matched_pdf_page
             except (DecodeError, ValueError):
                 pass
         pages_list: list[Page] = []
@@ -428,6 +438,7 @@ class GoodNotesDocument:
                 continue
 
             att_path = attachment_by_page.get(p_uuid)
+            pdf_page_idx = pdf_page_index_by_page.get(p_uuid, 1)
             pdf_bytes = None
             if not att_path:
                 # Find main PDF attachment (prefer larger multi-page PDFs over 1KB templates)
@@ -438,6 +449,7 @@ class GoodNotesDocument:
                 )
                 if pdf_atts:
                     att_path = pdf_atts[min(idx, len(pdf_atts) - 1)]
+                    pdf_page_idx = idx + 1
 
             if att_path and att_path in self.member_names():
                 bdata = self.read(att_path)
@@ -451,6 +463,7 @@ class GoodNotesDocument:
                 records=records,
                 pdf_attachment_bytes=pdf_bytes,
                 attachment_path=att_path,
+                pdf_page_index=pdf_page_idx,
             )
             pages_list.append(page_obj)
 

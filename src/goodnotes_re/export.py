@@ -224,7 +224,7 @@ def write_svg(
                 elif bdata.startswith(b"%PDF"):
                     pdf_svg = render_pdf_page_to_svg(
                         bdata,
-                        page_index=page.index,
+                        page_index=max(0, page.pdf_page_index - 1),
                         width=pw,
                         height=ph,
                         id_prefix=f"background_{page.index}",
