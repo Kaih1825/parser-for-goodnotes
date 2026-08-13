@@ -30,6 +30,7 @@ class ShapePath:
     end_arrow: int | bool = False
     corner_radius: float = 0.0
     is_text_box_background: bool = False
+    parent_uuid: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -53,6 +54,7 @@ class ShapePath:
             "end_arrow": self.end_arrow,
             "corner_radius": self.corner_radius,
             "is_text_box_background": self.is_text_box_background,
+            "parent_uuid": self.parent_uuid,
         }
 
 
@@ -303,7 +305,7 @@ def extract_move_offset_from_message(msg: Message) -> tuple[float, float]:
     return 0.0, 0.0
 
 
-def _parse_type31_shape(record_index: int, msg: Message) -> ShapePath | None:
+def _parse_type31_shape(record_index: int, msg: Message, parent_uuid: str | None = None) -> ShapePath | None:
     uuid = _uuid_from_message(msg)
 
     start_arrow = msg.by_number(30)[0].value if (msg.by_number(30) and isinstance(msg.by_number(30)[0].value, int)) else 0
@@ -379,10 +381,11 @@ def _parse_type31_shape(record_index: int, msg: Message) -> ShapePath | None:
         dash_pattern=dash_pattern,
         start_arrow=start_arrow,
         end_arrow=end_arrow,
+        parent_uuid=parent_uuid,
     )
 
 
-def _parse_type35_shape(record_index: int, msg: Message) -> ShapePath | None:
+def _parse_type35_shape(record_index: int, msg: Message, parent_uuid: str | None = None) -> ShapePath | None:
     """Parse a Type 35 geometric shape payload."""
     uuid = _uuid_from_message(msg)
 
@@ -546,16 +549,17 @@ def _parse_type35_shape(record_index: int, msg: Message) -> ShapePath | None:
         is_filled=is_filled,
         dash_pattern=dash_pattern,
         corner_radius=corner_radius,
+        parent_uuid=parent_uuid,
     )
 
 
-def parse_shape_record(record_index: int, record: Message) -> ShapePath | None:
+def parse_shape_record(record_index: int, record: Message, parent_uuid: str | None = None) -> ShapePath | None:
     """Parse explicit field-9, field-21, or field-22 geometry used by GoodNotes shape/line records."""
     f22 = record.by_number(22)
     if f22 and isinstance(f22[0].value, bytes):
         msg22 = try_decode_message(f22[0].value)
         if msg22 and msg22.by_number(2) and msg22.by_number(2)[0].value == 31:
-            t31 = _parse_type31_shape(record_index, msg22)
+            t31 = _parse_type31_shape(record_index, msg22, parent_uuid=parent_uuid)
             if t31 is not None:
                 return t31
 
@@ -569,7 +573,7 @@ def parse_shape_record(record_index: int, record: Message) -> ShapePath | None:
         if not parse_text_elements([record]):
             msg21 = try_decode_message(f21[0].value)
             if msg21:
-                t35 = _parse_type35_shape(record_index, msg21)
+                t35 = _parse_type35_shape(record_index, msg21, parent_uuid=parent_uuid)
                 if t35 is not None:
                     return t35
 
@@ -585,7 +589,7 @@ def parse_shape_record(record_index: int, record: Message) -> ShapePath | None:
     if f22_outer and isinstance(f22_outer[0].value, bytes):
         msg22 = try_decode_message(f22_outer[0].value)
         if msg22 and msg22.by_number(2) and msg22.by_number(2)[0].value == 31:
-            t31 = _parse_type31_shape(record_index, msg22)
+            t31 = _parse_type31_shape(record_index, msg22, parent_uuid=parent_uuid)
             if t31 is not None:
                 return t31
 
@@ -593,7 +597,7 @@ def parse_shape_record(record_index: int, record: Message) -> ShapePath | None:
     if f21_outer and isinstance(f21_outer[0].value, bytes):
         msg21 = try_decode_message(f21_outer[0].value)
         if msg21:
-            t35 = _parse_type35_shape(record_index, msg21)
+            t35 = _parse_type35_shape(record_index, msg21, parent_uuid=parent_uuid)
             if t35 is not None:
                 return t35
 
@@ -668,5 +672,6 @@ def parse_shape_record(record_index: int, record: Message) -> ShapePath | None:
         rx=geom_data["rx"],
         ry=geom_data["ry"],
         rotation=geom_data["rotation"],
-        is_filled=False
+        is_filled=False,
+        parent_uuid=parent_uuid,
     )

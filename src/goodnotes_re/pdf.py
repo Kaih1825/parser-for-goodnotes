@@ -12,7 +12,7 @@ def render_pdf_page_to_svg(
     id_prefix: str | None = None,
     fragment: bool = False,
 ) -> str | None:
-    """Render a single PDF page to SVG while isolating generated resource IDs."""
+    """Render a single PDF page directly to clean SVG."""
     try:
         import fitz
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -34,9 +34,7 @@ def render_pdf_page_to_svg(
             lines.append(line)
         cleaned = "\n".join(lines).strip()
 
-        # PyMuPDF reuses generic IDs such as ``clip_1`` in every SVG it
-        # generates. SVG IDs are document-global, so embedded PDF SVGs can
-        # otherwise collide and apply the wrong clipping path to later objects.
+        # Isolate SVG element IDs to avoid collisions when embedding multiple pages
         if id_prefix:
             safe_prefix = re.sub(r"[^A-Za-z0-9_.-]", "_", id_prefix)
             declared_ids = set(re.findall(r'\bid=["\']([A-Za-z_][A-Za-z0-9_.:-]*)["\']', cleaned))
@@ -48,17 +46,6 @@ def render_pdf_page_to_svg(
                     cleaned,
                 )
                 cleaned = cleaned.replace(f"#{old}", f"#{new}")
-        
-        # PDF soft masks can use either alpha or luminance semantics. PyMuPDF
-        # emits SVG masks using the SVG default (luminance), which is wrong for
-        # PDF masks declared with ``/S /Alpha``. Preserve the PDF mask semantics
-        # explicitly so opaque black mask paths remain visible.
-        if b"/S /Alpha" in pdf_bytes and "<mask" in cleaned:
-            cleaned = re.sub(
-                r'(<mask\b[^>]*)(>)',
-                r'\1 mask-type="alpha"\2',
-                cleaned,
-            )
 
         if width is not None and height is not None and cleaned.startswith("<svg"):
             end_idx = cleaned.find(">")

@@ -193,7 +193,10 @@ def write_svg(
     output.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
 
-    pages = document.pages(parse_all=parse_all)
+    try:
+        pages = document.pages(parse_all=parse_all)
+    except TypeError:
+        pages = document.pages()
     
     # GoodNotes internal coordinates are 132 DPI, PDF canvas is 72 DPI
     dpi_scale = 72.0 / 132.0
@@ -409,9 +412,26 @@ def write_svg(
             defs_elements.append('</defs>')
             elements.append("".join(defs_elements))
 
+        stroke_uuids = {s.uuid for s in page.strokes if s.uuid}
+
         for shape in page.shapes:
+            if shape.uuid and shape.uuid in stroke_uuids:
+                continue
+
+            if shape.parent_uuid and shape.parent_uuid in sticky_note_map:
+                parent_note = sticky_note_map[shape.parent_uuid]
+                parent_is_open = state_override if state_override is not None else parent_note.is_open
+                if not parent_is_open:
+                    continue
+                pts = tuple((px + parent_note.x, py + parent_note.y) for px, py in shape.points)
+                cx = (shape.cx + parent_note.x) if shape.cx is not None else None
+                cy = (shape.cy + parent_note.y) if shape.cy is not None else None
+            else:
+                pts = shape.points
+                cx = shape.cx
+                cy = shape.cy
+
             is_polyline = 1 in shape.field_numbers or 2 not in shape.field_numbers or shape.shape_type == "polyline"
-            pts = shape.points
             stroke_w = max(0.5, shape.stroke_width * dpi_scale)
 
             dash_pattern = getattr(shape, "dash_pattern", None)
@@ -460,13 +480,13 @@ def write_svg(
             else:
                 join_cap_attr = 'stroke-linecap="round" stroke-linejoin="round"'
 
-            if shape.shape_type == "ellipse" and shape.cx is not None and shape.cy is not None:
-                cx = shape.cx * dpi_scale
-                cy = shape.cy * dpi_scale
+            if shape.shape_type == "ellipse" and cx is not None and cy is not None:
+                ellipse_cx = cx * dpi_scale
+                ellipse_cy = cy * dpi_scale
                 rx = (shape.rx or 0.0) * dpi_scale
                 ry = (shape.ry or 0.0) * dpi_scale
                 elements.append(
-                    f'<ellipse cx="{cx:.2f}" cy="{cy:.2f}" rx="{rx:.2f}" ry="{ry:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} {fill_attr}/>'
+                    f'<ellipse cx="{ellipse_cx:.2f}" cy="{ellipse_cy:.2f}" rx="{rx:.2f}" ry="{ry:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} {fill_attr}/>'
                 )
             elif shape.shape_type == "capsule":
                 left = min(p[0] for p in pts) * dpi_scale
@@ -553,8 +573,7 @@ def write_svg(
         from .stroke import StrokePoint
 
         for stroke in page.strokes:
-            base_uuid = stroke.uuid.split("_")[0] if stroke.uuid else ""
-            if base_uuid in shape_uuids:
+            if stroke.uuid in shape_uuids:
                 continue
 
             pts = stroke.points
@@ -579,7 +598,7 @@ def write_svg(
                 # Single point / Dot
                 pt = pts[0]
                 cx, cy = pt.x * dpi_scale, pt.y * dpi_scale
-                r = max(0.5, (stroke.width * pt.pressure * 0.5) * dpi_scale)
+                r = max(0.12, (stroke.width * pt.pressure * 0.5) * dpi_scale)
                 elements.append(
                     f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r:.2f}" fill="{stroke.color_hex}" fill-opacity="{stroke.alpha:.2f}" stroke="none"/>'
                 )
@@ -713,7 +732,11 @@ def write_svg(
                     )
 
             # Draw text box border matching GoodNotes UI selection bounds
-            if textbox_state:
+            is_tb_open = (
+                textbox_state is True
+                or (isinstance(textbox_state, str) and textbox_state.lower() in ("open", "true", "on", "1"))
+            )
+            if is_tb_open:
                 elements.append(f'<!-- Text Box Border ({html.escape(uuid)}) -->')
                 elements.append(
                     f'<rect x="{box_x:.2f}" y="{fit_by:.2f}" width="{bw:.2f}" height="{fit_bh:.2f}" fill="none" stroke="#38BDF8" stroke-width="0.8"/>'

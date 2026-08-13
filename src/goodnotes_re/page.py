@@ -215,8 +215,26 @@ def parse_page_from_records(
         for frag in extract_text(record, rec_path):
             fragments.append(frag)
 
-        shape = parse_shape_record(r_idx, record)
+        # Extract shape record UUID to query parent_uuid mapping
+        rec_uuid = ""
+        f1_rec = record.by_number(1)
+        if f1_rec and isinstance(f1_rec[0].value, bytes):
+            try:
+                u_cand = f1_rec[0].value.decode("utf-8")
+                if len(u_cand) == 36 and "-" in u_cand:
+                    rec_uuid = u_cand
+            except UnicodeDecodeError:
+                pass
+
+        parent_uuid = uuid_parent.get(rec_uuid) if rec_uuid else None
+        if parent_uuid not in sn_uuids:
+            parent_uuid = None
+        shape = parse_shape_record(r_idx, record, parent_uuid=parent_uuid)
         if shape is not None:
+            if shape.uuid and not parent_uuid:
+                p_cand = uuid_parent.get(shape.uuid)
+                if p_cand in sn_uuids:
+                    shape = replace(shape, parent_uuid=p_cand)
             if shape.uuid:
                 meta = uuid_metadata.get(shape.uuid, {})
                 if meta.get("is_erased"):
@@ -248,8 +266,10 @@ def parse_page_from_records(
 
             shapes.append(shape)
 
-        def process_stroke_bytes(val: bytes):
-            stroke_uuid = f"stroke_{r_idx}"
+        seen_stroke_uuids: set[str] = set()
+
+        def process_stroke_bytes(val: bytes, sub_key: str = ""):
+            stroke_uuid = f"stroke_{r_idx}{sub_key}"
             f1 = record.by_number(1)
             if f1 and isinstance(f1[0].value, bytes):
                 try:
@@ -265,6 +285,10 @@ def parse_page_from_records(
                 except UnicodeDecodeError:
                     pass
 
+            if stroke_uuid in seen_stroke_uuids:
+                return
+            seen_stroke_uuids.add(stroke_uuid)
+
             meta = uuid_metadata.get(stroke_uuid, {})
             if meta.get("is_erased"):
                 return
@@ -278,20 +302,17 @@ def parse_page_from_records(
             except Exception:
                 pass
 
-        for f in record.fields:
+        for fi, f in enumerate(record.fields):
             if isinstance(f.value, bytes) and b"bv41" in f.value:
-                process_stroke_bytes(f.value)
+                process_stroke_bytes(f.value, f"_{fi}")
 
         f7 = record.by_number(7)
         if f7 and isinstance(f7[0].value, bytes) and b"bv41" not in f7[0].value:
-            # Only look one level deeper when the outer per-field scan above
-            # couldn't already see a "bv41" marker directly in field 7's raw
-            # bytes; otherwise this would re-process the same stroke twice.
             sub_msg = try_decode_message(f7[0].value)
             if sub_msg is not None:
-                for sf in sub_msg.fields:
+                for sfi, sf in enumerate(sub_msg.fields):
                     if isinstance(sf.value, bytes) and b"bv41" in sf.value:
-                        process_stroke_bytes(sf.value)
+                        process_stroke_bytes(sf.value, f"_7_{sfi}")
 
     # Map (color_hex, width) -> dash_pattern for brush dash inheritance to shapes
     brush_dash_map = {}

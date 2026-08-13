@@ -145,7 +145,7 @@ def is_valid_coord(val: float) -> bool:
 
 
 def is_valid_pressure(p: float) -> bool:
-    return 0.01 <= p <= 50.0
+    return 0.01 <= p <= 10.0
 
 
 def _path_jitter_ratio(points: Sequence[StrokePoint]) -> float:
@@ -189,18 +189,23 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
     groups: list[list[StrokePoint]] = []
     default_width = 1.0
 
+    # default_width 只從頂層純 int 值解讀。
+    # 注意：vA(v)A(u)A(u)... 格式（GN6 新格式）的 values 全為座標陣列，
+    # 其中 list[1] 是 y 座標，不能當 width 使用。
+    # vuA(v)A(S(uu))A(S(uuuu))vA(f) 格式才有 values[1] = width float。
+    _width_from_list = "A(S(" in fmt  # 舊版 schema 才在 list[1] 存 width
     for val in tpl_img.values:
         if isinstance(val, int):
             w = uint32_to_float32(val)
             if 0.05 <= w <= 100.0:
                 default_width = w
                 break
-        elif isinstance(val, list) and len(val) > 1 and isinstance(val[1], int):
+        elif _width_from_list and isinstance(val, list) and len(val) > 1 and isinstance(val[1], int):
             w = uint32_to_float32(val[1])
             if 0.05 <= w <= 100.0:
                 default_width = w
                 break
-            
+
     default_radius = default_width / 2.0
     candidates: list[tuple[bool, int, int, list[StrokePoint]]] = []
 
@@ -353,9 +358,9 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
             if ok and len(parsed) >= 1:
                 candidates.append((True, len(parsed), idx, parsed))
 
-    # (d) 2-float 二元組 (x, y)
+    # (d) 2-float 二元組 (x, y) - 限制 idx <= 5 避免將 metadata list (values[8]) 誤判為點陣
     for idx, v in enumerate(tpl_img.values):
-        if isinstance(v, list) and len(v) >= 4 and isinstance(v[0], (int, float)) and len(v) % 2 == 0:
+        if idx <= 5 and isinstance(v, list) and len(v) >= 2 and isinstance(v[0], (int, float)) and len(v) % 2 == 0:
             parsed = []
             ok = True
             for k in range(0, len(v), 2):
@@ -367,6 +372,27 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
                     parsed.append(StrokePoint(x, y, default_radius))
             if ok and len(parsed) >= 1:
                 candidates.append((False, len(parsed), idx, parsed))
+
+    # (e) 4-tuple 陣列 (x1, y1, x2, y2) -> 專用於鉛筆筆劃 (Pencil Strokes) 複合格式
+    if "A(S(uuuuuuuuuuu" in fmt:
+        for idx, v in enumerate(tpl_img.values):
+            if idx >= 6 and isinstance(v, list) and len(v) >= 1 and isinstance(v[0], tuple) and len(v[0]) == 4:
+                parsed = []
+                ok = True
+                for t in v:
+                    if not isinstance(t, tuple) or len(t) < 4:
+                        ok = False
+                        break
+                    x1, y1 = uint32_to_float32(t[0]), uint32_to_float32(t[1])
+                    x2, y2 = uint32_to_float32(t[2]), uint32_to_float32(t[3])
+                    if not (is_valid_coord(x1) and is_valid_coord(y1) and is_valid_coord(x2) and is_valid_coord(y2)):
+                        ok = False
+                        break
+                    cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+                    if not parsed or math.hypot(cx - parsed[-1].x, cy - parsed[-1].y) >= 1e-3:
+                        parsed.append(StrokePoint(cx, cy, default_radius))
+                if ok and len(parsed) >= 1:
+                    candidates.append((False, len(parsed), idx, parsed))
 
     if candidates:
         # 過濾包含 2 個點以上的筆劃，秒殺 1 個點的 Metadata 雜訊
@@ -719,11 +745,19 @@ def build_stroke_ribbon(
     r1 = max(0.1, raw_pts[-1][2])
     reversed_left = list(reversed(left_side))
 
-    # 強制圓角收頭，徹底解決左側未被擦除筆跡的鋸齒問題
     d = [f"M {left_side[0][0]:.2f} {left_side[0][1]:.2f}"]
-    d.append(f"A {r0:.2f} {r0:.2f} 0 0 1 {right_side[0][0]:.2f} {right_side[0][1]:.2f}")
+    if is_cut_start:
+        d.append(f"L {right_side[0][0]:.2f} {right_side[0][1]:.2f}")
+    else:
+        d.append(f"A {r0:.2f} {r0:.2f} 0 0 1 {right_side[0][0]:.2f} {right_side[0][1]:.2f}")
+
     d.extend(smooth_commands(right_side))
-    d.append(f"A {r1:.2f} {r1:.2f} 0 0 1 {left_side[-1][0]:.2f} {left_side[-1][1]:.2f}")
+
+    if is_cut_end:
+        d.append(f"L {left_side[-1][0]:.2f} {left_side[-1][1]:.2f}")
+    else:
+        d.append(f"A {r1:.2f} {r1:.2f} 0 0 1 {left_side[-1][0]:.2f} {left_side[-1][1]:.2f}")
+
     d.extend(smooth_commands(reversed_left))
     d.append("Z")
     return " ".join(d)
@@ -780,19 +814,6 @@ def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = N
         is_cut_start = (chain_i > 0)
         is_cut_end = (chain_i < num_chains - 1)
         dash_pattern = None
-        if not is_highlighter and len(chain) >= 2 and default_width > 3.0:
-            pressures = [p.pressure for p in chain]
-            p_var = max(pressures) - min(pressures)
-            if p_var < 1e-4:
-                dists = [math.hypot(chain[j+1].x - chain[j].x, chain[j+1].y - chain[j].y) for j in range(len(chain)-1)]
-                tot_len = sum(dists)
-                if len(dists) > 0 and tot_len > 0:
-                    avg_d = tot_len / len(dists)
-                    ratio = avg_d / default_width
-                    if ratio < 0.17:
-                        dash_pattern = (0.0, 3.0)
-                    elif 0.17 <= ratio < 0.3:
-                        dash_pattern = (10.0, 6.0)
 
         strokes.append(
             Stroke(
