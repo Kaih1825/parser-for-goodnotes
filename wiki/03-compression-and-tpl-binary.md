@@ -33,7 +33,7 @@ Within the Protobuf Record fields, any byte slice representing stroke data is wr
 
 ## 2. Pure-Python LZ4 Decompression Algorithm (`compression.py`)
 
-To maintain zero external C library dependencies, [`src/goodnotes_parser/compression.py`](../src/goodnotes_parser/compression.py) implements a complete LZ4 decompressor. During decompression, it maintains a 64KB (65,536 Bytes) history sliding window:
+To maintain zero external C library dependencies, [`src/goodnotes_re/compression.py`](../src/goodnotes_re/compression.py) implements a complete LZ4 decompressor. During decompression, it maintains a 64KB (65,536 Bytes) history sliding window:
 
 ### LZ4 Token Decoding Logic
 
@@ -94,7 +94,7 @@ When decompressed from Apple LZ4, the resulting raw byte stream always starts wi
 
 ## 4. TPL Format String Syntax and Point Array Parsing
 
-In [`src/goodnotes_parser/tpl.py`](../src/goodnotes_parser/tpl.py), `decode_tpl()` first parses the Format String to build a syntax tree (Format Tree), and then reads the binary data based on the structure.
+In [`src/goodnotes_re/tpl.py`](../src/goodnotes_re/tpl.py), `decode_tpl()` first parses the Format String to build a syntax tree (Format Tree), and then reads the binary data based on the structure.
 
 ### TPL Format Character Mapping Table
 
@@ -132,7 +132,7 @@ GoodNotes uses different TPL descriptors across various versions and pen tools (
 
 When `decode_apple_lz4()` reads the `bv4$` end marker at `position`, the remaining bytes in `field_data[position:]` **are not discarded data**, but rather a standard Protobuf Message (referred to as the Trailer).
 
-In [`src/goodnotes_parser/stroke.py`](../src/goodnotes_parser/stroke.py), the real color and transformation matrix of the stroke are extracted by decoding the Trailer:
+In [`src/goodnotes_re/stroke.py`](../src/goodnotes_re/stroke.py), the real color and transformation matrix of the stroke are extracted by decoding the Trailer:
 
 ```
 [Apple LZ4 Stream ("bv41" ... "bv4$")] [Protobuf Trailer Bytes]
@@ -215,7 +215,7 @@ In the next chapter, **[04 - Stroke Geometry and Vector Ribbon Rendering](04-str
 
 ## 2. Pure-Python LZ4 解壓縮演算法 (`compression.py`)
 
-為了保持零外部 C 程式庫依賴，[`src/goodnotes_parser/compression.py`](../src/goodnotes_parser/compression.py) 實現了完整的 LZ4 解壓器。解壓時維護 64KB (65,536 Bytes) 的歷史滑動視窗 (History Window)：
+為了保持零外部 C 程式庫依賴，[`src/goodnotes_re/compression.py`](../src/goodnotes_re/compression.py) 實現了完整的 LZ4 解壓器。解壓時維護 64KB (65,536 Bytes) 的歷史滑動視窗 (History Window)：
 
 ### LZ4 Token 解碼邏輯
 
@@ -276,7 +276,7 @@ def decode_apple_lz4(data: bytes) -> tuple[bytes, int]:
 
 ## 4. TPL Format String 語法與點陣型別解析
 
-在 [`src/goodnotes_parser/tpl.py`](../src/goodnotes_parser/tpl.py) 中，`decode_tpl()` 會先解析 Format String，構建出語法樹 (Format Tree)，再根據結構讀取二進制數據。
+在 [`src/goodnotes_re/tpl.py`](../src/goodnotes_re/tpl.py) 中，`decode_tpl()` 會先解析 Format String，構建出語法樹 (Format Tree)，再根據結構讀取二進制數據。
 
 ### TPL Format 字元對照表
 
@@ -314,7 +314,7 @@ def decode_apple_lz4(data: bytes) -> tuple[bytes, int]:
 
 當 `decode_apple_lz4()` 在 `position` 處讀到 `bv4$` 結尾標記時，`field_data[position:]` 剩餘的位元組**並非廢棄數據**，而是標準的 Protobuf Message (稱為 Trailer)。
 
-在 [`src/goodnotes_parser/stroke.py`](../src/goodnotes_parser/stroke.py) 中，透過解碼 Trailer 提取出筆跡的真實顏色與移動矩陣：
+在 [`src/goodnotes_re/stroke.py`](../src/goodnotes_re/stroke.py) 中，透過解碼 Trailer 提取出筆跡的真實顏色與移動矩陣：
 
 ```
 [Apple LZ4 Stream ("bv41" ... "bv4$")] [Protobuf Trailer Bytes]

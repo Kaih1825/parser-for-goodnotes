@@ -9,7 +9,7 @@ Thank you for your interest in contributing! This project is built on careful, e
 ## Principles
 
 - **Never replace a parser discovery with an unverified theory.** Every field interpretation must be backed by observable wire data.
-- **Add new observations to `docs/knowledge-base.md`**, citing the sample archive member path and the specific protobuf field numbers.
+- **Add new observations to `wiki/09-current-re-findings.md`**, citing the sample archive member path and the specific protobuf field numbers.
 - **Add a test** capturing the raw wire structure of any new finding.
 - **Keep schema interpretation separate from lossless wire decoding** so unknown fields remain accessible to future analysis.
 - **No float-byte scanning.** All numerical values must arise from a protobuf `fixed32`/`fixed64` field decoded according to its wire type.
@@ -41,7 +41,7 @@ uv run mypy src/goodnotes_re
 
 1. **Fork** the repository and create a feature branch: `git checkout -b feat/my-finding`
 2. Make your changes in `src/goodnotes_re/` and add or update tests in `tests/`.
-3. If you discovered a new wire-format field, document it in `docs/knowledge-base.md`.
+3. If you discovered a new wire-format field, document it in `wiki/09-current-re-findings.md`.
 4. If you changed parsing behavior against an existing sample, run `gn-diff old.goodnotes new.goodnotes` and include the JSON diff summary or a concise description in your PR description.
 5. Ensure tests pass: `uv run pytest`
 6. Ensure type checks pass: `uv run mypy src/goodnotes_re`
@@ -77,7 +77,7 @@ Use the GitHub Issue templates:
 ## 原則
 
 - **不要以未驗證的理論取代解析器發現。** 每個欄位解讀都必須有可觀察的 wire data 支持。
-- **將新觀察結果加入 `docs/knowledge-base.md`**，並標註樣本封存成員路徑與具體 protobuf 欄位編號。
+- **將新觀察結果加入 `wiki/09-current-re-findings.md`**，並標註樣本封存成員路徑與具體 protobuf 欄位編號。
 - **為新的發現新增測試**，記錄原始 wire 結構。
 - **將 schema 解讀與無損 wire decoding 分離**，讓未知欄位仍可供後續分析使用。
 - **不得進行浮點位元組掃描。** 所有數值都必須來自依照 wire type 解碼的 protobuf `fixed32`／`fixed64` 欄位。
@@ -98,7 +98,7 @@ uv run mypy src/goodnotes_re
 
 1. Fork 儲存庫並建立功能分支：`git checkout -b feat/my-finding`
 2. 在 `src/goodnotes_re/` 修改程式，並在 `tests/` 新增或更新測試。
-3. 如果發現新的 wire-format 欄位，請記錄在 `docs/knowledge-base.md`。
+3. 如果發現新的 wire-format 欄位，請記錄在 `wiki/09-current-re-findings.md`。
 4. 如果針對既有樣本改變解析行為，執行 `gn-diff old.goodnotes new.goodnotes`，並在 PR 描述中提供 JSON 差異摘要或簡潔說明。
 5. 確認測試通過：`uv run pytest`
 6. 確認型別檢查通過：`uv run mypy src/goodnotes_re`

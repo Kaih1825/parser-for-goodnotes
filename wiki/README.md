@@ -70,7 +70,7 @@ When analyzing the extracted binary files of `.goodnotes`, you will often encoun
 ## Quick Usage Example
 
 ```python
-from goodnotes_parser import GoodNotesDocument
+from goodnotes_re import GoodNotesDocument
 
 # Open .goodnotes file
 with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
@@ -164,7 +164,7 @@ The project has currently practically verified data paths such as GN6 file page 
 ## 快速調用範例
 
 ```python
-from goodnotes_parser import GoodNotesDocument
+from goodnotes_re import GoodNotesDocument
 
 # 開啟 .goodnotes 文件
 with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:

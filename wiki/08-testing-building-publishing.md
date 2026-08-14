@@ -65,7 +65,7 @@ The tests cover a full suite of 10 core testing modules:
 ### Running Mypy Static Type Checking
 
 ```sh
-uv run mypy src/goodnotes_parser
+uv run mypy src/goodnotes_re
 ```
 
 ---
@@ -131,11 +131,11 @@ dependencies = [
 ]
 
 [project.scripts]
-gn-inspect = "goodnotes_parser.cli:inspect_main"
-gn-dump = "goodnotes_parser.cli:dump_main"
-gn-diff = "goodnotes_parser.cli:diff_main"
-gn-export-json = "goodnotes_parser.cli:export_json_main"
-gn-export-svg = "goodnotes_parser.cli:export_svg_main"
+gn-inspect = "goodnotes_re.cli:inspect_main"
+gn-dump = "goodnotes_re.cli:dump_main"
+gn-diff = "goodnotes_re.cli:diff_main"
+gn-export-json = "goodnotes_re.cli:export_json_main"
+gn-export-svg = "goodnotes_re.cli:export_svg_main"
 ```
 
 ### Build Artifacts
@@ -259,7 +259,7 @@ pytest -v
 ### 執行 Mypy 靜態型別檢查
 
 ```sh
-uv run mypy src/goodnotes_parser
+uv run mypy src/goodnotes_re
 ```
 
 ---
@@ -325,11 +325,11 @@ dependencies = [
 ]
 
 [project.scripts]
-gn-inspect = "goodnotes_parser.cli:inspect_main"
-gn-dump = "goodnotes_parser.cli:dump_main"
-gn-diff = "goodnotes_parser.cli:diff_main"
-gn-export-json = "goodnotes_parser.cli:export_json_main"
-gn-export-svg = "goodnotes_parser.cli:export_svg_main"
+gn-inspect = "goodnotes_re.cli:inspect_main"
+gn-dump = "goodnotes_re.cli:dump_main"
+gn-diff = "goodnotes_re.cli:diff_main"
+gn-export-json = "goodnotes_re.cli:export_json_main"
+gn-export-svg = "goodnotes_re.cli:export_svg_main"
 ```
 
 ### 建置構建包 (Build Artifacts)
