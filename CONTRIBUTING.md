@@ -20,8 +20,8 @@ Thank you for your interest in contributing! This project is built on careful, e
 
 ```sh
 # Clone the repository
-git clone https://github.com/<your-org>/goodnotes-document-parser.git
-cd goodnotes-document-parser
+git clone https://github.com/Kaih1825/document-parser-for-goodnotes.git
+cd document-parser-for-goodnotes
 
 # Install dependencies with uv (recommended)
 uv sync
@@ -85,8 +85,8 @@ Use the GitHub Issue templates:
 ## 開發環境
 
 ```sh
-git clone https://github.com/<your-org>/goodnotes-document-parser.git
-cd goodnotes-document-parser
+git clone https://github.com/Kaih1825/document-parser-for-goodnotes.git
+cd document-parser-for-goodnotes
 uv sync
 uv run pytest
 uv run mypy src/goodnotes_re

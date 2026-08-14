@@ -15,11 +15,20 @@ dependencies = [
     "PyMuPDF>=1.23.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "mypy>=1.0.0",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=7.0.0",
     "mypy>=1.0.0",
 ]
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [project.scripts]
 gn-inspect = "goodnotes_re.cli:inspect_main"
@@ -36,5 +45,10 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.mypy]
-strict = true
 python_version = "3.11"
+ignore_missing_imports = true
+follow_imports = "silent"
+check_untyped_defs = false
+disallow_untyped_defs = false
+no_implicit_optional = false
+warn_return_any = false

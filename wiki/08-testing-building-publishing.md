@@ -16,8 +16,8 @@ The project recommends using the modern Python package manager [`uv`](https://gi
 
 ```sh
 # 1. Clone the repository
-git clone https://github.com/your-org/goodnotes-document-parser.git
-cd goodnotes-document-parser
+git clone https://github.com/Kaih1825/document-parser-for-goodnotes.git
+cd document-parser-for-goodnotes
 
 # 2. Automatically create virtual environment and install all dependencies (including PyMuPDF, pytest, mypy)
 uv sync
@@ -210,8 +210,8 @@ Congratulations, you have completed reading the comprehensive Wiki for the **Doc
 
 ```sh
 # 1. 複製專案庫
-git clone https://github.com/your-org/goodnotes-document-parser.git
-cd goodnotes-document-parser
+git clone https://github.com/Kaih1825/document-parser-for-goodnotes.git
+cd document-parser-for-goodnotes
 
 # 2. 自動建立虛擬環境並安裝所有依賴 (包含 PyMuPDF, pytest, mypy)
 uv sync

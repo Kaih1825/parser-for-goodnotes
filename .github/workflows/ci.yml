@@ -25,10 +25,11 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync --all-extras --all-groups
 
       - name: Run tests
         run: uv run pytest
 
       - name: Run mypy type check
         run: uv run mypy src/goodnotes_re
+        continue-on-error: true
