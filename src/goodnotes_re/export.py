@@ -334,7 +334,7 @@ def write_svg(
             elif st_lower in ("close", "closed"):
                 state_override = False
 
-        # Render sticky notes (便條紙) cards and icons
+        # Render sticky notes cards and icons
         sticky_note_map = {note.uuid: note for note in page.sticky_notes}
         for note in page.sticky_notes:
             is_open = state_override if state_override is not None else note.is_open

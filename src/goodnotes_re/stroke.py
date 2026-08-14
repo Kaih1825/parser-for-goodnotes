@@ -189,11 +189,11 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
     groups: list[list[StrokePoint]] = []
     default_width = 1.0
 
-    # default_width 只從頂層純 int 值解讀。
-    # 注意：vA(v)A(u)A(u)... 格式（GN6 新格式）的 values 全為座標陣列，
-    # 其中 list[1] 是 y 座標，不能當 width 使用。
-    # vuA(v)A(S(uu))A(S(uuuu))vA(f) 格式才有 values[1] = width float。
-    _width_from_list = "A(S(" in fmt  # 舊版 schema 才在 list[1] 存 width
+    # default_width is only interpreted from top-level integer values.
+    # Note: vA(v)A(u)A(u)... format (GN6 new format) values are all coordinate arrays,
+    # where list[1] is the y-coordinate and cannot be used as width.
+    # vuA(v)A(S(uu))A(S(uuuu))vA(f) format has values[1] = width float.
+    _width_from_list = "A(S(" in fmt  # Only legacy schemas store width in list[1]
     for val in tpl_img.values:
         if isinstance(val, int):
             w = uint32_to_float32(val)
@@ -209,26 +209,26 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
     default_radius = default_width / 2.0
     candidates: list[tuple[bool, int, int, list[StrokePoint]]] = []
 
-    # 1. Schema 1: vuA(v)A(S(uu))A(S(uuuu))vA(f) (四元組 (x1, y1, x2, y2))
-    # 嚴格匹配 Schema 1 標籤，防止其他格式被誤攔截
+    # 1. Schema 1: vuA(v)A(S(uu))A(S(uuuu))vA(f) (4-tuple (x1, y1, x2, y2))
+    # Strictly match Schema 1 tag to prevent intercepting other formats by mistake.
     #
-    # 修復重點：這裡原本只用 "A(S(uuuu))" in fmt 判斷，但這是「不管位置」的
-    # 子字串搜尋。鉛筆的複合格式 (vuA(v)A(S(uuuuu))A(S(uuuuuuuuuuu))...
-    # ...A(S(uuuu))A(u)) 剛好在字串「後段」也含有一模一樣的 "A(S(uuuu))"
-    # token（對應到 values[8]），導致這個分支被錯誤觸發，卻仍然寫死去讀
-    # values[4]——而 values[4] 在這個格式裡實際上是 Schema 2 的 11 元組
-    # 陣列 (A(S(uuuuuuuuuuu)))，不是四元組。四元組的欄位被硬解成 x1,y1,x2,y2，
-    # 壓力則整段被 default_radius 蓋掉，這正是鋸齒筆跡與壓力/寬度錯誤的根因。
+    # Fix note: Previously only "A(S(uuuu))" in fmt was checked, but that was a position-agnostic
+    # substring search. The compound pencil format (vuA(v)A(S(uuuuu))A(S(uuuuuuuuuuu))...
+    # ...A(S(uuuu))A(u)) happened to contain the exact same "A(S(uuuu))" token in its trailing
+    # section (corresponding to values[8]), incorrectly triggering this branch while still hardcoding
+    # reading of values[4] — which in that format is actually Schema 2's 11-tuple
+    # array (A(S(uuuuuuuuuuu))), not a 4-tuple. The 4-tuple fields were misparsed as x1,y1,x2,y2,
+    # and pressure was overwritten by default_radius, causing jagged strokes and incorrect pressure/width.
     #
-    # 加回 "A(S(uuuuuuuuuuu" not in fmt 排除條件，讓含有 11 元組的複合格式
-    # 改為落入下面正確的 Schema 2 分支處理。
+    # Re-adding "A(S(uuuuuuuuuuu" not in fmt exclusion allows compound formats containing 11-tuples
+    # to fall into the correct Schema 2 branch below.
     if "A(S(uuuu))" in fmt and "A(S(uuuuuuuuuuu" not in fmt:
         if len(tpl_img.values) > 4 and isinstance(tpl_img.values[4], list) and len(tpl_img.values[4]) > 0:
             vis_flags = (tpl_img.values[2]
                          if len(tpl_img.values) > 2 and isinstance(tpl_img.values[2], list)
                          else [])
 
-            # 嚴格驗證 vis_flags 是否為合法的抬筆/落筆標記（應全為 0 或 1）
+            # Strictly validate whether vis_flags is valid pen up/down flags (should be all 0 or 1)
             is_valid_vis = isinstance(vis_flags, list) and all(isinstance(x, int) and x in (0, 1) for x in vis_flags)
 
             g: list[StrokePoint] = []
@@ -246,7 +246,7 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
                 seg_idx += 1
                 if not (isinstance(quad, (tuple, list)) and len(quad) >= 4):
                     continue
-                # 只有在 vis_flags 合法且值為 0 時才進行切斷
+                # Only cut when vis_flags is valid and its value is 0
                 if is_valid_vis and seg_idx < len(vis_flags) and vis_flags[seg_idx] == 0 and g:
                     if len(g) >= 1:
                         groups.append(g)
@@ -263,7 +263,7 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
             if g:
                 groups.append(g)
 
-            # 確保提取出的點群組包含 2 個點以上才返回，否則退回 candidates 解析
+            # Ensure extracted point groups contain at least 2 points before returning, otherwise fall back to candidates parsing
             valid_groups = [gr for gr in groups if len(gr) >= 2]
             if valid_groups:
                 return valid_groups, default_width
@@ -280,7 +280,7 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
                 groups.append(g)
                 return groups, default_width
 
-    # 2. Schema 2: vuA(v)A(S(uuuuu))A(S(uuuuuuuuuuu))... (11 元組)
+    # 2. Schema 2: vuA(v)A(S(uuuuu))A(S(uuuuuuuuuuu))... (11-tuple)
     if "A(S(uuuuuuuuuuu" in fmt:
         if len(tpl_img.values) > 4 and isinstance(tpl_img.values[4], list) and len(tpl_img.values[4]) > 0:
             g = []
@@ -308,8 +308,8 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
                 groups.append(g)
                 return groups, default_width
 
-    # 3. 候選點陣格式比對 (a) 6-float, (b) 3-float, (c) 5-float, (d) 2-float
-    # (a) 6-float 六元组 -> 取左右邊界點之中點作為筆劃中心座標（解決彈簧鋸齒）
+    # 3. Candidate point-array format matching (a) 6-float, (b) 3-float, (c) 5-float, (d) 2-float
+    # (a) 6-float -> Take the midpoint of left/right boundary points as stroke center coordinate (resolves spring jitter)
     for idx, v in enumerate(tpl_img.values):
         if isinstance(v, list) and len(v) >= 12 and isinstance(v[0], (int, float)) and len(v) % 6 == 0:
             parsed: list[StrokePoint] = []
@@ -330,7 +330,7 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
             if ok and len(parsed) >= 1:
                 candidates.append((True, len(parsed), idx, parsed))
 
-    # (b) 3-float 三元組 (x, y, p)
+    # (b) 3-float 3-tuple (x, y, p)
     for idx, v in enumerate(tpl_img.values):
         if isinstance(v, list) and len(v) >= 3 and isinstance(v[0], (int, float)) and len(v) % 3 == 0:
             parsed = []
@@ -344,7 +344,7 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
             if ok and len(parsed) >= 1:
                 candidates.append((True, len(parsed), idx, parsed))
 
-    # (c) 5-float 五元組 (x, y, p, w, angle)
+    # (c) 5-float 5-tuple (x, y, p, w, angle)
     for idx, v in enumerate(tpl_img.values):
         if isinstance(v, list) and len(v) >= 5 and isinstance(v[0], (int, float)) and len(v) % 5 == 0:
             parsed = []
@@ -358,7 +358,7 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
             if ok and len(parsed) >= 1:
                 candidates.append((True, len(parsed), idx, parsed))
 
-    # (d) 2-float 二元組 (x, y) - 限制 idx <= 5 避免將 metadata list (values[8]) 誤判為點陣
+    # (d) 2-float 2-tuple (x, y) - limit idx <= 5 to avoid misidentifying metadata list (values[8]) as point array
     for idx, v in enumerate(tpl_img.values):
         if idx <= 5 and isinstance(v, list) and len(v) >= 2 and isinstance(v[0], (int, float)) and len(v) % 2 == 0:
             parsed = []
@@ -373,7 +373,7 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
             if ok and len(parsed) >= 1:
                 candidates.append((False, len(parsed), idx, parsed))
 
-    # (e) 4-tuple 陣列 (x1, y1, x2, y2) -> 專用於鉛筆筆劃 (Pencil Strokes) 複合格式
+    # (e) 4-tuple array (x1, y1, x2, y2) -> specifically for Pencil Strokes compound format
     if "A(S(uuuuuuuuuuu" in fmt:
         for idx, v in enumerate(tpl_img.values):
             if idx >= 6 and isinstance(v, list) and len(v) >= 1 and isinstance(v[0], tuple) and len(v[0]) == 4:
@@ -395,14 +395,14 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
                     candidates.append((False, len(parsed), idx, parsed))
 
     if candidates:
-        # 過濾包含 2 個點以上的筆劃，秒殺 1 個點的 Metadata 雜訊
+        # Filter strokes with 2 or more points to eliminate 1-point metadata noise
         multi_point = [c for c in candidates if c[1] >= 2]
         pool = multi_point if multi_point else candidates
         
-        # 排序優先順序：
-        # 1. -int(has_p)：優先選用動態壓感 (讓 shape2 恢復動態粗細)
-        # 2. _path_jitter_ratio：滑順度
-        # 3. -length：點數長度
+        # Priority order for sorting:
+        # 1. -int(has_p): Prefer dynamic pressure sensitivity (restores dynamic thickness for shape2)
+        # 2. _path_jitter_ratio: Smoothness
+        # 3. -length: Point count length
         scored = [(-int(has_p), _path_jitter_ratio(pts), -length, idx, pts) for has_p, length, idx, pts in pool]
         scored.sort()
         
@@ -484,7 +484,7 @@ def dump_v9_to_svg_html(v9_floats: list[float], output_path="v9_debug.html"):
         
     pts = [(v9_floats[i], v9_floats[i+1]) for i in range(0, len(v9_floats), 2)]
     
-    # 計算畫布範圍，留一點邊距
+    # Calculate canvas bounds with padding
     min_x = min(p[0] for p in pts) - 10
     max_x = max(p[0] for p in pts) + 10
     min_y = min(p[1] for p in pts) - 10
@@ -495,17 +495,17 @@ def dump_v9_to_svg_html(v9_floats: list[float], output_path="v9_debug.html"):
     svg = []
     svg.append(f'<html><body style="background-color: #eee;">')
     svg.append(f'<h2>GoodNotes v9 Mesh Analysis</h2>')
-    # 使用 SVG 繪製，設定 viewBox 自動縮放
+    # Render using SVG with automatic viewBox scaling
     svg.append(f'<svg viewBox="{min_x} {min_y} {width} {height}" style="width: 100%; height: 80vh; background: white; border: 1px solid black;" xmlns="http://www.w3.org/2000/svg">')
     
-    # 1. 畫出原始陣列的連線順序 (淺藍色細線)，這會呈現我們之前失敗的 Z 字型連線
+    # 1. Draw raw array connection order (light blue thin line), showing Z-shaped connections
     path_d = "M " + " L ".join(f"{p[0]:.2f},{p[1]:.2f}" for p in pts)
     svg.append(f'<path d="{path_d}" fill="none" stroke="lightblue" stroke-width="0.3"/>')
 
-    # 2. 畫出每一個點，並標上陣列的 Index (紅色點，黑色字)
+    # 2. Draw each point and label with array index (red points, black text)
     for i, p in enumerate(pts):
         svg.append(f'<circle cx="{p[0]:.2f}" cy="{p[1]:.2f}" r="0.2" fill="red" />')
-        # 字體大小設為 0.6，並在點的右下角稍微偏移，避免重疊
+        # Set font size to 0.6 and offset slightly to bottom-right of points to prevent overlap
         svg.append(f'<text x="{p[0]+0.2:.2f}" y="{p[1]+0.2:.2f}" font-size="0.6" fill="black" font-family="sans-serif">{i}</text>')
 
     svg.append('</svg></body></html>')
@@ -533,7 +533,7 @@ def extract_outline_polygons_from_tpl(tpl_img: TplImage) -> list[list[tuple[floa
     polys: list[list[tuple[float, float]]] = []
     curr = [pts[0]]
     
-    # 恢復最初最完美的 v9 提取邏輯：依賴 20.0 作為不同區塊間的安全斷點
+    # Restore original v9 extraction logic: rely on 20.0 as safe breakpoint between blocks
     for i in range(1, len(pts)):
         d = math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])
         if d > 20.0:
@@ -593,13 +593,14 @@ def build_stroke_ribbon(
 ) -> str | None:
     """Generate SVG path d attribute for a variable-width stroke ribbon or native outline mesh."""
 
-    # 1. 處理 GoodNotes 原生 v9 網格 (被橡皮擦切過的筆跡，保持原本的平頭銳利邊緣)
+    # 1. Handle GoodNotes native v9 mesh (erased strokes, keeping original sharp flat edges)
     #
-    # v9 陣列不是外框走訪順序，直接依序用 L 直線連接會在筆劃彎曲/收尖處
-    # 自我交叉，填色時出現鋸齒缺口。改用滑動視窗凸包 (_v9_polygon_to_hull_panels)
-    # 重建：每個視窗內的點取凸包、視窗間刻意重疊，各自成獨立子路徑再
-    # 聯集，完全不需要判斷點屬於左邊還是右邊，對彎曲/收尖/密度不均都
-    # 一樣穩定，同時視窗夠小不會磨圓橡皮擦切出的平頭銳角邊緣。
+    # v9 array is not outline traversal order; connecting points sequentially with L lines causes
+    # self-intersections at curves/tapers, leading to jagged gaps when filled. Reconstructed
+    # using sliding window convex hulls (_v9_polygon_to_hull_panels): points in each window
+    # form a convex hull with intentional overlap between windows, forming independent subpaths.
+    # No need to determine left/right sides, remaining stable for curves/tapers/uneven density,
+    # while small windows prevent rounding off sharp erased edges.
     if outline_polygons:
         def _proj(pt: tuple[float, float]) -> tuple[float, float]:
             x = pt[0] * scale
@@ -622,7 +623,7 @@ def build_stroke_ribbon(
                     cmds.append("Z")
                     path_parts.append(" ".join(cmds))
             else:
-                # 保底：點數過少時，退回舊的簡單連線方式
+                # Fallback: when point count is too small, revert to simple connection
                 cmds = []
                 for idx, pt in enumerate(poly):
                     x, y = _proj(pt)
@@ -633,11 +634,11 @@ def build_stroke_ribbon(
         if path_parts:
             return " ".join(path_parts)
 
-    # 2. 處理未被擦除的一般筆跡 (加上平滑與完美圓角)
+    # 2. Handle un-erased regular strokes (with smoothing and rounded caps)
     if not points:
         return None
 
-    # 過濾近乎重疊的重複點
+    # Filter nearly overlapping duplicate points
     filtered_points: list[StrokePoint] = []
     for p in points:
         if not filtered_points:
@@ -666,7 +667,7 @@ def build_stroke_ribbon(
         x, y, r = raw_pts[0]
         return f"M {x - r:.2f},{y:.2f} A {r:.2f},{r:.2f} 0 1,1 {x + r:.2f},{y:.2f} A {r:.2f},{r:.2f} 0 1,1 {x - r:.2f},{y:.2f}"
 
-    # 座標平滑 (保留兩端端點位置，避免 short stroke 被往內拉縮短長度)
+    # Coordinate smoothing (preserve both endpoints to prevent short strokes from shrinking)
     if n >= 3:
         smoothed = []
         for i in range(n):
@@ -682,7 +683,7 @@ def build_stroke_ribbon(
                 smoothed.append((sx, sy, sr))
         raw_pts = smoothed
 
-    # 計算法向量
+    # Calculate normal vectors
     normals: list[tuple[float, float]] = []
     for i in range(n):
         if i == 0:
@@ -699,7 +700,7 @@ def build_stroke_ribbon(
             nx, ny = -dy / dist, dx / dist
         normals.append((nx, ny))
 
-    # 法向量滑動平均平滑 (關鍵修正：必須重新歸一化長度)
+    # Normal vector moving average smoothing (critical fix: must re-normalize length)
     smoothed_normals: list[tuple[float, float]] = []
     for i in range(n):
         lo = max(0, i - 1)
@@ -799,18 +800,18 @@ def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = N
     is_highlighter = alpha < 0.95
 
     chains = []
-    # 對所有提取出的點群組應用安全防護斷線切割
+    # Apply safe disconnect splitting to all extracted point groups
     for group in point_groups:
-        # 恢復使用 300.0 的安全距離門檻。這可以防止座標異常跳躍，
-        # 但確保正常快速筆劃和小範圍擦除切口不會被意外斷線。
+        # Restore safe distance threshold of 300.0 to prevent abnormal coordinate jumps
+        # while ensuring normal fast strokes and small eraser cuts are not accidentally split.
         chains.extend(split_stroke_points(group, threshold=300.0))
 
     strokes = []
     num_chains = len(chains)
     for chain_i, chain in enumerate(chains):
         is_dot = len(chain) == 1
-        # 單一 GoodNotes 資料若被 split，通常意味著擦除。
-        # 中間的切點應該被繪製為平頭。
+        # If a single GoodNotes entry is split, it usually implies erasure.
+        # Intermediate cut points should be rendered as flat caps.
         is_cut_start = (chain_i > 0)
         is_cut_end = (chain_i < num_chains - 1)
         dash_pattern = None

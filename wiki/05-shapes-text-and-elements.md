@@ -1,3 +1,112 @@
+[中文](#中文)
+
+<a id="english"></a>
+
+# 05 - Shapes, Text & Elements
+
+This chapter introduces the analysis of various geometric and multimedia elements recorded on GoodNotes pages, including vector shapes, marker arrows, rich text/typewriter text elements, sticky notes, and image attachments & crops.
+
+---
+
+## 1. Vector Shape Geometry Analysis (`shape.py`)
+
+In GoodNotes, hand-drawn auto-recognized shapes (such as lines, circles, rectangles, polygons, and arrows) are stored in specific tags within the Protobuf Record.
+
+### Shape Protobuf Tag Structure Classification
+
+| Shape Type | Tag Source | Geometric Data Structure and Analysis Method (`shape.py`) |
+| :--- | :--- | :--- |
+| **Hand-drawn Polygon / Polyline** | Tag 1 or Tag 2 inside Tag 9 | Contains repeated child Messages, each with a FIXED32 $x, y$ coordinate pair. Read by sorting Tags using `_extract_point()`. |
+| **Tilted Ellipse / Circle** | Tag 4 inside Tag 9 | `f1` is the center point $(c_x, c_y)$, `f2` is the semi-major/minor axis $(r_x, r_y)$, `f3` is the rotation angle $\theta$ (radians). 144 vertices are calculated based on the parametric equation of an ellipse. |
+| **Axis-Aligned Rectangle** | Tag 3 inside Tag 9 | `f1` is the center point $(c_x, c_y)$, `f2` is the full width and height $(w, h)$. Derives the top-left, top-right, bottom-right, and bottom-left vertices. |
+| **Type 31 / Type 35 Advanced Shape** | Record inside Tag 21 / Tag 22 | Includes `_parse_type31_shape` (polyline/arrow) and `_parse_type35_shape` (rounded rectangle, capsule shape, dashed style `dash_pattern`). |
+
+---
+
+## 2. Endpoint Arrow Marker and Dynamic `refX` Alignment
+
+GoodNotes supports adding different marker styles at the ends of lines or arrows (such as open V-shaped arrows, solid triangle arrows, and dots).
+
+### 3 Arrow Styles and Alignment Calculation
+
+In SVG, `<marker>` is defined using `<defs>`, and its `orient="auto"` can automatically rotate along the line tangent. However, the arrow vertex must be precisely aligned with the line endpoint, otherwise overlapping or suspension will occur.
+
+[`export.py`](../src/goodnotes_re/export.py) implements the dynamic `refX` calculation function `_get_marker_ref_x()`:
+
+```python
+def _get_marker_ref_x(path_d: str, align: str = "tip") -> float:
+    coords = [float(x) for x in re.findall(r"[-+]?\d*\.\d+|\d+", path_d)]
+    x_coords = coords[0::2]
+    if align == "min": return min(x_coords)
+    elif align == "max": return max(x_coords)
+    return (min(x_coords) + max(x_coords)) / 2.0
+```
+
+| Arrow Code (`start_arrow`/`end_arrow`) | Style Name | Marker Path | `refX` Formula and Alignment Anchor |
+| :---: | :--- | :--- | :--- |
+| **`1`** | Open V-Shape | `M 10 0 L 0 5 L 10 10` | Vertex aligned (`align="min"` or `"max"`), the line perfectly pierces the V-shape tip. |
+| **`2` / `True`** | Solid Triangle | `M 10 0 L 0 5 L 10 10 Z` | Base aligned, the bottom of the solid triangle sits flush with the line endpoint. |
+| **`3`+** | Circle Dot | `circle cx="5" cy="5" r="4"` | Center aligned (`refX=5, refY=5`). |
+
+---
+
+## 3. Typewriter Rich Text Box and RTF Parsing (`text.py`)
+
+Typewriter text boxes (Text Elements) in GoodNotes are stored within the Type 35 Record, and contain detailed rich text formatting information after being decompressed via Apple LZ4.
+
+### Text Box Structure Mapping (`parse_text_elements`)
+
+- **Text Box Spatial Position**: Read pixel coordinates $(x, y)$ from Tag 20 / Tag 32 `f2` of the `msg`.
+- **Text Box Width & Height Bounds**: Read physical width and height $(w, h)$ from Tag 32 `f10` / `f2`.
+- **Default Font and Size**: Extract `default_font` (e.g., `"Helvetica Neue"`) and `default_size` (e.g., `24.0`) from Tag 32 `f5`.
+- **Embedded Payload (bv41 LZ4)**: Iterate through sub-fields after decompression:
+  - `f1`: UTF-8 text string.
+  - `f2`: Formatting control. `f1==1` for Strikethrough, `f2==1` for Underline, `f50==1` for Italic, `f60` / font name containing "Bold" for Bold; `f3` for color RGBA, `f30` for font, `f40` for font size.
+  - `f3`: Paragraph control. `f3_3` is list type (`"bullet"` or `"numbered"`); `f4` is alignment (`1` left, `2` center, `3` right).
+
+### Legacy RTF Fallback Parser (`rtf_to_text`)
+For early or simple text, GoodNotes uses the RTF format. [`rtf_to_text()`](../src/goodnotes_re/text.py) uses a custom regular expression, decoding preferentially with Traditional Chinese (CP950) to accurately extract Chinese text and remove `\fonttbl` and RTF control characters.
+
+---
+
+## 4. Sticky Note Parsing (`Sticky Note`)
+
+Sticky Notes in GoodNotes are yellow/colored cards where users can attach notes or messages.
+
+In `parse_sticky_notes()` within [`element.py`](../src/goodnotes_re/element.py):
+- **Card Attributes**: Extract $(x, y)$ coordinates, default size (256x256), background color `color_hex` (default yellow `#FAE778`), and author `author`.
+- **Fold/Unfold State (`is_open`)**: Check Tag 7 for a hidden flag. If folded (`is_folded=True`), the SVG rendering will display it as a small sticky note icon with a folded corner at the bottom right; if unfolded, it will be rendered as a full translucent background card.
+
+---
+
+## 5. Image Attachments and Crop Matrix (`ImageElement`)
+
+Image attachments are stored in the `attachments/<UUID>` directory (JPEG or PNG).
+
+In `parse_image_elements()` within [`element.py`](../src/goodnotes_re/element.py):
+
+### 1. Tombstone Detection
+When an image is deleted or cut and moved to another page in GoodNotes, a record is left on the old page as a tombstone (same Record UUID and Attachment UUID), but its **Field 3 is set to 1** (`f3 == 1`). The parser will automatically filter out records where `f3 == 1` to avoid drawing deleted images.
+
+### 2. Original Bounds and Crop Matrix
+Images contain two sets of size information:
+- **Original Bounding Box**: $(orig_x, orig_y, orig_w, orig_h)$.
+- **Crop Bounding Box**: $(cx, cy, crop_w, crop_h)$ and rotation angle $\theta$ (`rotation_rad`).
+
+During SVG export ([`export.py`](../src/goodnotes_re/export.py)):
+If it detects that the image has been cropped (`crop_w != orig_w`):
+It uses the SVG `<g transform="rotate(...)">` and child `<svg overflow="hidden">` container viewport to implement a Clipping Window, accurately restoring any shape cropping and rotation effects of images within GoodNotes.
+
+---
+
+In the next chapter, **[06 - PDF Integration and SVG Export](06-pdf-integration-and-svg-export.md)**, we will detail the analysis of PDF background dimensions, the 132 DPI and 72 DPI coordinate transformation matrices, and the layered drawing logic of the SVG canvas.
+
+---
+
+[English](#english)
+
+<a id="中文"></a>
+
 # 05 - 圖形、文字與頁面元素 (Shapes, Text & Elements)
 
 本章節介紹 GoodNotes 頁面上記錄的各種幾何與多媒體元素解析，包含向量圖形 (Shapes)、端點箭頭 Marker、富文本/打字機文字框 (Text Elements)、便條紙 (Sticky Notes) 以及圖片貼圖與裁切 (Image Attachments & Crops)。

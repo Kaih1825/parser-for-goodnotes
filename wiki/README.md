@@ -1,6 +1,104 @@
+[中文](#中文)
+
+<a id="english"></a>
+
 # GoodNotes Document Format Wiki
 
-歡迎來到 **GoodNotes Document Parser** 的技術 Wiki！
+Welcome to the technical Wiki for **Document Parser for GoodNotes**!
+
+This Wiki is designed to provide comprehensive and extremely detailed technical documentation. By reading this Wiki, readers can fully understand the internal binary structure of `.goodnotes` files, Protobuf Wire format decoding principles, Apple LZ4 compressed streams, Troy Hanson TPL memory images, digital ink dynamic pressure-sensitive ribbon construction algorithms, vector graphics and rich text extraction, PDF background rendering, geometric coordinate transformation matrices, Python APIs, CLI tool usage, unit testing, and the packaging and publishing process.
+
+---
+
+## Core Design Philosophy
+
+This project follows four core principles:
+
+1. **Authoritative Schema-Free Wire Decoding**:
+   This toolkit **does not rely on and does not require** fixed Protobuf `.proto` definition files. We implemented a low-level Protobuf Wire format decoder capable of retaining raw bytes and unknown fields, ensuring no data loss when facing format changes from future GoodNotes 5 or GoodNotes 6 updates.
+
+2. **Strict Prohibition of Heuristic Float Scanning**:
+   We absolutely never blindly search for 4-byte combinations that "look like floats" from the binary stream. All coordinates, colors, widths, and sizes are strictly and accurately parsed through Protobuf Tag Numbers or Troy Hanson TPL Format Strings.
+
+3. **High-Fidelity Vector Reconstruction**:
+   For digital ink strokes, in addition to parsing control point coordinates, it combines pressure to calculate normal vectors on both sides to smooth curves, generating standard SVG Path ribbons. For strokes cut by the eraser (v9 Mesh), we use the **Sliding-Window Convex Hull algorithm** to perfectly reproduce the sharp flat edges when cut.
+
+4. **Interpretation Isolation**:
+   Semantic attributes like `page`, `stroke`, `sticky_note`, etc., are only upper-level interpretations. The lower-level `wire` decoding layer never erases or overwrites the original byte structure.
+
+---
+
+## Table of Contents
+
+Click the links below to jump to the corresponding topic chapters:
+
+| Chapter File | Topic Description | Key Content |
+| :--- | :--- | :--- |
+| **[01-architecture-overview.md](01-architecture-overview.md)** | **System Architecture and Data Flow** | Module responsibilities, parsing pipeline, file format evolution from GoodNotes 5 vs 6 |
+| **[02-archive-and-wire-format.md](02-archive-and-wire-format.md)** | **ZIP Container and Protobuf Wire Parsing** | ZIP file structure, Varint encoding rules, Length-Delimited stream frame decoding |
+| **[03-compression-and-tpl-binary.md](03-compression-and-tpl-binary.md)** | **Apple LZ4 Compression and TPL Memory Image** | `bv41`/`bv4$` stream specifications, Pure-Python LZ4 decompression, Troy Hanson TPL Format syntax and RGBA Trailer parsing |
+| **[04-stroke-geometry-and-rendering.md](04-stroke-geometry-and-rendering.md)** | **Stroke Geometry and Vector Ribbon Reconstruction** | Control point pressure, normal vector smoothing, Catmull-Rom and Bézier curves, v9 eraser cut convex hull algorithm |
+| **[05-shapes-text-and-elements.md](05-shapes-text-and-elements.md)** | **Shapes, Text, and Page Elements** | Polygon/rectangle/ellipse parsing, arrow endpoint markers, RTF/UTF-8 text blocks, sticky notes, and image cropping |
+| **[06-pdf-integration-and-svg-export.md](06-pdf-integration-and-svg-export.md)** | **PDF Background and SVG Vector Export** | PDF `/MediaBox` parsing, 132 DPI and 72 DPI coordinate transformation matrices, SVG DOM layer stacking logic |
+| **[07-cli-and-api-guide.md](07-cli-and-api-guide.md)** | **CLI Tool and Python API Guide** | `gn-inspect`, `gn-dump`, `gn-diff`, `gn-export-json`, `gn-export-svg` commands and library calling APIs |
+| **[08-testing-building-publishing.md](08-testing-building-publishing.md)** | **Development, Testing, Building, and Publishing** | `uv` environment setup, Pytest unit testing, controlled format analysis corpus protocol, PyPI publishing process |
+| **[09-current-analysis-findings.md](09-current-re-findings.md)** | **Current Analysis Findings** | GN6 page ordering, deletion events, PDF association, Type 35 text, sticker backgrounds, image crop, Sticky Note parent-child and current limitations |
+
+---
+
+## Quick Reference Cheat-Sheet
+
+When analyzing the extracted binary files of `.goodnotes`, you will often encounter the following Magic Markers:
+
+```
++------------------+-----------------------+-------------------------------------------------------+
+| Magic / Sequence | Description           | Corresponding Parsing Module                          |
++------------------+-----------------------+-------------------------------------------------------+
+| 0x08 0x23        | schema.pb (Field 1=35)| wire.py / archive.py (Schema version flag)            |
+| 0x52 0x0a ...    | Length-delimited PB   | wire.py (decode_delimited_messages Varint frame header)|
+| bv41             | Apple Framed LZ4 Compressed Block | compression.py (decode_apple_lz4 compressed block) |
+| bv4-             | Apple LZ4 Stored Uncompressed Block | compression.py (uncompressed passthrough block) |
+| bv4$             | Apple LZ4 Stream End Marker | compression.py / stroke.py (end of stream, followed by Protobuf Trailer)|
+| tpl\0            | Troy Hanson TPL Image Header | tpl.py (decode_tpl stroke point structure and descriptor) |
+| {\rtf            | Rich Text Format      | text.py (rtf_to_text parses typewriter/sticky note text)|
+| %PDF             | PDF Attachment        | pdf.py / page.py (PageDimensions / PyMuPDF rendering background)|
++------------------+-----------------------+-------------------------------------------------------+
+```
+
+---
+
+## Quick Usage Example
+
+```python
+from goodnotes_parser import GoodNotesDocument
+
+# Open .goodnotes file
+with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
+    # Iterate through pages
+    for page in doc.pages():
+        print(f"Page {page.index + 1}: {page.dimensions.width}x{page.dimensions.height} pt")
+        print(f"  Strokes count: {len(page.strokes)}, Shapes count: {len(page.shapes)}")
+        
+        for stroke in page.strokes:
+            print(f"    - Stroke {stroke.uuid}: color={stroke.color_hex}, alpha={stroke.alpha}, points={len(stroke.points)}")
+```
+
+## Current Analysis Status
+
+The project has currently practically verified data paths such as GN6 file page ordering, deletion events, PDF background association, Type 35 rich text, sticky notes, and image cropping. The latest verification and known limitations are organized in **[09 - Current Analysis Findings](09-current-re-findings.md)**.
+
+> The Wiki description is subject to the current source code; fields not yet verified by the corpus will be marked as speculative and are not considered official GoodNotes format specifications.
+> For more technical details, please click the table of contents above to navigate to specific chapters!
+
+---
+
+[English](#english)
+
+<a id="中文"></a>
+
+# GoodNotes Document Format Wiki
+
+歡迎來到 **Document Parser for GoodNotes** 的技術 Wiki！
 
 本 Wiki 旨在提供全面且極度詳細的技術文檔。讀者可透過閱讀本 Wiki，完全理解 `.goodnotes` 檔案的內部二進制結構、Protobuf Wire 格式解碼原理、Apple LZ4 壓縮串流、Troy Hanson TPL 記憶體映像、筆跡動態壓感 ribbon 構建算法、向量圖形與富文本提取、PDF 底圖繪製、幾何座標轉換矩陣、Python API、CLI 工具使用方式、單元測試以及打包發佈流程。
 
@@ -37,8 +135,8 @@
 | **[05-shapes-text-and-elements.md](05-shapes-text-and-elements.md)** | **圖形、文字與頁面元素** | 多邊形/矩形/橢圓形解析、箭頭端點 Marker、RTF/UTF-8 文字區塊、便條紙與圖片 Crop 裁切 |
 | **[06-pdf-integration-and-svg-export.md](06-pdf-integration-and-svg-export.md)** | **PDF 底圖與 SVG 向量匯出** | PDF `/MediaBox` 解析、132 DPI 與 72 DPI 坐標轉換矩陣、SVG DOM 圖層堆疊邏輯 |
 | **[07-cli-and-api-guide.md](07-cli-and-api-guide.md)** | **CLI 工具與 Python API 指南** | `gn-inspect`, `gn-dump`, `gn-diff`, `gn-export-json`, `gn-export-svg` 指令與程式庫調用 API |
-| **[08-testing-building-publishing.md](08-testing-building-publishing.md)** | **開發、測試、打包與發佈** | `uv` 環境設置、Pytest 單元測試、受控逆向實驗協議 (Corpus Protocol)、PyPI 發佈流程 |
-| **[09-current-re-findings.md](09-current-re-findings.md)** | **目前格式分析發現** | GN6 頁面排序、刪除事件、PDF 關聯、Type 35 文字、貼圖背景、圖片 Crop、Sticky Note parent-child 與目前限制 |
+| **[08-testing-building-publishing.md](08-testing-building-publishing.md)** | **開發、測試、打包與發佈** | `uv` 環境設置、Pytest 單元測試、受控格式分析實驗協議 (Corpus Protocol)、PyPI 發佈流程 |
+| **[09-current-analysis-findings.md](09-current-re-findings.md)** | **目前格式分析發現** | GN6 頁面排序、刪除事件、PDF 關聯、Type 35 文字、貼圖背景、圖片 Crop、Sticky Note parent-child 與目前限制 |
 
 ---
 
@@ -66,7 +164,7 @@
 ## 快速調用範例
 
 ```python
-from goodnotes_re import GoodNotesDocument
+from goodnotes_parser import GoodNotesDocument
 
 # 開啟 .goodnotes 文件
 with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
@@ -81,8 +179,7 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
 
 ## 目前格式分析狀態
 
-目前專案已實際驗證 GN6 文件的頁面排序、刪除事件、PDF 背景關聯、Type 35 富文本、便條紙與圖片裁切等資料路徑。最新的驗證與已知限制整理於 **[09 - Current Format Analysis Findings](09-current-re-findings.md)**。
+目前專案已實際驗證 GN6 文件的頁面排序、刪除事件、PDF 背景關聯、Type 35 富文本、便條紙與圖片裁切等資料路徑。最新的驗證與已知限制整理於 **[09 - Current Analysis Findings](09-current-re-findings.md)**。
 
 > Wiki 描述以目前 source code 為準；尚未被 corpus 驗證的欄位會標示為推測，不視為 GoodNotes 官方格式規格。
-
-欲瞭解更多技術細節，請點選上方目錄導覽至具體章節！
+> 欲瞭解更多技術細節，請點選上方目錄導覽至具體章節！

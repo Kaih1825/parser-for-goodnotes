@@ -408,14 +408,14 @@ class GoodNotesDocument:
                     matched_pdf_page = 1
                     p_key = _uuid_key(p_uuid)
 
-                    # 優先尋找直接對應的附件
+                    # Prefer directly matched attachments
                     for p_cand, a_path in direct_page_to_att.items():
                         if _uuid_key(p_cand) == p_key:
                             matched_path = a_path
                             matched_pdf_page = 1
                             break
 
-                    # 若沒有直接對應的附件，才回退尋找預設模板
+                    # If no directly matched attachment, fall back to default template
                     if not matched_path:
                         for p_node_uuid, tmpl_uuid in page_to_template.items():
                             if _uuid_key(p_node_uuid) == p_key:

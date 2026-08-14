@@ -107,12 +107,12 @@ def _parse_curves(container: Message) -> list[tuple[float, float]]:
                 pt = _get_point(sub)
                 if pt: pts_dict[f.number] = pt
 
-    # 情況 A：單一貝茲曲線片段 (通常存在於 Type 31 的 f21)
+    # Case A: Single Bezier curve segment (usually present in Type 31 f21)
     if 1 in pts_dict and 2 in pts_dict and (3 in pts_dict or 4 in pts_dict):
         pts = [pts_dict[1]]
         p_start = pts_dict[1]
         if 3 in pts_dict and 4 not in pts_dict:
-            # 二次貝茲曲線 (Quadratic)
+            # Quadratic Bezier curve
             p_c, p_end = pts_dict[2], pts_dict[3]
             for j in range(1, 31):
                 t = j / 30.0
@@ -121,7 +121,7 @@ def _parse_curves(container: Message) -> list[tuple[float, float]]:
                 y = u**2 * p_start[1] + 2 * u * t * p_c[1] + t**2 * p_end[1]
                 pts.append((x, y))
         elif 3 in pts_dict and 4 in pts_dict:
-            # 三次貝茲曲線 (Cubic)
+            # Cubic Bezier curve
             p_c1, p_c2, p_end = pts_dict[2], pts_dict[3], pts_dict[4]
             print("Type1")
             for j in range(1, 31):
@@ -134,7 +134,7 @@ def _parse_curves(container: Message) -> list[tuple[float, float]]:
             pts.append(pts_dict[2])
         return pts
 
-    # 情況 B：連續路徑指令 (通常存在於 Field 9)
+    # Case B: Continuous path commands (usually present in Field 9)
     commands = []
     for item_field in container.fields:
         if not isinstance(item_field.value, bytes): continue
@@ -185,7 +185,7 @@ def _parse_geometry_from_field9(field9: Message) -> dict[str, Any]:
         "cx": None, "cy": None, "rx": None, "ry": None, "rotation": 0.0
     }
 
-    # 1. 處理手繪多邊形 / 線條 (Tag 1 或是 Tag 2)
+    # 1. Handle hand-drawn polygons / lines (Tag 1 or Tag 2)
     container_fields = field9.by_number(1) or field9.by_number(2)
     if container_fields and isinstance(container_fields[0].value, bytes):
         container = decode_message(container_fields[0].value)
@@ -194,7 +194,7 @@ def _parse_geometry_from_field9(field9: Message) -> dict[str, Any]:
             geom["points"] = tuple(pts)
             return geom
 
-    # 2. 處理傾斜物件 (例如傾斜紅色橢圓 Tag 4)
+    # 2. Handle rotated objects (e.g. rotated red ellipse Tag 4)
     f4_fields = field9.by_number(4)
     if f4_fields and isinstance(f4_fields[0].value, bytes):
         try:
@@ -233,13 +233,13 @@ def _parse_geometry_from_field9(field9: Message) -> dict[str, Any]:
                         py = geom["cy"] + geom["rx"] * cos_t * sin_rot + geom["ry"] * sin_t * cos_rot
                         points_list.append((px, py))
                         
-                    points_list.append(points_list[0]) # 閉合多邊形
+                    points_list.append(points_list[0]) # Closed polygon
                     geom["points"] = tuple(points_list)
                     return geom
         except Exception:
             pass
 
-    # 3. 處理無旋轉的矩形/圓形 (Tag 3)
+    # 3. Handle unrotated rectangle/circle (Tag 3)
     f3_fields = field9.by_number(3)
     if f3_fields and isinstance(f3_fields[0].value, bytes):
         try:
@@ -251,8 +251,8 @@ def _parse_geometry_from_field9(field9: Message) -> dict[str, Any]:
                 pt1_msg = decode_message(f1[0].value)
                 pt2_msg = decode_message(f2[0].value)
                 
-                center = _extract_point(pt1_msg) # 確定是中心點 (cx, cy)
-                size = _extract_point(pt2_msg)   # 確定是完整寬高 (w, h)
+                center = _extract_point(pt1_msg) # Center point (cx, cy)
+                size = _extract_point(pt2_msg)   # Full width and height (w, h)
                 
                 if center and size:
                     cx, cy = center
@@ -264,19 +264,19 @@ def _parse_geometry_from_field9(field9: Message) -> dict[str, Any]:
                     geom["rx"] = w / 2.0
                     geom["ry"] = h / 2.0
                     
-                    # 從中心點反推正確的四個邊界位置
+                    # Derive four boundary positions from center point
                     left = cx - (w / 2.0)
                     top = cy - (h / 2.0)
                     right = cx + (w / 2.0)
                     bottom = cy + (h / 2.0)
                     
-                    # 依序建構矩形的 5 個頂點
+                    # Construct 5 vertices of the rectangle in order
                     geom["points"] = (
-                        (left, top),       # 左上
-                        (right, top),      # 右上
-                        (right, bottom),   # 右下
-                        (left, bottom),    # 左下
-                        (left, top)        # 閉合
+                        (left, top),       # Top-left
+                        (right, top),      # Top-right
+                        (right, bottom),   # Bottom-right
+                        (left, bottom),    # Bottom-left
+                        (left, top)        # Closed
                     )
                     return geom
         except Exception:

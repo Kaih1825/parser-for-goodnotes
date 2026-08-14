@@ -9,7 +9,7 @@ description = "A typed, schema-free protobuf inspector and exporter for GoodNote
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
-authors = [{name = "GoodNotes Document Parser contributors"}]
+authors = [{name = "Document Parser for GoodNotes contributors"}]
 classifiers = ["Programming Language :: Python :: 3", "Typing :: Typed"]
 dependencies = [
     "PyMuPDF>=1.23.0",

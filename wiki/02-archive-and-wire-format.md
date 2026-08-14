@@ -1,3 +1,165 @@
+[中文](#中文)
+
+<a id="english"></a>
+
+# 02 - ZIP Archive and Protobuf Wire Format Analysis
+
+This chapter introduces the internal ZIP container layout of `.goodnotes` files and how this toolkit directly parses the Protobuf Wire format and Length-Delimited Protobuf Streams without relying on any `.proto` definition files.
+
+---
+
+## 1. ZIP Archive Layout
+
+A `.goodnotes` file is essentially a standard ZIP archive. It can be extracted using standard ZIP extraction tools. A typical ZIP archive structure is as follows:
+
+```
+sample.goodnotes/
+├── schema.pb                 # File Schema version tag (Field 1 = Varint 35)
+├── index.notes.pb            # Notes index file (Page list and notes/<UUID> path mapping)
+├── index.attachments.pb      # Attachments index file (Attachment UUID and attachments/<UUID> path mapping)
+├── index.events.pb           # Events record file (Dynamic binding of page UUIDs and attachment UUIDs)
+├── notes/
+│   ├── 31BE4069-02E5-4C5D-...# Protobuf Record stream of a single page (strokes, shapes, text boxes)
+│   └── A9F12C3D-8894-4E1B-...
+└── attachments/
+    ├── 7F129B44-55C1-4D30... # Embedded images (JPEG/PNG) or background PDF files in the note
+    └── 31BE4069-02E5-4C5D...
+```
+
+### Key Index Members Table
+
+| Member File | Byte/Protobuf Characteristics | Function and Key Fields |
+| :--- | :--- | :--- |
+| **`schema.pb`** | Contains `0x08 0x23` | **Schema Version Tag**. Protobuf Field 1 (Varint), with a value of `35` (0x23). Represents the data format version of GoodNotes. |
+| **`index.notes.pb`** | Consists of multiple Varint length-prefixed Records | **Page Directory**. Contains page UUIDs and `notes/<UUID>` file relative paths. Determines the sequence of note pages. |
+| **`index.attachments.pb`** | Varint length-prefixed Record | **Attachment List**. Contains attachment UUIDs and `attachments/<UUID>` relative paths. |
+| **`index.events.pb`** | Varint length-prefixed Record | **Page and Attachment Association**. Contains the binding relationship between page UUIDs (`notes/<UUID>`) and attachment UUIDs (`attachments/<UUID>`). |
+| **`notes/<UUID>`** | Varint length-prefixed Record Stream | **Single Page Main Data**. Contains all stroke, shape, text, and image attachment references on the page. |
+
+---
+
+## 2. Protobuf Wire Specification
+
+After serialization, Protobuf represents a binary stream arranged continuously in the form of Key-Value pairs. Its basic structure is as follows:
+
+$$\text{Key} = (\text{Field Number} \ll 3) \mid \text{Wire Type}$$
+
+Each Key is a Varint, where its lowest 3 bits (bits 0..2) represent the **Wire Type**, and the higher bits (bits 3+) represent the **Field Number** (Field Tag number).
+
+### Protobuf Supported Wire Types Comparison
+
+| Wire Type (Integer) | Name | Internal Data Structure and Length | Decoding Method (`wire.py`) |
+| :---: | :--- | :--- | :--- |
+| **0** | `VARINT` | Variable-length integer (1 ~ 10 bytes) | `_read_varint()`: Takes 7 bits each time; MSB 1 indicates more bytes follow. |
+| **1** | `FIXED64` | Fixed 8 bytes (64-bit) | `int.from_bytes(8, 'little')` or float64 floating-point number (`<d`). |
+| **2** | `LENGTH_DELIMITED` | Varint length $L$ + $L$ bytes Payload | Reads length $L$, then slices $L$ bytes. It could be a string, UTF-8, Sub-Message, or binary (LZ4). |
+| **3** | `START_GROUP` | Deprecated | Directly throws `DecodeError` in this toolkit. |
+| **4** | `END_GROUP` | Deprecated | Directly throws `DecodeError` in this toolkit. |
+| **5** | `FIXED32` | Fixed 4 bytes (32-bit) | `int.from_bytes(4, 'little')` or float32 floating-point number (`<f`). |
+
+---
+
+## 3. Varint Decoding Algorithm
+
+Varint uses Base-128 encoding. The highest bit (MSB, Bit 7) of each byte is the **Continuation Bit**:
+- If MSB = `1`: Indicates that the next byte still belongs to the current Varint.
+- If MSB = `0`: Indicates that the current byte is the last byte of the Varint.
+
+The remaining lower 7 bits (Bits 0..6) are combined into the final unsigned integer according to Little-Endian format.
+
+The implementation in [`src/goodnotes_re/wire.py`](../src/goodnotes_re/wire.py) is as follows:
+
+```python
+def _read_varint(data: bytes, pos: int) -> tuple[int, int]:
+    value = 0
+    for shift in range(0, 10 * 7, 7): # At most 10 bytes (64-bit int)
+        if pos >= len(data):
+            raise DecodeError("truncated varint")
+        byte = data[pos]
+        pos += 1
+        value |= (byte & 0x7F) << shift
+        if not byte & 0x80: # MSB is 0, decoding complete
+            return value, pos
+    raise DecodeError("varint exceeds 10 bytes")
+```
+
+### Varint Decoding Example
+If the byte sequence is `0x82 0x01`:
+1. First byte `0x82` (`1000 0010`): MSB=1, valid data `000 0010` (value=2), `shift=0`.
+2. Second byte `0x01` (`0000 0001`): MSB=0, valid data `000 0001` (value=1), `shift=7` -> $1 \ll 7 = 128$.
+3. Final result: $2 + 128 = 130$.
+
+---
+
+## 4. Delimited Message Streams
+
+The `index.notes.pb` and `notes/<UUID>` files within the `.goodnotes` package are not single large Protobuf Messages. Instead, they are composed of multiple **Varint length-prefixed Record streams**:
+
+```
+[Record 1 Length (Varint)] [Record 1 Bytes (Protobuf Message)] [Record 2 Length] [Record 2 Bytes] ...
+```
+
+For example, if `index.notes.pb` starts with `0x52 0x0a ...`:
+- `0x52` = Varint decoded as 82. This indicates that the length of the first Record is 82 bytes.
+- The next 82 bytes are read as an independent Protobuf Message.
+- Then the next Varint is read to obtain the length of the next Record.
+
+In [`wire.py`](../src/goodnotes_re/wire.py), `decode_delimited_messages()` is responsible for decoding this structure:
+
+```python
+def decode_delimited_messages(data: bytes) -> tuple[Message, ...]:
+    messages: list[Message] = []
+    pos = 0
+    while pos < len(data):
+        length, pos = _read_varint(data, pos)
+        end = pos + length
+        if end > len(data):
+            raise DecodeError("truncated delimited protobuf record")
+        messages.append(decode_message(data[pos:end]))
+        pos = end
+    return tuple(messages)
+```
+
+---
+
+## 5. Schema-Free Recursive Parsing and Unknown Field Retention
+
+To ensure that undefined fields are not lost during parsing, `decode_message()` in [`wire.py`](../src/goodnotes_re/wire.py) adopts schema-free parsing:
+1. Sequentially read the Key (`number` and `wire_type`).
+2. Read the corresponding length based on `wire_type` (`VARINT` reads Varint, `FIXED32` reads 4 bytes, `FIXED64` reads 8 bytes, `LENGTH_DELIMITED` reads $L$ bytes).
+3. Save the original byte slice `raw` and the file offset `offset` into the `Field` dataclass.
+4. For `LENGTH_DELIMITED` fields, attempt to call `try_decode_message(value)` for recursive decoding. If successful, treat it as a nested Message; if it fails, retain it as Raw Bytes (which could be UTF-8 strings, RTF text, or Apple LZ4 compressed streams).
+
+```python
+@dataclass(frozen=True)
+class Field:
+    number: int
+    wire_type: WireType
+    value: int | bytes
+    raw: bytes
+    offset: int
+
+    def fixed_float(self) -> float | None:
+        """Accurately convert to floating-point number only when the tag is FIXED32 or FIXED64, never blindly scan"""
+        if self.wire_type is WireType.FIXED32:
+            return struct.unpack("<f", struct.pack("<I", self.value))[0]
+        if self.wire_type is WireType.FIXED64:
+            return struct.unpack("<d", struct.pack("<Q", self.value))[0]
+        return None
+```
+
+Through this design, the toolkit guarantees **100% lossless parsing and unknown field retention capability**.
+
+---
+
+In the next chapter, **[03 - Apple LZ4 Compression and TPL Memory Image](03-compression-and-tpl-binary.md)**, we will explore in detail the Apple LZ4 stream specifications and the Troy Hanson TPL binary format in the stroke Payload.
+
+---
+
+[English](#english)
+
+<a id="中文"></a>
+
 # 02 - ZIP 容器與 Protobuf Wire 解析 (Archive & Wire Format)
 
 本章節介紹 `.goodnotes` 檔案的 ZIP 內部容器佈局，以及本工具包在不依賴任何 `.proto` 定義檔的情況下，如何直接解析 Protobuf Wire 格式與長度前綴分幀串流（Length-Delimited Protobuf Streams）。

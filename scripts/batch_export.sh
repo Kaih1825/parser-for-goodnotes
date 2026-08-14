@@ -45,7 +45,7 @@ for file in "${files[@]}"; do
 
     if [ -n "$target" ]; then
         echo "正在匯出: $target -> output_svgs/"
-        uv run gn-export-svg "$target" -o "output_svgs" -s open
+        uv run gn-export-svg "$target" -o "output_svgs"
         # uv run gn-export-svg "$target" -o "output_svgs" -b open -s open
     else
         echo "找不到檔案: $file，跳過。"
