@@ -658,6 +658,21 @@ def parse_shape_record(record_index: int, record: Message, parent_uuid: str | No
         except Exception:
             pass
 
+    dash_pattern: tuple[float, ...] | None = None
+    f5 = shape_msg.by_number(5)
+    if f5 and isinstance(f5[0].value, bytes):
+        m5 = try_decode_message(f5[0].value)
+        if m5 and m5.by_number(1) and isinstance(m5.by_number(1)[0].value, bytes):
+            b_val = m5.by_number(1)[0].value
+            if len(b_val) >= 8:
+                try:
+                    num_floats = len(b_val) // 4
+                    d_vals = struct.unpack(f"<{num_floats}f", b_val[: num_floats * 4])
+                    if any(v > 0 for v in d_vals):
+                        dash_pattern = tuple(d_vals)
+                except Exception:
+                    pass
+
     return ShapePath(
         record_index=record_index,
         uuid=_uuid_from_message(outer),
@@ -673,5 +688,6 @@ def parse_shape_record(record_index: int, record: Message, parent_uuid: str | No
         ry=geom_data["ry"],
         rotation=geom_data["rotation"],
         is_filled=False,
+        dash_pattern=dash_pattern,
         parent_uuid=parent_uuid,
     )

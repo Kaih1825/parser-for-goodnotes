@@ -763,6 +763,37 @@ def build_stroke_ribbon(
     d.append("Z")
     return " ".join(d)
 
+def extract_dash_pattern_from_tpl(tpl_img: TplImage) -> tuple[float, ...] | None:
+    """Extract dash pattern floats (e.g. from A(f) trailing array) if present."""
+    if "A(f)" not in tpl_img.format:
+        return None
+    try:
+        from .tpl import _parse_format
+        nodes = _parse_format(tpl_img.format)
+        for i, node in enumerate(nodes):
+            if node == ("A", ("f",)):
+                if i < len(tpl_img.values):
+                    val = tpl_img.values[i]
+                    if isinstance(val, list) and val:
+                        d_vals = []
+                        for x in val:
+                            if isinstance(x, int):
+                                f = uint32_to_float32(x)
+                            elif isinstance(x, float) and 0.0 < abs(x) < 1e-10:
+                                try:
+                                    f = struct.unpack("<f", struct.pack("<d", x)[:4])[0]
+                                except Exception:
+                                    f = float(x)
+                            else:
+                                f = float(x)
+                            d_vals.append(f)
+                        if any(v > 0 for v in d_vals):
+                            return tuple(d_vals)
+    except Exception:
+        pass
+    return None
+
+
 def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = None) -> list[Stroke]:
     """Parse GoodNotes binary field data to extract Strokes."""
     pos = field_data.find(b"bv41")
@@ -780,6 +811,7 @@ def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = N
         tpl_img = decode_tpl(lz4_data)
         point_groups, default_width = extract_points_from_tpl(tpl_img)
         native_polygons = extract_outline_polygons_from_tpl(tpl_img)
+        tpl_dash = extract_dash_pattern_from_tpl(tpl_img)
     except Exception:
         return []
 
@@ -814,7 +846,7 @@ def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = N
         # Intermediate cut points should be rendered as flat caps.
         is_cut_start = (chain_i > 0)
         is_cut_end = (chain_i < num_chains - 1)
-        dash_pattern = None
+        dash_pattern = tpl_dash
 
         strokes.append(
             Stroke(

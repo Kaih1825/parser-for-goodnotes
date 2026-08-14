@@ -440,11 +440,11 @@ def write_svg(
                 first_val = dash_pattern[0]
                 gap_val = dash_pattern[1] if len(dash_pattern) > 1 else dash_pattern[0]
                 if first_val <= 2.5:
-                    dot_gap = max(stroke_w * 2.5, gap_val * 2.0 * dpi_scale)
+                    dot_gap = max(stroke_w * 1.5, gap_val * dpi_scale)
                     dash_attr = f' stroke-dasharray="0 {dot_gap:.2f}"'
                 else:
-                    dash_len = max(stroke_w * 2.5, first_val * dpi_scale)
-                    gap_len = max(stroke_w * 2.0, gap_val * dpi_scale)
+                    dash_len = max(stroke_w * 2.0, first_val * dpi_scale)
+                    gap_len = max(stroke_w * 1.5, gap_val * dpi_scale)
                     dash_attr = f' stroke-dasharray="{dash_len:.2f} {gap_len:.2f}"'
 
             marker_attr = ""
@@ -607,11 +607,11 @@ def write_svg(
                 first_val = dash_pattern[0]
                 gap_val = dash_pattern[1] if len(dash_pattern) > 1 else dash_pattern[0]
                 if first_val <= 2.5:
-                    dot_gap = max(stroke_w * 2.5, gap_val * 2.0 * dpi_scale)
+                    dot_gap = max(stroke_w * 1.5, gap_val * dpi_scale)
                     dash_attr = f' stroke-dasharray="0 {dot_gap:.2f}"'
                 else:
-                    dash_len = max(stroke_w * 2.5, first_val * dpi_scale)
-                    gap_len = max(stroke_w * 2.0, gap_val * dpi_scale)
+                    dash_len = max(stroke_w * 2.0, first_val * dpi_scale)
+                    gap_len = max(stroke_w * 1.5, gap_val * dpi_scale)
                     dash_attr = f' stroke-dasharray="{dash_len:.2f} {gap_len:.2f}"'
                 
                 stroke_pts = tuple((pt.x, pt.y) for pt in pts)

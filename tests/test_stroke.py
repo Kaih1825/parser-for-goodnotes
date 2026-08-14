@@ -49,5 +49,23 @@ class StrokeTests(unittest.TestCase):
             self.assertGreater(max(pressures) - min(pressures), 0.5)
 
 
+    def test_dot_goodnotes_dash_and_dotted_patterns(self) -> None:
+        sample = resolve_sample("dot.goodnotes")
+        if not sample.exists():
+            self.skipTest("dot.goodnotes not present")
+        with GoodNotesDocument.open(sample) as document:
+            page = document.pages()[0]
+            self.assertEqual(len(page.strokes), 3)
+            self.assertEqual(len(page.shapes), 4)
+            # Check strokes have valid dash_pattern
+            for stroke in page.strokes:
+                self.assertIsNotNone(stroke.dash_pattern)
+                self.assertEqual(len(stroke.dash_pattern), 2)
+            # Check shapes have valid dash_pattern
+            for shape in page.shapes:
+                self.assertIsNotNone(shape.dash_pattern)
+                self.assertEqual(len(shape.dash_pattern), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
