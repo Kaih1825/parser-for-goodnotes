@@ -7,7 +7,7 @@
 > [!WARNING]
 > **Vibe Coding Disclaimer**: This entire project was developed through **Vibe Coding** (AI-assisted rapid pair-programming and exploratory development). While the parser has been verified against test corpora, code and architecture choices reflect an experimental AI-driven iteration style. Use at your own discretion!
 
-![CI](https://github.com/<your-org>/goodnotes-document-parser/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
