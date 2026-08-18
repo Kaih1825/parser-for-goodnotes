@@ -31,7 +31,9 @@ const I18N_DICT = {
     btnFit: "Fit",
     emptyTitle: "No .goodnotes Document Loaded",
     emptyDesc: "Upload a user-supplied <code>.goodnotes</code> notebook or select a quick sample on the left to start inspecting.",
-    footerText: '<strong>Document Parser for GoodNotes</strong> is an independent open-source project released under the <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>. It is not affiliated with, endorsed by, or sponsored by Goodnotes Limited.',
+    footerText: 'This project is licensed under the MIT License; "Goodnotes" and related marks are trademarks of Goodnotes Limited, referenced solely for file format compatibility and parsing under nominative fair use without affiliation, endorsement, or sponsorship.',
+    footerLegalNotice: "Legal Notice",
+    footerContributing: "Contributing",
     
     // Dynamic text
     stepRead: "1. Read Archive",
@@ -85,7 +87,9 @@ const I18N_DICT = {
     btnFit: "重設比例",
     emptyTitle: "尚未載入任何 .goodnotes 文件",
     emptyDesc: "請上傳您的 <code>.goodnotes</code> 筆記檔，或由左側選取範例檔案開始檢視。",
-    footerText: '<strong>Document Parser for GoodNotes</strong> 是一套採 <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/LICENSE" target="_blank" rel="noopener">MIT 開源許可協議</a> 的獨立專案，與 Goodnotes Limited 無任何隸屬或背書關係。',
+    footerText: '本專案採 MIT 授權；「Goodnotes」及其相關名稱與標誌皆為 Goodnotes Limited 之商標，本專案引用僅為檔案格式相容性與解析之指示性合理使用，無任何官方隸屬、背書或贊助關係。',
+    footerLegalNotice: "法律聲明",
+    footerContributing: "貢獻指南",
     
     // Dynamic text
     stepRead: "1. 讀取封存檔",
@@ -130,6 +134,7 @@ const state = {
 
 // DOM Elements
 const el = {
+  langPillSwitch: document.getElementById("lang-pill-switch"),
   langBtnEn: document.getElementById("lang-btn-en"),
   langBtnZh: document.getElementById("lang-btn-zh"),
   runtimeStatus: document.getElementById("runtime-status"),
@@ -208,9 +213,15 @@ function setLanguage(lang, updateUrl = true) {
     window.history.replaceState(null, "", url.toString());
   }
 
+  if (el.langPillSwitch) {
+    el.langPillSwitch.setAttribute("data-active", state.lang);
+  }
+
   if (el.langBtnEn && el.langBtnZh) {
     el.langBtnEn.classList.toggle("active", state.lang === "en");
+    el.langBtnEn.setAttribute("aria-selected", state.lang === "en" ? "true" : "false");
     el.langBtnZh.classList.toggle("active", state.lang === "zh_TW");
+    el.langBtnZh.setAttribute("aria-selected", state.lang === "zh_TW" ? "true" : "false");
   }
 
   const dict = I18N_DICT[state.lang];

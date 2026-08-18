@@ -30,23 +30,17 @@
         </div>
       </div>
       <div class="header-right">
-        <!-- Language Switcher -->
-        <div class="lang-switch-container">
-          <button id="lang-btn-en" class="btn-lang active" data-lang="en">EN</button>
-          <span class="lang-divider">/</span>
-          <button id="lang-btn-zh" class="btn-lang" data-lang="zh_TW">繁</button>
-        </div>
-
         <div id="runtime-status" class="status-indicator loading">
           <span class="status-dot"></span>
           <span class="status-text" data-i18n="statusLoading">Loading WebAssembly Runtime...</span>
         </div>
-        <a href="https://github.com/Kaih1825/document-parser-for-goodnotes" target="_blank" rel="noopener" class="btn-github">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
-          </svg>
-          GitHub
-        </a>
+
+        <!-- Animated Capsule Language Switcher -->
+        <div id="lang-pill-switch" class="lang-pill-switch" data-active="en" role="tablist" aria-label="Language selection">
+          <div class="lang-glider"></div>
+          <button id="lang-btn-en" class="btn-lang-pill active" data-lang="en" role="tab" aria-selected="true">EN</button>
+          <button id="lang-btn-zh" class="btn-lang-pill" data-lang="zh_TW" role="tab" aria-selected="false">繁</button>
+        </div>
       </div>
     </header>
 
@@ -139,11 +133,6 @@
             <p data-i18n="privacyDesc">Documents are decoded in-browser via WebAssembly. Nothing is ever sent to a server.</p>
           </div>
         </div>
-
-        <!-- Legal Disclaimer Notice -->
-        <div class="legal-disclaimer">
-          <p data-i18n="legalDisclaimer"><strong>Disclaimer:</strong> This independent open-source project is not affiliated with, endorsed by, sponsored by, or officially connected to Goodnotes Limited. See <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/LEGAL-NOTICE.md" target="_blank" rel="noopener">LEGAL-NOTICE.md</a>.</p>
-        </div>
       </aside>
 
       <!-- Viewport / Canvas Area -->
@@ -217,13 +206,13 @@
     <!-- Footer Legal Notice & Links -->
     <footer class="app-footer">
       <div class="footer-content">
-        <p><strong>Document Parser for GoodNotes</strong> is an independent open-source project released under the <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>. It is not affiliated with, endorsed by, or sponsored by Goodnotes Limited.</p>
+        <p data-i18n="footerText">This project is licensed under the MIT License; "Goodnotes" and related marks are trademarks of Goodnotes Limited, referenced solely for file format compatibility and parsing under nominative fair use without affiliation, endorsement, or sponsorship.</p>
         <div class="footer-links">
           <a href="https://github.com/Kaih1825/document-parser-for-goodnotes" target="_blank" rel="noopener">GitHub</a>
           <span class="sep">•</span>
-          <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/LEGAL-NOTICE.md" target="_blank" rel="noopener">Legal Notice</a>
+          <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/LEGAL-NOTICE.md" target="_blank" rel="noopener" data-i18n="footerLegalNotice">Legal Notice</a>
           <span class="sep">•</span>
-          <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a>
+          <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener" data-i18n="footerContributing">Contributing</a>
         </div>
       </div>
     </footer>
@@ -242,6 +231,6 @@
     }
   </script>
   <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-  <script src="app.js?v=12"></script>
+  <script src="app.js?v=19"></script>
 </body>
 </html>
