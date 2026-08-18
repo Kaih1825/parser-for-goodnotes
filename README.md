@@ -1,5 +1,4 @@
 <a id="english"></a>
-
 # Document Parser for GoodNotes
 [中文](#中文)
 
