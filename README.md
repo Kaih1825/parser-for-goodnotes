@@ -140,7 +140,7 @@ with GoodNotesDocument.open("sample.goodnotes") as doc:
 
 | Document | Description |
 |---|---|
-| [`cli.md`](cli.md#english) | Full CLI reference (Traditional Chinese) |
+| [`cli.md`](cli.md#english) | Full CLI reference |
 | [`wiki/`](wiki/) | Deep-dive technical documentation (architecture, formats, rendering) |
 | [`LEGAL-NOTICE.md`](LEGAL-NOTICE.md) | Legal, trademark, privacy, and redistribution notice |
 
