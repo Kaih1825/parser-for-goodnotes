@@ -21,9 +21,9 @@ It **deliberately does NOT use heuristic float scanning**.
 
 | Source Archive | GoodNotes Original (`.jpg`) | This Project SVG Export (`.svg`) |
 | :---: | :---: | :---: |
-| **Example 1**<br>([`ex1.goodnotes`](assets/ex1.goodnotes)) | ![GoodNotes Original 1](assets/ex1.jpg) | ![Parser SVG 1](assets/ex1.svg) |
-| **Example 2**<br>([`ex2.goodnotes`](assets/ex2.goodnotes)) | ![GoodNotes Original 2](assets/ex2.jpg) | ![Parser SVG 2](assets/ex2.svg) |
-| **Example 3**<br>([`ex3.goodnotes`](assets/ex3.goodnotes)) | ![GoodNotes Original 3](assets/ex3.jpg) | ![Parser SVG 3](assets/ex3.svg) |
+| **Example 1**<br>([`ex1.goodnotes`](assets/ex1.goodnotes)) | <img src="assets/ex1.jpg" width="400" alt="GoodNotes Original 1"> | <img src="assets/ex1.svg" width="400" alt="Parser SVG 1"> |
+| **Example 2**<br>([`ex2.goodnotes`](assets/ex2.goodnotes)) | <img src="assets/ex2.jpg" width="400" alt="GoodNotes Original 2"> | <img src="assets/ex2.svg" width="400" alt="Parser SVG 2"> |
+| **Example 3**<br>([`ex3.goodnotes`](assets/ex3.goodnotes)) | <img src="assets/ex3.jpg" width="400" alt="GoodNotes Original 3"> | <img src="assets/ex3.svg" width="400" alt="Parser SVG 3"> |
 
 ## Features
 
@@ -166,9 +166,9 @@ See also the [Contributing Guide](CONTRIBUTING.md).
 
 | 原始封存檔 | GoodNotes 原版渲染 (`.jpg`) | 本專案 SVG 匯出 (`.svg`) |
 | :---: | :---: | :---: |
-| **範例 1**<br>([`ex1.goodnotes`](assets/ex1.goodnotes)) | ![GoodNotes 原版渲染 1](assets/ex1.jpg) | ![本專案 SVG 匯出 1](assets/ex1.svg) |
-| **範例 2**<br>([`ex2.goodnotes`](assets/ex2.goodnotes)) | ![GoodNotes 原版渲染 2](assets/ex2.jpg) | ![本專案 SVG 匯出 2](assets/ex2.svg) |
-| **範例 3**<br>([`ex3.goodnotes`](assets/ex3.goodnotes)) | ![GoodNotes 原版渲染 3](assets/ex3.jpg) | ![本專案 SVG 匯出 3](assets/ex3.svg) |
+| **範例 1**<br>([`ex1.goodnotes`](assets/ex1.goodnotes)) | <img src="assets/ex1.jpg" width="400" alt="GoodNotes 原版渲染 1"> | <img src="assets/ex1.svg" width="400" alt="本專案 SVG 匯出 1"> |
+| **範例 2**<br>([`ex2.goodnotes`](assets/ex2.goodnotes)) | <img src="assets/ex2.jpg" width="400" alt="GoodNotes 原版渲染 2"> | <img src="assets/ex2.svg" width="400" alt="本專案 SVG 匯出 2"> |
+| **範例 3**<br>([`ex3.goodnotes`](assets/ex3.goodnotes)) | <img src="assets/ex3.jpg" width="400" alt="GoodNotes 原版渲染 3"> | <img src="assets/ex3.svg" width="400" alt="本專案 SVG 匯出 3"> |
 
 ## 功能
 
