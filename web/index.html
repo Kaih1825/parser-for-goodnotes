@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Document Parser for GoodNotes · Independent Vector SVG & PDF Viewer</title>
   <meta name="description" content="An independent, open-source in-browser tool to inspect, parse, and convert user-supplied .goodnotes 5 & 6 archives into vector SVG, PDF, and JSON directly with 100% local WebAssembly.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <div class="app-container">
@@ -43,6 +43,18 @@
         </div>
       </div>
     </header>
+
+    <!-- Mobile Segmented View Tabs (Visible only on mobile/tablets) -->
+    <nav class="mobile-view-tabs" id="mobile-view-tabs" role="tablist" aria-label="Workspace views">
+      <button id="tab-btn-sidebar" class="mobile-tab-btn active" data-tab="sidebar" role="tab" aria-selected="true">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <span data-i18n="tabTools">Files & Tools</span>
+      </button>
+      <button id="tab-btn-preview" class="mobile-tab-btn" data-tab="preview" role="tab" aria-selected="false">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span data-i18n="tabPreview">Document Preview</span>
+      </button>
+    </nav>
 
     <!-- Main Workspace -->
     <main class="workspace">
@@ -231,6 +243,6 @@
     }
   </script>
   <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-  <script src="app.js?v=22"></script>
+  <script src="app.js?v=23"></script>
 </body>
 </html>

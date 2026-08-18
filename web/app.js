@@ -34,6 +34,8 @@ const I18N_DICT = {
     footerText: 'This project is licensed under the MIT License; "Goodnotes" and related marks are trademarks of Goodnotes Limited, referenced solely for file format compatibility and parsing under nominative fair use without affiliation, endorsement, or sponsorship.',
     footerLegalNotice: "Legal Notice",
     footerContributing: "Contributing",
+    tabTools: "Files & Tools",
+    tabPreview: "Document Preview",
     
     // Dynamic text
     stepRead: "1. Read Archive",
@@ -90,6 +92,8 @@ const I18N_DICT = {
     footerText: '本專案採 MIT 授權；「Goodnotes」及其相關名稱與標誌皆為 Goodnotes Limited 之商標，本專案引用僅為檔案格式相容性與解析之指示性合理使用，無任何官方隸屬、背書或贊助關係。',
     footerLegalNotice: "法律聲明",
     footerContributing: "貢獻指南",
+    tabTools: "檔案與工具",
+    tabPreview: "文件預覽",
     
     // Dynamic text
     stepRead: "1. 讀取封存檔",
@@ -130,6 +134,7 @@ const state = {
   currentDocMeta: null,
   currentSvgString: "",
   zoomLevel: 1.0,
+  activeMobileTab: "sidebar",
 };
 
 // DOM Elements
@@ -137,6 +142,10 @@ const el = {
   langPillSwitch: document.getElementById("lang-pill-switch"),
   langBtnEn: document.getElementById("lang-btn-en"),
   langBtnZh: document.getElementById("lang-btn-zh"),
+  mobileNavTabs: document.getElementById("mobile-view-tabs"),
+  tabBtnSidebar: document.getElementById("tab-btn-sidebar"),
+  tabBtnPreview: document.getElementById("tab-btn-preview"),
+  workspace: document.querySelector(".workspace"),
   runtimeStatus: document.getElementById("runtime-status"),
   statusText: document.querySelector("#runtime-status .status-text"),
   dropzone: document.getElementById("dropzone"),
@@ -236,6 +245,22 @@ function setLanguage(lang, updateUrl = true) {
 
   if (state.isReady) {
     updateStatus("ready", dict.statusReady);
+  }
+}
+
+/**
+ * Switch Mobile View Tab (Sidebar vs Preview)
+ */
+function switchMobileTab(tabName) {
+  state.activeMobileTab = tabName === "preview" ? "preview" : "sidebar";
+  if (el.workspace) {
+    el.workspace.setAttribute("data-active-tab", state.activeMobileTab);
+  }
+  if (el.tabBtnSidebar && el.tabBtnPreview) {
+    el.tabBtnSidebar.classList.toggle("active", state.activeMobileTab === "sidebar");
+    el.tabBtnSidebar.setAttribute("aria-selected", state.activeMobileTab === "sidebar" ? "true" : "false");
+    el.tabBtnPreview.classList.toggle("active", state.activeMobileTab === "preview");
+    el.tabBtnPreview.setAttribute("aria-selected", state.activeMobileTab === "preview" ? "true" : "false");
   }
 }
 
@@ -520,6 +545,11 @@ async function processGoodNotesBuffer(arrayBuffer, filename) {
     el.svgStage.classList.remove("hidden");
     el.docStatsCard.classList.remove("hidden");
 
+    // Automatically switch to Preview tab on mobile/tablets when document is loaded
+    if (window.innerWidth <= 860) {
+      switchMobileTab("preview");
+    }
+
     updateProgress({
       title: "Ready",
       detail: `Loaded ${state.pageCount} page(s) successfully!`,
@@ -711,6 +741,14 @@ async function loadSample(samplePath, buttonElement) {
  * Event Listeners Setup
  */
 function setupEventListeners() {
+  // Mobile Tab Switching
+  if (el.tabBtnSidebar) {
+    el.tabBtnSidebar.addEventListener("click", () => switchMobileTab("sidebar"));
+  }
+  if (el.tabBtnPreview) {
+    el.tabBtnPreview.addEventListener("click", () => switchMobileTab("preview"));
+  }
+
   // Language Switcher Buttons
   if (el.langBtnEn) {
     el.langBtnEn.addEventListener("click", () => setLanguage("en"));
@@ -1047,6 +1085,7 @@ async function exportDocumentToPdf() {
 
 // Bootstrap Application
 document.addEventListener("DOMContentLoaded", () => {
+  switchMobileTab("sidebar");
   setLanguage(detectLanguage(), false);
   setupEventListeners();
   initPyodideRuntime();
