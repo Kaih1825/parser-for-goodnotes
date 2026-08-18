@@ -665,15 +665,15 @@ body {
   position: relative;
   overflow: auto;
   display: flex;
-  align-items: center;
-  justify-content: center;
   background: radial-gradient(#21262d 1px, transparent 1px);
   background-size: 24px 24px;
-  padding: 32px;
+  padding: 24px;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Empty State */
 .empty-state {
+  margin: auto;
   text-align: center;
   max-width: 380px;
 }
@@ -703,12 +703,14 @@ body {
 
 /* SVG Stage */
 .svg-stage {
+  margin: auto;
   background: #ffffff;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
   border-radius: 4px;
   overflow: hidden;
   transition: transform 0.15s ease-out;
   transform-origin: center center;
+  flex-shrink: 0;
 }
 
 .svg-stage svg {

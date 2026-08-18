@@ -134,6 +134,7 @@ const state = {
   currentDocMeta: null,
   currentSvgString: "",
   zoomLevel: 1.0,
+  userHasZoomed: false,
   activeMobileTab: "sidebar",
 };
 
@@ -175,6 +176,7 @@ const el = {
   step2: document.getElementById("step-2"),
   step3: document.getElementById("step-3"),
   toastContainer: document.getElementById("toast-container"),
+  canvasContainer: document.getElementById("canvas-container"),
   svgStage: document.getElementById("svg-stage"),
   sampleButtons: document.querySelectorAll(".btn-sample"),
 };
@@ -262,6 +264,9 @@ function switchMobileTab(tabName) {
     el.tabBtnPreview.classList.toggle("active", state.activeMobileTab === "preview");
     el.tabBtnPreview.setAttribute("aria-selected", state.activeMobileTab === "preview" ? "true" : "false");
   }
+  if (state.activeMobileTab === "preview") {
+    setTimeout(fitToScreen, 60);
+  }
 }
 
 /**
@@ -327,45 +332,47 @@ function hideProgress() {
 }
 
 /**
- * Initialize Pyodide Runtime & Python Parser Package
+ * Asynchronously fetch parser package wheel buffer with fallback candidates
+ */
+async function fetchPackageWheelBuffer() {
+  const wheelCandidates = [
+    "./goodnotes_document_parser-0.1.0-py3-none-any.whl",
+    "../dist/goodnotes_document_parser-0.1.0-py3-none-any.whl",
+    "./dist/goodnotes_document_parser-0.1.0-py3-none-any.whl",
+  ];
+
+  for (const wheelUrl of wheelCandidates) {
+    try {
+      const resp = await fetch(wheelUrl);
+      if (resp.ok) {
+        return await resp.arrayBuffer();
+      }
+    } catch (e) {
+      console.warn(`[Parser] Fetch ${wheelUrl} failed:`, e);
+    }
+  }
+  throw new Error("Could not find or load goodnotes_document_parser wheel package.");
+}
+
+/**
+ * Initialize Pyodide Runtime & Python Parser Package concurrently
  */
 async function initPyodideRuntime() {
   try {
-    updateStatus("loading", "Initializing WebAssembly Python...");
+    updateStatus("loading", t("statusLoading"));
     
-    state.pyodide = await loadPyodide({
+    // Concurrently download Pyodide WASM runtime and parser wheel
+    const wheelPromise = fetchPackageWheelBuffer();
+    const pyodidePromise = loadPyodide({
       indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/",
     });
 
+    const [pyodideInstance, wheelBuffer] = await Promise.all([pyodidePromise, wheelPromise]);
+    state.pyodide = pyodideInstance;
+
     updateStatus("loading", "Loading Parser Engine...");
 
-    // Try finding and unpacking the wheel from candidates
-    const ts = Date.now();
-    const wheelCandidates = [
-      `./goodnotes_document_parser-0.1.0-py3-none-any.whl?v=${ts}`,
-      `../dist/goodnotes_document_parser-0.1.0-py3-none-any.whl?v=${ts}`,
-      `./dist/goodnotes_document_parser-0.1.0-py3-none-any.whl?v=${ts}`,
-    ];
-
-    let loaded = false;
-    for (const wheelUrl of wheelCandidates) {
-      try {
-        const resp = await fetch(wheelUrl, { cache: "no-store" });
-        if (resp.ok) {
-          const wheelBuffer = await resp.arrayBuffer();
-          await state.pyodide.unpackArchive(wheelBuffer, "whl");
-          loaded = true;
-          console.log(`[Parser] Successfully unpacked package wheel from ${wheelUrl}`);
-          break;
-        }
-      } catch (e) {
-        console.warn(`[Parser] Attempt to fetch ${wheelUrl} failed:`, e);
-      }
-    }
-
-    if (!loaded) {
-      throw new Error("Could not find or load goodnotes_document_parser wheel package.");
-    }
+    await state.pyodide.unpackArchive(wheelBuffer, "whl");
 
     // Define Python bridge helpers
     await state.pyodide.runPythonAsync(`
@@ -528,6 +535,7 @@ async function processGoodNotesBuffer(arrayBuffer, filename) {
 
     state.pageCount = docInfo.get("page_count") || 1;
     state.currentPageIndex = 0;
+    state.userHasZoomed = false;
 
     updateProgress({
       title: "Rendering Vector Canvas",
@@ -615,8 +623,12 @@ async function renderCurrentPage(showModal = true) {
     el.btnPrevPage.disabled = state.currentPageIndex <= 0;
     el.btnNextPage.disabled = state.currentPageIndex >= state.pageCount - 1;
 
-    // Reset zoom transformation
-    applyZoom();
+    // Apply auto-fit zoom transformation if user hasn't manually zoomed
+    if (!state.userHasZoomed) {
+      fitToScreen();
+    } else {
+      applyZoom();
+    }
   } catch (err) {
     console.error("[Parser] Page render failed:", err);
     showToast("Render error: " + err.message, "error");
@@ -701,6 +713,51 @@ async function resolvePdfPlaceholders(containerElement) {
 function applyZoom() {
   el.svgStage.style.transform = `scale(${state.zoomLevel})`;
   el.zoomLevelText.textContent = `${Math.round(state.zoomLevel * 100)}%`;
+}
+
+/**
+ * Calculate optimal zoom level to fit document in viewport with comfortable padding
+ */
+function fitToScreen() {
+  if (!el.svgStage || !el.canvasContainer) return;
+  const svg = el.svgStage.querySelector("svg");
+  if (!svg) {
+    state.zoomLevel = 1.0;
+    applyZoom();
+    return;
+  }
+
+  const containerW = el.canvasContainer.clientWidth;
+  const containerH = el.canvasContainer.clientHeight;
+  if (containerW <= 0 || containerH <= 0) return;
+
+  // Available padding inside canvas container
+  const paddingX = window.innerWidth <= 640 ? 16 : 40;
+  const paddingY = window.innerWidth <= 640 ? 16 : 40;
+  const availW = Math.max(80, containerW - paddingX);
+  const availH = Math.max(80, containerH - paddingY);
+
+  // Get SVG viewBox or native width/height
+  let docW = parseFloat(svg.getAttribute("width")) || 612;
+  let docH = parseFloat(svg.getAttribute("height")) || 792;
+  const viewBox = svg.getAttribute("viewBox");
+  if (viewBox) {
+    const parts = viewBox.trim().split(/\s+/).map(Number);
+    if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+      docW = parts[2];
+      docH = parts[3];
+    }
+  }
+
+  const scaleW = availW / docW;
+  const scaleH = availH / docH;
+  let fitScale = Math.min(scaleW, scaleH);
+
+  // Cap initial fit scale between 0.2 and 1.0 (don't upscale small vector pages, but scale down large docs)
+  fitScale = Math.max(0.2, Math.min(fitScale, 1.0));
+
+  state.zoomLevel = Math.round(fitScale * 100) / 100;
+  applyZoom();
 }
 
 /**
@@ -842,18 +899,27 @@ function setupEventListeners() {
 
   // Zoom controls
   el.btnZoomIn.addEventListener("click", () => {
+    state.userHasZoomed = true;
     state.zoomLevel = Math.min(state.zoomLevel + 0.15, 3.0);
     applyZoom();
   });
 
   el.btnZoomOut.addEventListener("click", () => {
+    state.userHasZoomed = true;
     state.zoomLevel = Math.max(state.zoomLevel - 0.15, 0.3);
     applyZoom();
   });
 
   el.btnZoomReset.addEventListener("click", () => {
-    state.zoomLevel = 1.0;
-    applyZoom();
+    state.userHasZoomed = false;
+    fitToScreen();
+  });
+
+  // Auto-fit on window resize
+  window.addEventListener("resize", () => {
+    if (!state.userHasZoomed && el.svgStage && !el.svgStage.classList.contains("hidden")) {
+      fitToScreen();
+    }
   });
 
   // Download Multi-page PDF
