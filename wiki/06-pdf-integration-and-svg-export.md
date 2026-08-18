@@ -148,7 +148,7 @@ The engine implements a **Language-Aware Font Stack** (`_format_font_family_stac
 
 ---
 
-In the next chapter, **[07 - CLI Tools and Python API Guide](07-cli-and-api-guide.md)**, we will demonstrate the usage of each command-line instruction and provide calling examples for the Python library in detail.
+In the next chapter, **[07 - CLI Tools and Python API Guide](07-cli-and-api-guide#english)**, we will demonstrate the usage of each command-line instruction and provide calling examples for the Python library in detail.
 
 ---
 
@@ -302,4 +302,4 @@ GoodNotes 在 iOS 上通常預設使用西文字體（如 `Helvetica Neue`），
 
 ---
 
-在下一章 **[07 - CLI 工具與 Python API 指南](07-cli-and-api-guide.md)** 中，我們將詳細示範各命令列指令的使用方式與 Python 程式庫的調用範例。
+在下一章 **[07 - CLI 工具與 Python API 指南](07-cli-and-api-guide#中文)** 中，我們將詳細示範各命令列指令的使用方式與 Python 程式庫的調用範例。

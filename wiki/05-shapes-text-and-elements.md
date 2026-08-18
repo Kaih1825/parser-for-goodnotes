@@ -98,7 +98,7 @@ It uses the SVG `<g transform="rotate(...)">` and child `<svg overflow="hidden">
 
 ---
 
-In the next chapter, **[06 - PDF Integration and SVG Export](06-pdf-integration-and-svg-export.md)**, we will detail the analysis of PDF background dimensions, the 132 DPI and 72 DPI coordinate transformation matrices, and the layered drawing logic of the SVG canvas.
+In the next chapter, **[06 - PDF Integration and SVG Export](06-pdf-integration-and-svg-export#english)**, we will detail the analysis of PDF background dimensions, the 132 DPI and 72 DPI coordinate transformation matrices, and the layered drawing logic of the SVG canvas.
 
 ---
 
@@ -202,4 +202,4 @@ GoodNotes 中的打字機文字框（Text Element）儲存於 Type 35 Record 內
 
 ---
 
-在下一章 **[06 - PDF 底圖與 SVG 向量匯出](06-pdf-integration-and-svg-export.md)** 中，我們將詳細說明 PDF 背景尺寸解析、132 DPI 與 72 DPI 坐標轉換矩陣，以及 SVG 畫布的分層繪製邏輯。
+在下一章 **[06 - PDF 底圖與 SVG 向量匯出](06-pdf-integration-and-svg-export#中文)** 中，我們將詳細說明 PDF 背景尺寸解析、132 DPI 與 72 DPI 坐標轉換矩陣，以及 SVG 畫布的分層繪製邏輯。

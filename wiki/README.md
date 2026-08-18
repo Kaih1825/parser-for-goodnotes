@@ -33,15 +33,15 @@ Click the links below to jump to the corresponding topic chapters:
 
 | Chapter File | Topic Description | Key Content |
 | :--- | :--- | :--- |
-| **[01-architecture-overview.md](01-architecture-overview.md)** | **System Architecture and Data Flow** | Module responsibilities, parsing pipeline, file format evolution from GoodNotes 5 vs 6 |
-| **[02-archive-and-wire-format.md](02-archive-and-wire-format.md)** | **ZIP Container and Protobuf Wire Parsing** | ZIP file structure, Varint encoding rules, Length-Delimited stream frame decoding |
-| **[03-compression-and-tpl-binary.md](03-compression-and-tpl-binary.md)** | **Apple LZ4 Compression and TPL Memory Image** | `bv41`/`bv4$` stream specifications, Pure-Python LZ4 decompression, Troy Hanson TPL Format syntax and RGBA Trailer parsing |
-| **[04-stroke-geometry-and-rendering.md](04-stroke-geometry-and-rendering.md)** | **Stroke Geometry and Vector Ribbon Reconstruction** | Control point pressure, normal vector smoothing, Catmull-Rom and Bézier curves, v9 eraser cut convex hull algorithm |
-| **[05-shapes-text-and-elements.md](05-shapes-text-and-elements.md)** | **Shapes, Text, and Page Elements** | Polygon/rectangle/ellipse parsing, arrow endpoint markers, RTF/UTF-8 text blocks, sticky notes, and image cropping |
-| **[06-pdf-integration-and-svg-export.md](06-pdf-integration-and-svg-export.md)** | **PDF Background, SVG Export & Multi-Page PDF** | PDF `/MediaBox` parsing, 132/72 DPI scaling, SVG layer stacking, CairoSVG PDF compilation & CJK font stack |
-| **[07-cli-and-api-guide.md](07-cli-and-api-guide.md)** | **CLI Tool and Python API Guide** | `gn-inspect`, `gn-dump`, `gn-diff`, `gn-export-json`, `gn-export-svg`, `gn-export-pdf` commands & Python APIs |
-| **[08-testing-building-publishing.md](08-testing-building-publishing.md)** | **Development, Testing, Building, and Publishing** | `uv` environment setup, Pytest unit testing, controlled format analysis corpus protocol, PyPI publishing process |
-| **[09-current-analysis-findings.md](09-current-re-findings.md)** | **Current Analysis Findings** | GN6 page ordering, deletion events, PDF association, Type 35 text, sticker backgrounds, image crop, Sticky Note parent-child and current limitations |
+| **[01-architecture-overview.md](01-architecture-overview#english)** | **System Architecture and Data Flow** | Module responsibilities, parsing pipeline, file format evolution from GoodNotes 5 vs 6 |
+| **[02-archive-and-wire-format.md](02-archive-and-wire-format#english)** | **ZIP Container and Protobuf Wire Parsing** | ZIP file structure, Varint encoding rules, Length-Delimited stream frame decoding |
+| **[03-compression-and-tpl-binary.md](03-compression-and-tpl-binary#english)** | **Apple LZ4 Compression and TPL Memory Image** | `bv41`/`bv4$` stream specifications, Pure-Python LZ4 decompression, Troy Hanson TPL Format syntax and RGBA Trailer parsing |
+| **[04-stroke-geometry-and-rendering.md](04-stroke-geometry-and-rendering#english)** | **Stroke Geometry and Vector Ribbon Reconstruction** | Control point pressure, normal vector smoothing, Catmull-Rom and Bézier curves, v9 eraser cut convex hull algorithm |
+| **[05-shapes-text-and-elements.md](05-shapes-text-and-elements#english)** | **Shapes, Text, and Page Elements** | Polygon/rectangle/ellipse parsing, arrow endpoint markers, RTF/UTF-8 text blocks, sticky notes, and image cropping |
+| **[06-pdf-integration-and-svg-export.md](06-pdf-integration-and-svg-export#english)** | **PDF Background, SVG Export & Multi-Page PDF** | PDF `/MediaBox` parsing, 132/72 DPI scaling, SVG layer stacking, CairoSVG PDF compilation & CJK font stack |
+| **[07-cli-and-api-guide.md](07-cli-and-api-guide#english)** | **CLI Tool and Python API Guide** | `gn-inspect`, `gn-dump`, `gn-diff`, `gn-export-json`, `gn-export-svg`, `gn-export-pdf` commands & Python APIs |
+| **[08-testing-building-publishing.md](08-testing-building-publishing#english)** | **Development, Testing, Building, and Publishing** | `uv` environment setup, Pytest unit testing, controlled format analysis corpus protocol, PyPI publishing process |
+| **[09-current-analysis-findings.md](09-current-re-findings#english)** | **Current Analysis Findings** | GN6 page ordering, deletion events, PDF association, Type 35 text, sticker backgrounds, image crop, Sticky Note parent-child and current limitations |
 
 ---
 
@@ -84,7 +84,7 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
 
 ## Current Analysis Status
 
-The project has currently practically verified data paths such as GN6 file page ordering, deletion events, PDF background association, Type 35 rich text, sticky notes, and image cropping. The latest verification and known limitations are organized in **[09 - Current Analysis Findings](09-current-re-findings.md)**.
+The project has currently practically verified data paths such as GN6 file page ordering, deletion events, PDF background association, Type 35 rich text, sticky notes, and image cropping. The latest verification and known limitations are organized in **[09 - Current Analysis Findings](09-current-re-findings#english)**.
 
 > The Wiki description is subject to the current source code; fields not yet verified by the corpus will be marked as speculative and are not considered official GoodNotes format specifications.
 > For more technical details, please click the table of contents above to navigate to specific chapters!
@@ -126,15 +126,15 @@ The project has currently practically verified data paths such as GN6 file page 
 
 | 章節檔案 | 主題說明 | 關鍵內容 |
 | :--- | :--- | :--- |
-| **[01-architecture-overview.md](01-architecture-overview.md)** | **系統架構與資料流** | 模組職責分工、解析管道 (Pipeline)、GoodNotes 5 vs 6 檔案格式演進 |
-| **[02-archive-and-wire-format.md](02-archive-and-wire-format.md)** | **ZIP 容器與 Protobuf Wire 解析** | ZIP 檔案結構、Varint 編碼規則、Length-Delimited 串流分幀解碼 |
-| **[03-compression-and-tpl-binary.md](03-compression-and-tpl-binary.md)** | **Apple LZ4 壓縮與 TPL 記憶體映像** | `bv41`/`bv4$` 串流規約、Pure-Python LZ4 解壓、Troy Hanson TPL Format 語法與 RGBA Trailer 解析 |
-| **[04-stroke-geometry-and-rendering.md](04-stroke-geometry-and-rendering.md)** | **筆跡幾何與向量 Ribbon 重建** | 控制點壓感、法向量平滑、Catmull-Rom 與 Bézier 曲線、v9 橡皮擦切口凸包演算法 |
-| **[05-shapes-text-and-elements.md](05-shapes-text-and-elements.md)** | **圖形、文字與頁面元素** | 多邊形/矩形/橢圓形解析、箭頭端點 Marker、RTF/UTF-8 文字區塊、便條紙與圖片 Crop 裁切 |
-| **[06-pdf-integration-and-svg-export.md](06-pdf-integration-and-svg-export.md)** | **PDF 底圖、SVG 匯出與多頁 PDF** | PDF `/MediaBox` 解析、132/72 DPI 坐標轉換矩陣、SVG DOM 圖層堆疊、CairoSVG 多頁 PDF 編譯與 CJK 字型鏈 |
-| **[07-cli-and-api-guide.md](07-cli-and-api-guide.md)** | **CLI 工具與 Python API 指南** | `gn-inspect`, `gn-dump`, `gn-diff`, `gn-export-json`, `gn-export-svg`, `gn-export-pdf` 指令與程式庫調用 API |
-| **[08-testing-building-publishing.md](08-testing-building-publishing.md)** | **開發、測試、打包與發佈** | `uv` 環境設置、Pytest 單元測試、受控格式分析實驗協議 (Corpus Protocol)、PyPI 發佈流程 |
-| **[09-current-analysis-findings.md](09-current-re-findings.md)** | **目前格式分析發現** | GN6 頁面排序、刪除事件、PDF 關聯、Type 35 文字、貼圖背景、圖片 Crop、Sticky Note parent-child 與目前限制 |
+| **[01-architecture-overview.md](01-architecture-overview#中文)** | **系統架構與資料流** | 模組職責分工、解析管道 (Pipeline)、GoodNotes 5 vs 6 檔案格式演進 |
+| **[02-archive-and-wire-format.md](02-archive-and-wire-format#中文)** | **ZIP 容器與 Protobuf Wire 解析** | ZIP 檔案結構、Varint 編碼規則、Length-Delimited 串流分幀解碼 |
+| **[03-compression-and-tpl-binary.md](03-compression-and-tpl-binary#中文)** | **Apple LZ4 壓縮與 TPL 記憶體映像** | `bv41`/`bv4$` 串流規約、Pure-Python LZ4 解壓、Troy Hanson TPL Format 語法與 RGBA Trailer 解析 |
+| **[04-stroke-geometry-and-rendering.md](04-stroke-geometry-and-rendering#中文)** | **筆跡幾何與向量 Ribbon 重建** | 控制點壓感、法向量平滑、Catmull-Rom 與 Bézier 曲線、v9 橡皮擦切口凸包演算法 |
+| **[05-shapes-text-and-elements.md](05-shapes-text-and-elements#中文)** | **圖形、文字與頁面元素** | 多邊形/矩形/橢圓形解析、箭頭端點 Marker、RTF/UTF-8 文字區塊、便條紙與圖片 Crop 裁切 |
+| **[06-pdf-integration-and-svg-export.md](06-pdf-integration-and-svg-export#中文)** | **PDF 底圖、SVG 匯出與多頁 PDF** | PDF `/MediaBox` 解析、132/72 DPI 坐標轉換矩陣、SVG DOM 圖層堆疊、CairoSVG 多頁 PDF 編譯與 CJK 字型鏈 |
+| **[07-cli-and-api-guide.md](07-cli-and-api-guide#中文)** | **CLI 工具與 Python API 指南** | `gn-inspect`, `gn-dump`, `gn-diff`, `gn-export-json`, `gn-export-svg`, `gn-export-pdf` 指令與程式庫調用 API |
+| **[08-testing-building-publishing.md](08-testing-building-publishing#中文)** | **開發、測試、打包與發佈** | `uv` 環境設置、Pytest 單元測試、受控格式分析實驗協議 (Corpus Protocol)、PyPI 發佈流程 |
+| **[09-current-analysis-findings.md](09-current-re-findings#中文)** | **目前格式分析發現** | GN6 頁面排序、刪除事件、PDF 關聯、Type 35 文字、貼圖背景、圖片 Crop、Sticky Note parent-child 與目前限制 |
 
 ---
 
@@ -177,7 +177,7 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
 
 ## 目前格式分析狀態
 
-目前專案已實際驗證 GN6 文件的頁面排序、刪除事件、PDF 背景關聯、Type 35 富文本、便條紙與圖片裁切等資料路徑。最新的驗證與已知限制整理於 **[09 - Current Analysis Findings](09-current-re-findings.md)**。
+目前專案已實際驗證 GN6 文件的頁面排序、刪除事件、PDF 背景關聯、Type 35 富文本、便條紙與圖片裁切等資料路徑。最新的驗證與已知限制整理於 **[09 - Current Analysis Findings](09-current-re-findings#中文)**。
 
 > Wiki 描述以目前 source code 為準；尚未被 corpus 驗證的欄位會標示為推測，不視為 GoodNotes 官方格式規格。
 > 欲瞭解更多技術細節，請點選上方目錄導覽至具體章節！

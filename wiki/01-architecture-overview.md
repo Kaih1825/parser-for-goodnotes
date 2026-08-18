@@ -110,7 +110,7 @@ GoodNotes 5 (GN5) and GoodNotes 6 (GN6) maintain high compatibility in their und
 
 ---
 
-In the next chapter, **[02 - Archive and Wire Format](02-archive-and-wire-format.md)**, we will dive into the file distribution within the ZIP archive and the low-level byte reading principles of the schema-free Protobuf Wire decoder.
+In the next chapter, **[02 - Archive and Wire Format](02-archive-and-wire-format#english)**, we will dive into the file distribution within the ZIP archive and the low-level byte reading principles of the schema-free Protobuf Wire decoder.
 
 ---
 
@@ -226,4 +226,4 @@ GoodNotes 5 (GN5) 與 GoodNotes 6 (GN6) 在底層儲存結構上保持高度相�
 
 ---
 
-在下一章 **[02 - ZIP 容器與 Protobuf Wire 解析](02-archive-and-wire-format.md)** 中，我們將深入剖析 ZIP 包內的檔案分佈以及無模式 Protobuf Wire 解碼器的低階位元組讀取原理。
+在下一章 **[02 - ZIP 容器與 Protobuf Wire 解析](02-archive-and-wire-format#中文)** 中，我們將深入剖析 ZIP 包內的檔案分佈以及無模式 Protobuf Wire 解碼器的低階位元組讀取原理。

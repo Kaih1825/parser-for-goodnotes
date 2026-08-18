@@ -204,7 +204,7 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
 
 ---
 
-In the next chapter, **[08 - Testing, Building, and Publishing](08-testing-building-publishing.md)**, we will explain how to set up the development environment, execute unit tests, maintain controlled format analysis experiment protocols, and package for publishing to PyPI.
+In the next chapter, **[08 - Testing, Building, and Publishing](08-testing-building-publishing#english)**, we will explain how to set up the development environment, execute unit tests, maintain controlled format analysis experiment protocols, and package for publishing to PyPI.
 
 ---
 
@@ -414,4 +414,4 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
 
 ---
 
-在下一章 **[08 - 開發、測試、打包與發佈](08-testing-building-publishing.md)** 中，我們將說明如何設置開發環境、執行單元測試、維護受控格式分析實驗協議以及打包發佈至 PyPI。
+在下一章 **[08 - 開發、測試、打包與發佈](08-testing-building-publishing#中文)** 中，我們將說明如何設置開發環境、執行單元測試、維護受控格式分析實驗協議以及打包發佈至 PyPI。

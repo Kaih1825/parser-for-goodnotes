@@ -131,7 +131,7 @@ When the distance between two adjacent control points exceeds the safety thresho
 
 ---
 
-In the next chapter **[05 - Shapes, Text, and Elements](05-shapes-text-and-elements.md)**, we will introduce parsing details for vector shapes, arrow markers, rich text boxes, and image crops.
+In the next chapter **[05 - Shapes, Text, and Elements](05-shapes-text-and-elements#english)**, we will introduce parsing details for vector shapes, arrow markers, rich text boxes, and image crops.
 
 ---
 
@@ -268,4 +268,4 @@ $$\text{Jitter Ratio} = \frac{\text{方向反轉次數 (Cos angle } < -0.3\text{
 
 ---
 
-在下一章 **[05 - 圖形、文字與頁面元素](05-shapes-text-and-elements.md)** 中，我們將介紹向量圖形 (Shapes)、箭頭 Marker、富文本框與圖片裁切 (Crop) 的解析細節。
+在下一章 **[05 - 圖形、文字與頁面元素](05-shapes-text-and-elements#中文)** 中，我們將介紹向量圖形 (Shapes)、箭頭 Marker、富文本框與圖片裁切 (Crop) 的解析細節。

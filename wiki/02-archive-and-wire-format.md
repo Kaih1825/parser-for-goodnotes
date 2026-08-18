@@ -151,7 +151,7 @@ Through this design, the toolkit guarantees **100% lossless parsing and unknown 
 
 ---
 
-In the next chapter, **[03 - Apple LZ4 Compression and TPL Memory Image](03-compression-and-tpl-binary.md)**, we will explore in detail the Apple LZ4 stream specifications and the Troy Hanson TPL binary format in the stroke Payload.
+In the next chapter, **[03 - Apple LZ4 Compression and TPL Memory Image](03-compression-and-tpl-binary#english)**, we will explore in detail the Apple LZ4 stream specifications and the Troy Hanson TPL binary format in the stroke Payload.
 
 ---
 
@@ -308,4 +308,4 @@ class Field:
 
 ---
 
-在下一章 **[03 - Apple LZ4 壓縮與 TPL 記憶體映像](03-compression-and-tpl-binary.md)** 中，我們將詳細探討筆跡 Payload 中的 Apple LZ4 串流規格以及 Troy Hanson TPL 二進位格式。
+在下一章 **[03 - Apple LZ4 壓縮與 TPL 記憶體映像](03-compression-and-tpl-binary#中文)** 中，我們將詳細探討筆跡 Payload 中的 Apple LZ4 串流規格以及 Troy Hanson TPL 二進位格式。

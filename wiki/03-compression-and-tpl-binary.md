@@ -175,7 +175,7 @@ The parser reads the two FIXED32 floating-point numbers in Field 6 to obtain $(d
 
 ---
 
-In the next chapter, **[04 - Stroke Geometry and Vector Ribbon Rendering](04-stroke-geometry-and-rendering.md)**, we will detail the normal vector calculations, vector ribbon rendering, and the convex hull algorithm for the v9 eraser cuts.
+In the next chapter, **[04 - Stroke Geometry and Vector Ribbon Rendering](04-stroke-geometry-and-rendering#english)**, we will detail the normal vector calculations, vector ribbon rendering, and the convex hull algorithm for the v9 eraser cuts.
 
 ---
 
@@ -356,4 +356,4 @@ def extract_color_from_trailer(trailer_bytes: bytes) -> tuple[str, float]:
 
 ---
 
-在下一章 **[04 - 筆跡幾何與向量 Ribbon 重建](04-stroke-geometry-and-rendering.md)** 中，我們將詳細介紹法向量計算、向量 Ribbon 繪製以及 v9 橡皮擦切口凸包演算法。
+在下一章 **[04 - 筆跡幾何與向量 Ribbon 重建](04-stroke-geometry-and-rendering#中文)** 中，我們將詳細介紹法向量計算、向量 Ribbon 繪製以及 v9 橡皮擦切口凸包演算法。
