@@ -10,6 +10,9 @@ __pycache__/
 # Build & distribution
 dist/
 build/
+_site/
+web/*.whl
+web/assets/
 
 # Virtual environments
 .venv/

@@ -36,7 +36,12 @@ class GoodNotesDocument:
     _archive: zipfile.ZipFile
 
     @classmethod
-    def open(cls, path: str | Path) -> "GoodNotesDocument":
+    def open(cls, path: str | Path | bytes | io.BytesIO) -> "GoodNotesDocument":
+        if isinstance(path, bytes):
+            import io
+            return cls(Path("memory.goodnotes"), zipfile.ZipFile(io.BytesIO(path)))
+        if hasattr(path, "read") and hasattr(path, "seek"):
+            return cls(Path(getattr(path, "name", "memory.goodnotes")), zipfile.ZipFile(path))  # type: ignore
         archive_path = Path(path)
         return cls(archive_path, zipfile.ZipFile(archive_path))
 

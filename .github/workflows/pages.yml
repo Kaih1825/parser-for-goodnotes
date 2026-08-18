@@ -1,0 +1,60 @@
+name: Deploy Demo to GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "src/**"
+      - "web/**"
+      - "assets/*.goodnotes"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Build Python wheel package
+        run: uv build --wheel
+
+      - name: Assemble GitHub Pages site bundle
+        run: |
+          mkdir -p _site/assets
+          cp -r web/* _site/
+          cp dist/*.whl _site/
+          cp assets/ex*.goodnotes _site/assets/
+          echo "Site bundle structure:"
+          ls -la _site/
+          ls -la _site/assets/
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

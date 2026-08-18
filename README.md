@@ -1,17 +1,19 @@
-[中文](#中文)
-
 <a id="english"></a>
 
 # Document Parser for GoodNotes
+[中文](#中文)
 
 > [!WARNING]
 > **Vibe Coding Disclaimer**: This entire project was developed through **Vibe Coding** (AI-assisted rapid pair-programming and exploratory development). While the parser has been verified against test corpora, code and architecture choices reflect an experimental AI-driven iteration style. Use at your own discretion!
 
 ![CI](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/ci.yml/badge.svg)
+[![Live Web Demo](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-blueviolet)](https://kaih1825.github.io/document-parser-for-goodnotes/)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
 An independent, open-source, fully typed Python toolkit for inspecting and parsing user-supplied GoodNotes 5 and 6 `.goodnotes` archives. It decodes protobuf **wire format** directly, parses Apple LZ4 framed streams, decodes Troy Hanson TPL memory images, extracts observed RGBA stroke data, and exports documents to JSON and SVG.
+
+> 🚀 **[Try the Live Web Demo](https://kaih1825.github.io/document-parser-for-goodnotes/)**: Parse `.goodnotes` files and render vector SVGs directly in your browser powered 100% locally by WebAssembly (Pyodide).
 
 **This project is not affiliated with, endorsed by, sponsored by, or officially connected to Goodnotes Limited.** See [`LEGAL-NOTICE.md`](LEGAL-NOTICE.md) for release and usage notes.
 
@@ -147,16 +149,23 @@ See also the [Contributing Guide](CONTRIBUTING.md).
 
 ---
 
-[English](#english)
 
 <a id="中文"></a>
 
 # Document Parser for GoodNotes
+[English](#english)
 
 > [!WARNING]
 > **Vibe Coding 免責聲明**：本專案完全採用 **Vibe Coding**（AI 輔助快速結對程式設計與探索式開發）進行構建。雖然解析器已通過測試樣本驗證，但程式碼結構與架構選擇體現了 AI 驅動的實驗性疊代風格。請自行評估並謹慎使用！
 
+![CI](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/ci.yml/badge.svg)
+[![Live Web Demo](https://img.shields.io/badge/線上體驗-GitHub%20Pages-blueviolet)](https://kaih1825.github.io/document-parser-for-goodnotes/)
+![Python](https://img.shields.io/badge/python-3.9%2B-blue)
+![License: MIT](https://img.shields.io/badge/License-MIT-green)
+
 一套獨立、開源且完整型別化的 Python 工具組，用於檢視與解析使用者提供的 GoodNotes 5 與 GoodNotes 6 `.goodnotes` 封存檔。它可直接解碼 protobuf **wire format**、解析 Apple LZ4 框架串流、解碼 Troy Hanson TPL 記憶體映像、擷取觀察到的 RGBA 筆跡資料，並將文件匯出為 JSON 與 SVG。
+
+> 🚀 **[立即在線體驗 Web Demo](https://kaih1825.github.io/document-parser-for-goodnotes/)**：完全在瀏覽器本地透過 WebAssembly (Pyodide) 進行解析與向量 SVG 渲染，免安裝、100% 保障筆記隱私安全。
 
 **本專案與 Goodnotes Limited 沒有任何關聯、背書、贊助或官方合作關係。** 發布與使用注意事項請參閱 [`LEGAL-NOTICE.md`](LEGAL-NOTICE.md)。
 
