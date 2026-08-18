@@ -1,6 +1,9 @@
 #!/bin/bash
 # 自動匯出 GoodNotes 筆記為 SVG
 files=(
+    "ex/ex1.goodnotes"
+    "ex/ex2.goodnotes"
+    "ex/ex3.goodnotes"
     # "Ch3P1.goodnotes"
     # "shape.goodnotes"
     # "Teat.goodnotes"

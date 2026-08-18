@@ -17,6 +17,14 @@ An independent, open-source, fully typed Python toolkit for inspecting and parsi
 
 It **deliberately does NOT use heuristic float scanning**.
 
+## 🖼️ Rendering Comparison
+
+| Source Archive | GoodNotes Original (`.jpg`) | This Project SVG Export (`.svg`) |
+| :---: | :---: | :---: |
+| **Example 1**<br>([`ex1.goodnotes`](assets/ex1.goodnotes)) | ![GoodNotes Original 1](assets/ex1.jpg) | ![Parser SVG 1](assets/ex1.svg) |
+| **Example 2**<br>([`ex2.goodnotes`](assets/ex2.goodnotes)) | ![GoodNotes Original 2](assets/ex2.jpg) | ![Parser SVG 2](assets/ex2.svg) |
+| **Example 3**<br>([`ex3.goodnotes`](assets/ex3.goodnotes)) | ![GoodNotes Original 3](assets/ex3.jpg) | ![Parser SVG 3](assets/ex3.svg) |
+
 ## Features
 
 - **Protobuf Wire Decoder**: Lossless parsing of framed and unframed protobuf messages, preserving unknown fields.
@@ -153,6 +161,14 @@ See also the [Contributing Guide](CONTRIBUTING.md).
 **本專案與 Goodnotes Limited 沒有任何關聯、背書、贊助或官方合作關係。** 發布與使用注意事項請參閱 [`LEGAL-NOTICE.md`](LEGAL-NOTICE.md)。
 
 本專案**刻意不使用啟發式浮點數掃描**。
+
+## 🖼️ 渲染效果對比
+
+| 原始封存檔 | GoodNotes 原版渲染 (`.jpg`) | 本專案 SVG 匯出 (`.svg`) |
+| :---: | :---: | :---: |
+| **範例 1**<br>([`ex1.goodnotes`](assets/ex1.goodnotes)) | ![GoodNotes 原版渲染 1](assets/ex1.jpg) | ![本專案 SVG 匯出 1](assets/ex1.svg) |
+| **範例 2**<br>([`ex2.goodnotes`](assets/ex2.goodnotes)) | ![GoodNotes 原版渲染 2](assets/ex2.jpg) | ![本專案 SVG 匯出 2](assets/ex2.svg) |
+| **範例 3**<br>([`ex3.goodnotes`](assets/ex3.goodnotes)) | ![GoodNotes 原版渲染 3](assets/ex3.jpg) | ![本專案 SVG 匯出 3](assets/ex3.svg) |
 
 ## 功能
 
