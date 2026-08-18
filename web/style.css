@@ -100,7 +100,47 @@ body {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
+}
+
+/* Language Switcher */
+.lang-switch-container {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  padding: 3px 6px;
+  border-radius: 20px;
+}
+
+.btn-lang {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.btn-lang:hover {
+  color: var(--text-primary);
+}
+
+.btn-lang.active {
+  background: rgba(57, 197, 187, 0.18);
+  color: var(--accent-cyan);
+  box-shadow: 0 0 8px rgba(57, 197, 187, 0.3);
+}
+
+.lang-divider {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  opacity: 0.5;
 }
 
 .status-indicator {

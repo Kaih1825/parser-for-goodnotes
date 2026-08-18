@@ -3,8 +3,120 @@
  * Powered by Pyodide (WASM Python)
  */
 
+const I18N_DICT = {
+  en: {
+    pageTitle: "Document Parser for GoodNotes · Independent Vector SVG & PDF Viewer",
+    headerTitle: "Document Parser for GoodNotes",
+    headerSubtitle: "Independent Vector SVG, PDF & JSON Archive Inspector",
+    statusLoading: "Loading WebAssembly Runtime...",
+    statusReady: "WebAssembly Ready",
+    statusError: "Runtime Error",
+    dropzonePrimary: 'Drag & Drop <code>.goodnotes</code> file',
+    dropzoneSecondary: 'or <span class="highlight">browse from device</span>',
+    samplesTitle: "Quick Try Samples",
+    sample1: "Example 1 (Handwriting)",
+    sample2: "Example 2 (Shapes & Text)",
+    sample3: "Example 3 (Diagrams & Notes)",
+    docInspectionTitle: "Document Inspection",
+    statPages: "Pages",
+    statCurPage: "Current Page",
+    statStrokes: "Strokes",
+    statDimensions: "Dimensions",
+    btnExportPdf: "Export Multi-Page PDF",
+    btnDownloadSvg: "Download Page SVG",
+    btnExportJson: "Export JSON AST",
+    privacyTitle: "100% Client-Side Privacy",
+    privacyDesc: "Documents are decoded in-browser via WebAssembly. Nothing is ever sent to a server.",
+    legalDisclaimer: '<strong>Disclaimer:</strong> This independent open-source project is not affiliated with, endorsed by, sponsored by, or officially connected to Goodnotes Limited. See <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/LEGAL-NOTICE.md" target="_blank" rel="noopener">LEGAL-NOTICE.md</a>.',
+    btnFit: "Fit",
+    emptyTitle: "No .goodnotes Document Loaded",
+    emptyDesc: "Upload a user-supplied <code>.goodnotes</code> notebook or select a quick sample on the left to start inspecting.",
+    footerText: '<strong>Document Parser for GoodNotes</strong> is an independent open-source project released under the <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>. It is not affiliated with, endorsed by, or sponsored by Goodnotes Limited.',
+    
+    // Dynamic text
+    stepRead: "1. Read Archive",
+    stepDecode: "2. Decode Protobuf",
+    stepRender: "3. Render View",
+    stepPrepare: "1. Prepare",
+    stepRenderPages: "2. Render Pages",
+    stepSavePdf: "3. Save PDF",
+    
+    openingDoc: "Opening .goodnotes Archive",
+    readingBytes: (name, mb) => `Reading "${name}" (${mb} MB)...`,
+    decodingWire: "Extracting Apple LZ4 streams and stroke ribbons...",
+    renderingCanvas: (count) => `Parsed ${count} page(s). Rendering first page...`,
+    readyLoaded: (count) => `Loaded ${count} page(s) successfully!`,
+    toastLoaded: (name, count) => `✓ Loaded "${name}" (${count} pages)`,
+    toastInvalidExt: (name) => `Invalid format "${name}". Only .goodnotes files are supported.`,
+    exportingPdf: "Exporting Multi-Page PDF",
+    pdfInit: (count) => `Initializing PDF builder for ${count} page(s)...`,
+    pdfRenderingPage: (i, count, pct) => `Rendering page ${i} of ${count} (${pct}%)...`,
+    pdfCompressing: (name) => `Compressing and saving "${name}"...`,
+    toastPdfSuccess: (name, count) => `✓ Successfully exported "${name}" (${count} pages)`,
+    toastSvgDownloaded: (name) => `✓ Downloaded ${name}`,
+    toastJsonExported: (name) => `✓ Exported ${name}`,
+    engineInitializing: "WebAssembly engine is still initializing. Please wait...",
+    noDocLoaded: "No document is currently loaded.",
+  },
+  zh_TW: {
+    pageTitle: "Document Parser for GoodNotes · 獨立向量 SVG 與 PDF 檢視器",
+    headerTitle: "Document Parser for GoodNotes",
+    headerSubtitle: "獨立向量 SVG、PDF 與 JSON 封存檔解析檢視器",
+    statusLoading: "正在載入 WebAssembly 引擎...",
+    statusReady: "WebAssembly 引擎就緒",
+    statusError: "執行環境錯誤",
+    dropzonePrimary: '拖放 <code>.goodnotes</code> 檔案至此',
+    dropzoneSecondary: '或 <span class="highlight">從本機選取檔案</span>',
+    samplesTitle: "快速體驗範本",
+    sample1: "範例 1 (手寫筆跡)",
+    sample2: "範例 2 (幾何圖形與文字)",
+    sample3: "範例 3 (圖表與多頁筆記)",
+    docInspectionTitle: "文件解析資訊",
+    statPages: "總頁數",
+    statCurPage: "目前頁面",
+    statStrokes: "筆畫數",
+    statDimensions: "頁面尺寸",
+    btnExportPdf: "匯出多頁向量 PDF",
+    btnDownloadSvg: "下載本頁向量 SVG",
+    btnExportJson: "匯出 JSON 語法樹",
+    privacyTitle: "100% 本地瀏覽器隱私保護",
+    privacyDesc: "所有文件皆由 WebAssembly 於瀏覽器本地解碼，絕不上傳任何伺服器。",
+    legalDisclaimer: '<strong>免責聲明：</strong>本獨立開源專案與 Goodnotes Limited 無任何隸屬、贊助或官方合作關係。詳見 <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/LEGAL-NOTICE.md" target="_blank" rel="noopener">LEGAL-NOTICE.md</a>。',
+    btnFit: "重設比例",
+    emptyTitle: "尚未載入任何 .goodnotes 文件",
+    emptyDesc: "請上傳您的 <code>.goodnotes</code> 筆記檔，或由左側選取範例檔案開始檢視。",
+    footerText: '<strong>Document Parser for GoodNotes</strong> 是一套採 <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/LICENSE" target="_blank" rel="noopener">MIT 開源許可協議</a> 的獨立專案，與 Goodnotes Limited 無任何隸屬或背書關係。',
+    
+    // Dynamic text
+    stepRead: "1. 讀取封存檔",
+    stepDecode: "2. 解碼 Protobuf",
+    stepRender: "3. 向量畫布繪製",
+    stepPrepare: "1. 初始化",
+    stepRenderPages: "2. 逐頁向量轉譯",
+    stepSavePdf: "3. 儲存 PDF",
+    
+    openingDoc: "正在讀取 .goodnotes 筆記",
+    readingBytes: (name, mb) => `正在讀取 "${name}" (${mb} MB)...`,
+    decodingWire: "正在解碼 Apple LZ4 串流與筆跡幾何座標...",
+    renderingCanvas: (count) => `已解析 ${count} 頁。正在繪製第一頁...`,
+    readyLoaded: (count) => `成功載入 ${count} 個頁面！`,
+    toastLoaded: (name, count) => `✓ 成功載入 "${name}"（共 ${count} 頁）`,
+    toastInvalidExt: (name) => `檔案格式錯誤「${name}」，本工具僅支援 .goodnotes 檔案。`,
+    exportingPdf: "正在匯出多頁向量 PDF",
+    pdfInit: (count) => `正在初始化 ${count} 頁的向量 PDF 生成器...`,
+    pdfRenderingPage: (i, count, pct) => `正在轉譯第 ${i} 頁 / 共 ${count} 頁 (${pct}%)...`,
+    pdfCompressing: (name) => `正在封裝並儲存 "${name}"...`,
+    toastPdfSuccess: (name, count) => `✓ 成功匯出 "${name}"（共 ${count} 頁純向量 PDF）`,
+    toastSvgDownloaded: (name) => `✓ 已下載 ${name}`,
+    toastJsonExported: (name) => `✓ 已匯出 ${name}`,
+    engineInitializing: "WebAssembly 引擎仍在初始化中，請稍候...",
+    noDocLoaded: "目前尚未載入任何文件。",
+  }
+};
+
 // Application State
 const state = {
+  lang: "en",
   pyodide: null,
   isReady: false,
   currentDocBytes: null,
@@ -18,6 +130,8 @@ const state = {
 
 // DOM Elements
 const el = {
+  langBtnEn: document.getElementById("lang-btn-en"),
+  langBtnZh: document.getElementById("lang-btn-zh"),
   runtimeStatus: document.getElementById("runtime-status"),
   statusText: document.querySelector("#runtime-status .status-text"),
   dropzone: document.getElementById("dropzone"),
@@ -50,6 +164,69 @@ const el = {
   svgStage: document.getElementById("svg-stage"),
   sampleButtons: document.querySelectorAll(".btn-sample"),
 };
+
+function t(key, ...args) {
+  const dict = I18N_DICT[state.lang] || I18N_DICT.en;
+  const item = dict[key] !== undefined ? dict[key] : (I18N_DICT.en[key] || key);
+  if (typeof item === "function") {
+    return item(...args);
+  }
+  return item;
+}
+
+function detectLanguage() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const langParam = urlParams.get("lang");
+  const hash = window.location.hash.replace(/^#/, "");
+
+  if (langParam === "zh_TW" || langParam === "zh-TW" || langParam === "zh" || hash === "zh_TW" || hash === "zh-TW") {
+    return "zh_TW";
+  }
+  if (langParam === "en" || hash === "en") {
+    return "en";
+  }
+
+  const saved = localStorage.getItem("gn_parser_lang");
+  if (saved === "zh_TW" || saved === "en") return saved;
+
+  const browserLang = navigator.language || navigator.userLanguage || "";
+  if (browserLang.startsWith("zh")) {
+    return "zh_TW";
+  }
+  return "en";
+}
+
+function setLanguage(lang, updateUrl = true) {
+  state.lang = (lang === "zh_TW" || lang === "zh-TW" || lang === "zh") ? "zh_TW" : "en";
+  try {
+    localStorage.setItem("gn_parser_lang", state.lang);
+  } catch (e) {}
+
+  if (updateUrl) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("lang", state.lang);
+    window.history.replaceState(null, "", url.toString());
+  }
+
+  if (el.langBtnEn && el.langBtnZh) {
+    el.langBtnEn.classList.toggle("active", state.lang === "en");
+    el.langBtnZh.classList.toggle("active", state.lang === "zh_TW");
+  }
+
+  const dict = I18N_DICT[state.lang];
+  document.title = dict.pageTitle;
+
+  document.querySelectorAll("[data-i18n]").forEach((elem) => {
+    const key = elem.getAttribute("data-i18n");
+    if (dict[key] !== undefined) {
+      elem.innerHTML = dict[key];
+    }
+  });
+
+  if (state.isReady) {
+    updateStatus("ready", dict.statusReady);
+  }
+}
 
 /**
  * Yield control back to browser event loop to allow UI rendering and smooth 60fps animations
@@ -503,20 +680,31 @@ async function loadSample(samplePath, buttonElement) {
  * Event Listeners Setup
  */
 function setupEventListeners() {
+  // Language Switcher Buttons
+  if (el.langBtnEn) {
+    el.langBtnEn.addEventListener("click", () => setLanguage("en"));
+  }
+  if (el.langBtnZh) {
+    el.langBtnZh.addEventListener("click", () => setLanguage("zh_TW"));
+  }
+  window.addEventListener("popstate", () => {
+    setLanguage(detectLanguage(), false);
+  });
+
   // Dropzone drag & drop
   el.dropzone.addEventListener("click", () => el.fileInput.click());
   el.fileInput.addEventListener("change", (e) => {
     const file = e.target.files?.[0];
     if (file) {
       if (!isGoodNotesFile(file.name)) {
-        showToast(`Invalid file format "${file.name}". Only .goodnotes files are supported.`, "error", 5000);
+        showToast(t("toastInvalidExt", file.name), "error", 5000);
         el.fileInput.value = "";
         return;
       }
       const reader = new FileReader();
       updateProgress({
-        title: "Reading File",
-        detail: `Loading ${file.name}...`,
+        title: t("openingDoc"),
+        detail: t("readingBytes", file.name, (file.size / 1024 / 1024).toFixed(2)),
         percent: 10,
         activeStep: 1,
       });
@@ -545,13 +733,13 @@ function setupEventListeners() {
     const file = e.dataTransfer?.files?.[0];
     if (file) {
       if (!isGoodNotesFile(file.name)) {
-        showToast(`Invalid file format "${file.name}". Only .goodnotes files are supported.`, "error", 5000);
+        showToast(t("toastInvalidExt", file.name), "error", 5000);
         return;
       }
       const reader = new FileReader();
       updateProgress({
-        title: "Reading Dropped File",
-        detail: `Reading ${file.name}...`,
+        title: t("openingDoc"),
+        detail: t("readingBytes", file.name, (file.size / 1024 / 1024).toFixed(2)),
         percent: 10,
         activeStep: 1,
       });
@@ -616,7 +804,7 @@ function setupEventListeners() {
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-    showToast(`✓ Downloaded ${filename}`, "success");
+    showToast(t("toastSvgDownloaded", filename), "success");
   });
 
   // Download JSON
@@ -634,7 +822,7 @@ function setupEventListeners() {
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      showToast(`✓ Exported ${filename}`, "success");
+      showToast(t("toastJsonExported", filename), "success");
     } catch (err) {
       showToast("JSON export failed: " + err.message, "error");
     }
@@ -683,7 +871,7 @@ function svgToCanvas(svgString, width, height, scale = 2.0) {
  */
 async function exportDocumentToPdf() {
   if (!state.isReady || !state.currentDocBytes || state.pageCount <= 0) {
-    showToast("No document is currently loaded.", "info");
+    showToast(t("noDocLoaded"), "info");
     return;
   }
 
@@ -702,11 +890,11 @@ async function exportDocumentToPdf() {
     const getStatsFn = state.pyodide.globals.get("get_page_stats");
 
     updateProgress({
-      title: "Exporting Multi-Page PDF",
-      detail: `Initializing PDF builder for ${state.pageCount} page(s)...`,
+      title: t("exportingPdf"),
+      detail: t("pdfInit", state.pageCount),
       percent: 5,
       activeStep: 1,
-      stepLabels: ["1. Prepare", "2. Render Pages", "3. Save PDF"],
+      stepLabels: [t("stepPrepare"), t("stepRenderPages"), t("stepSavePdf")],
     });
     await yieldThread(40);
 
@@ -714,8 +902,8 @@ async function exportDocumentToPdf() {
       const stepPct = Math.round(10 + ((i + 1) / state.pageCount) * 80);
 
       updateProgress({
-        title: "Exporting Multi-Page PDF",
-        detail: `Rendering page ${i + 1} of ${state.pageCount} (${stepPct}%)...`,
+        title: t("exportingPdf"),
+        detail: t("pdfRenderingPage", i + 1, state.pageCount, stepPct),
         percent: stepPct,
         activeStep: 2,
       });
@@ -812,15 +1000,15 @@ async function exportDocumentToPdf() {
     const filename = `${docBase}.pdf`;
 
     updateProgress({
-      title: "Exporting Multi-Page PDF",
-      detail: `Compressing and saving "${filename}"...`,
+      title: t("exportingPdf"),
+      detail: t("pdfCompressing", filename),
       percent: 98,
       activeStep: 3,
     });
     await yieldThread(50);
 
     pdfDoc.save(filename);
-    showToast(`✓ Successfully exported "${filename}" (${state.pageCount} pages)`, "success", 4500);
+    showToast(t("toastPdfSuccess", filename, state.pageCount), "success", 4500);
   } catch (err) {
     console.error("[PDF Export] Export failed:", err);
     showToast("Failed to export PDF: " + err.message, "error", 5000);
@@ -832,6 +1020,7 @@ async function exportDocumentToPdf() {
 
 // Bootstrap Application
 document.addEventListener("DOMContentLoaded", () => {
+  setLanguage(detectLanguage(), false);
   setupEventListeners();
   initPyodideRuntime();
 });

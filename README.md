@@ -6,7 +6,7 @@
 > [!WARNING]
 > **Vibe Coding Disclaimer**: This entire project was developed through **Vibe Coding** (AI-assisted rapid pair-programming and exploratory development). While the parser has been verified against test corpora, code and architecture choices reflect an experimental AI-driven iteration style. Use at your own discretion!
 
-[![Live Web Demo](https://img.shields.io/badge/🚀%20Live%20Demo-Try%20in%20Browser-blueviolet?style=for-the-badge)](https://kaih1825.github.io/parser-for-goodnotes/)
+[![Live Web Demo](https://img.shields.io/badge/🚀%20Live%20Demo-Try%20in%20Browser-blueviolet?style=for-the-badge)](https://kaih1825.github.io/parser-for-goodnotes/?lang=en)
 
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
@@ -164,7 +164,7 @@ See also the [Contributing Guide](CONTRIBUTING.md).
 > [!WARNING]
 > **Vibe Coding 免責聲明**：本專案完全採用 **Vibe Coding**（AI 輔助快速結對程式設計與探索式開發）進行構建。雖然解析器已通過測試樣本驗證，但程式碼結構與架構選擇體現了 AI 驅動的實驗性疊代風格。請自行評估並謹慎使用！
 
-[![Live Web Demo](https://img.shields.io/badge/🚀%20Live%20Demo-Try%20in%20Browser-blueviolet?style=for-the-badge)](https://kaih1825.github.io/parser-for-goodnotes/)
+[![Live Web Demo](https://img.shields.io/badge/🚀%20線上展示-在瀏覽器中直接體驗-blueviolet?style=for-the-badge)](https://kaih1825.github.io/parser-for-goodnotes/?lang=zh_TW)
 
 
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
