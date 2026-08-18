@@ -56,11 +56,12 @@ async function initPyodideRuntime() {
 
     updateStatus("loading", "Loading GoodNotes Parser Package...");
 
-    // Try finding the wheel in root or dist directory
+    // Try finding the wheel in root or dist directory with cache-busting
+    const ts = Date.now();
     const wheelCandidates = [
-      "./goodnotes_document_parser-0.1.0-py3-none-any.whl",
-      "../dist/goodnotes_document_parser-0.1.0-py3-none-any.whl",
-      "./dist/goodnotes_document_parser-0.1.0-py3-none-any.whl",
+      `./goodnotes_document_parser-0.1.0-py3-none-any.whl?v=${ts}`,
+      `../dist/goodnotes_document_parser-0.1.0-py3-none-any.whl?v=${ts}`,
+      `./dist/goodnotes_document_parser-0.1.0-py3-none-any.whl?v=${ts}`,
     ];
 
     let loaded = false;
@@ -81,7 +82,7 @@ async function initPyodideRuntime() {
     if (!loaded) {
       // Fallback: try loading wheel directly from relative path
       try {
-        await state.pyodide.loadPackage("./goodnotes_document_parser-0.1.0-py3-none-any.whl");
+        await state.pyodide.loadPackage(`./goodnotes_document_parser-0.1.0-py3-none-any.whl?v=${ts}`);
       } catch (err) {
         console.warn("[Parser] Wheel load fallback: trying standard import", err);
       }
@@ -320,6 +321,7 @@ async function resolvePdfPlaceholders(containerElement) {
 
       // Replace placeholder with SVG <image>
       const imgElem = document.createElementNS("http://www.w3.org/2000/svg", "image");
+      imgElem.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", pngDataUrl);
       imgElem.setAttribute("href", pngDataUrl);
       imgElem.setAttribute("x", "0");
       imgElem.setAttribute("y", "0");
@@ -328,6 +330,7 @@ async function resolvePdfPlaceholders(containerElement) {
       imgElem.setAttribute("preserveAspectRatio", "none");
 
       node.parentNode.replaceChild(imgElem, node);
+      console.log(`[PDF.js] Rendered PDF page ${pdfPageNum} background (${width}x${height})`);
     } catch (err) {
       console.warn("[PDF.js] Failed to render PDF placeholder:", err);
     }
