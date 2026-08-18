@@ -106,7 +106,7 @@ Or via module invocation:
 PYTHONPATH=src python3 -m goodnotes_re.cli export-svg sample.goodnotes -o pages-svg
 ```
 
-For the full CLI reference (including all flags and batch export examples), see [`cli.md`](cli.md) (Traditional Chinese).
+For the full CLI reference (including all flags and batch export examples), see [`cli.md`](cli.md#english).
 
 ## Python Library API
 
@@ -140,9 +140,7 @@ with GoodNotesDocument.open("sample.goodnotes") as doc:
 
 | Document | Description |
 |---|---|
-| [`wiki/09-current-re-findings.md`](wiki/09-current-re-findings.md) | Format analysis findings and field annotations |
-| [`wiki/08-testing-building-publishing.md#3-controlled-corpus-protocol`](wiki/08-testing-building-publishing.md#3-controlled-corpus-protocol) | Protocol for adding new wire-format observations |
-| [`cli.md`](cli.md) | Full CLI reference (Traditional Chinese) |
+| [`cli.md`](cli.md#english) | Full CLI reference (Traditional Chinese) |
 | [`wiki/`](wiki/) | Deep-dive technical documentation (architecture, formats, rendering) |
 | [`LEGAL-NOTICE.md`](LEGAL-NOTICE.md) | Legal, trademark, privacy, and redistribution notice |
 
@@ -260,7 +258,7 @@ gn-export-svg sample.goodnotes -o pages-svg --pdf
 gn-export-pdf sample.goodnotes -o document.pdf
 ```
 
-完整 CLI 參考請參閱 [`cli.md`](cli.md)。
+完整 CLI 參考請參閱 [`cli.md`](cli.md#中文)。
 
 ## Python 函式庫 API
 
@@ -294,9 +292,7 @@ with GoodNotesDocument.open("sample.goodnotes") as doc:
 
 | 文件 | 說明 |
 |---|---|
-| [`wiki/09-current-re-findings.md`](wiki/09-current-re-findings.md) | 格式分析發現與欄位註解 |
-| [`wiki/08-testing-building-publishing.md#3-受控格式分析實驗協議-controlled-corpus-protocol`](wiki/08-testing-building-publishing.md#3-受控格式分析實驗協議-controlled-corpus-protocol) | 新增 wire-format 觀察結果的流程 |
-| [`cli.md`](cli.md) | 完整 CLI 參考（繁體中文） |
+| [`cli.md`](cli.md#中文) | 完整 CLI 參考|
 | [`wiki/`](wiki/) | 深入技術文件（架構、格式、渲染原理） |
 | [`LEGAL-NOTICE.md`](LEGAL-NOTICE.md) | 法律、商標、隱私與重新發布注意事項 |
 
