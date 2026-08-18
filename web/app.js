@@ -101,7 +101,16 @@ current_pages = []
 
 def load_document_bytes(data_bytes, filename="doc.goodnotes"):
     global current_doc, current_pages
-    current_doc = GoodNotesDocument.from_bytes(bytes(data_bytes), filename=filename)
+    raw_bytes = bytes(data_bytes)
+    if hasattr(GoodNotesDocument, "from_bytes"):
+        current_doc = GoodNotesDocument.from_bytes(raw_bytes, filename=filename)
+    else:
+        try:
+            current_doc = GoodNotesDocument.open(raw_bytes)
+        except Exception:
+            import zipfile
+            current_doc = GoodNotesDocument(Path(filename), zipfile.ZipFile(io.BytesIO(raw_bytes)))
+    
     try:
         current_pages = current_doc.pages(parse_all=True)
     except Exception:

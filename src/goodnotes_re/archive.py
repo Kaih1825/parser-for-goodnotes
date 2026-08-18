@@ -45,6 +45,11 @@ class GoodNotesDocument:
         archive_path = Path(path)
         return cls(archive_path, zipfile.ZipFile(archive_path))
 
+    @classmethod
+    def from_bytes(cls, data: bytes, filename: str = "memory.goodnotes") -> "GoodNotesDocument":
+        import io
+        return cls(Path(filename), zipfile.ZipFile(io.BytesIO(data)))
+
     def close(self) -> None:
         self._archive.close()
 
