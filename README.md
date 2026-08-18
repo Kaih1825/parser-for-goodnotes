@@ -8,10 +8,10 @@
 
 [![Live Web Demo](https://img.shields.io/badge/🚀%20Live%20Demo-Try%20in%20Browser-blueviolet?style=for-the-badge)](https://kaih1825.github.io/parser-for-goodnotes/)
 
-[![Web Demo Status](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml/badge.svg?branch=main)](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml)
-![CI](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
+[![Web Demo Status](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml/badge.svg?branch=main)](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml)
+![CI](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/ci.yml/badge.svg)
 
 An independent, open-source, fully typed Python toolkit for inspecting and parsing user-supplied GoodNotes 5 and 6 `.goodnotes` archives. It decodes protobuf **wire format** directly, parses Apple LZ4 framed streams, decodes Troy Hanson TPL memory images, extracts observed RGBA stroke data, and exports documents to JSON and SVG.
 
@@ -166,10 +166,11 @@ See also the [Contributing Guide](CONTRIBUTING.md).
 
 [![Live Web Demo](https://img.shields.io/badge/🚀%20Live%20Demo-Try%20in%20Browser-blueviolet?style=for-the-badge)](https://kaih1825.github.io/parser-for-goodnotes/)
 
-[![Web Demo Status](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml/badge.svg?branch=main)](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml)
-![CI](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/ci.yml/badge.svg)
+
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
+[![Web Demo Status](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml/badge.svg?branch=main)](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml)
+![CI](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/ci.yml/badge.svg)
 
 
 一套獨立、開源且完整型別化的 Python 工具組，用於檢視與解析使用者提供的 GoodNotes 5 與 GoodNotes 6 `.goodnotes` 封存檔。它可直接解碼 protobuf **wire format**、解析 Apple LZ4 框架串流、解碼 Troy Hanson TPL 記憶體映像、擷取觀察到的 RGBA 筆跡資料，並將文件匯出為 JSON 與 SVG。
