@@ -178,10 +178,15 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
 
 ```python
 from pathlib import Path
-from goodnotes_re import GoodNotesDocument, write_svg, write_pdf, svgs_to_pdf, svg_to_pdf_bytes
+from goodnotes_re import GoodNotesDocument, page_to_svg, write_svg, write_pdf, svgs_to_pdf, svg_to_pdf_bytes
 
 with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
-    # 1. Export SVG pages
+    pages = doc.pages(parse_all=True)
+
+    # 1. Render single page directly in memory (zero disk I/O)
+    single_svg = page_to_svg(pages[0], doc, fill_shapes=True)
+
+    # 2. Export all SVG pages to disk
     svg_paths = write_svg(
         document=doc,
         directory="output_svgs",
@@ -192,7 +197,7 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
     )
     print("Generated SVG files:", svg_paths)
 
-    # 2. Export direct multi-page PDF
+    # 3. Export direct multi-page PDF
     pdf_path = write_pdf(
         document=doc,
         output="output_svgs/Teat.pdf",
@@ -388,10 +393,15 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
 
 ```python
 from pathlib import Path
-from goodnotes_re import GoodNotesDocument, write_svg, write_pdf, svgs_to_pdf, svg_to_pdf_bytes
+from goodnotes_re import GoodNotesDocument, page_to_svg, write_svg, write_pdf, svgs_to_pdf, svg_to_pdf_bytes
 
 with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
-    # 1. 匯出各頁 SVG 向量圖
+    pages = doc.pages(parse_all=True)
+
+    # 1. 純記憶體渲染單頁 SVG (零磁碟 I/O)
+    single_svg = page_to_svg(pages[0], doc, fill_shapes=True)
+
+    # 2. 匯出各頁 SVG 向量圖至磁碟
     svg_paths = write_svg(
         document=doc,
         directory="output_svgs",
@@ -402,7 +412,7 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
     )
     print("生成的 SVG 檔案列表:", svg_paths)
 
-    # 2. 直接編譯為多頁 PDF
+    # 3. 直接編譯為多頁 PDF
     pdf_path = write_pdf(
         document=doc,
         output="output_svgs/Teat.pdf",

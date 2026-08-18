@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Iterator, Sequence
 
 from .archive import GoodNotesDocument
-from .pdf import render_pdf_page_to_svg
+from .pdf import render_pdf_page_to_svg, resolve_svg_image_masks
 from .stroke import build_stroke_ribbon
 from .wire import Field, Message, WireType, try_decode_message
 
@@ -256,12 +256,686 @@ def _format_font_family_stack(font_family: str | None, sample_text: str = "") ->
     return ", ".join(items)
 
 
+def page_to_svg(
+    page: Page,
+    document: GoodNotesDocument,
+    fill_shapes: bool = True,
+    sticky_note_state: str | None = None,
+    textbox_state: bool | str | None = False,
+) -> str:
+    """Render a single GoodNotes Page object to an SVG XML string in memory."""
+    # GoodNotes internal coordinates are 132 DPI, PDF canvas is 72 DPI
+    dpi_scale = 72.0 / 132.0
+    pw, ph = page.dimensions.width, page.dimensions.height
+
+    elements: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{pw:.2f}" height="{ph:.2f}" viewBox="0 0 {pw:.2f} {ph:.2f}">',
+        f'<!-- GoodNotes Page {page.index + 1} ({page.uuid}) -->',
+    ]
+
+    if page.background_attachment_path and page.background_attachment_path in document.member_names():
+        elements.append(f'<!-- Background Attachment: {html.escape(page.background_attachment_path)} -->')
+        try:
+            bdata = document.read(page.background_attachment_path)
+            if bdata.startswith((b"\xff\xd8\xff", b"\x89PNG")):
+                mime = "image/jpeg" if bdata.startswith(b"\xff\xd8\xff") else "image/png"
+                img_b64 = base64.b64encode(bdata).decode("ascii")
+                elements.append(
+                    f'<image href="data:{mime};base64,{img_b64}" x="0" y="0" width="{pw:.2f}" height="{ph:.2f}" preserveAspectRatio="none"/>'
+                )
+            elif bdata.startswith(b"%PDF"):
+                pdf_svg = render_pdf_page_to_svg(
+                    bdata,
+                    page_index=max(0, page.pdf_page_index - 1),
+                    width=pw,
+                    height=ph,
+                    id_prefix=f"background_{page.index}",
+                )
+                if pdf_svg:
+                    elements.append(pdf_svg)
+                else:
+                    pdf_b64 = base64.b64encode(bdata).decode("ascii")
+                    target_p_idx = max(0, page.pdf_page_index - 1)
+                    elements.append(
+                        f'<g class="gn-pdf-placeholder" data-pdf-b64="{pdf_b64}" data-pdf-page="{target_p_idx}" data-width="{pw:.2f}" data-height="{ph:.2f}"></g>'
+                    )
+        except Exception:
+            pass
+
+    # Render image elements (placed right above background, beneath strokes, shapes and text)
+    for img in page.image_elements:
+        att_path = None
+        if f"attachments/{img.attachment_uuid}" in document.member_names():
+            att_path = f"attachments/{img.attachment_uuid}"
+        if att_path:
+            try:
+                idata = document.read(att_path)
+                is_pdf_attachment = idata.startswith(b"%PDF")
+                mime = "image/jpeg" if idata.startswith(b"\xff\xd8\xff") else "image/png"
+                img_b64 = None if is_pdf_attachment else base64.b64encode(idata).decode("ascii")
+                crop_x = img.x * dpi_scale
+                crop_y = img.y * dpi_scale
+                crop_w = img.width * dpi_scale
+                crop_h = img.height * dpi_scale
+                rot_deg = img.rotation_rad * (180.0 / 3.141592653589793)
+
+                elements.append(f'<!-- Image Attachment: {html.escape(img.attachment_uuid)} -->')
+
+                is_cropped = (
+                    img.orig_width > 0
+                    and img.orig_height > 0
+                    and (abs(img.width - img.orig_width) > 0.1 or abs(img.height - img.orig_height) > 0.1)
+                )
+
+                if is_cropped:
+                    cx = crop_x + crop_w / 2.0
+                    cy = crop_y + crop_h / 2.0
+                    orig_w = img.orig_width * dpi_scale
+                    orig_h = img.orig_height * dpi_scale
+                    img_x = (img.orig_x - img.x) * dpi_scale
+                    img_y = (img.orig_y - img.y) * dpi_scale
+
+                    transform = f' transform="rotate({rot_deg:.2f}, {cx:.2f}, {cy:.2f})"' if abs(rot_deg) > 0.01 else ""
+
+                    if is_pdf_attachment:
+                        # Vector sticker/attachment: rasterizing to PNG/JPEG would
+                        # mislabel the mime type and fail to decode, so render the
+                        # PDF page as an SVG fragment sized to the *original*
+                        # (uncropped) attachment box, then reuse the same
+                        # translate + viewBox-clip technique used for raster crops.
+                        inner_svg = render_pdf_page_to_svg(
+                            idata,
+                            page_index=0,
+                            width=orig_w,
+                            height=orig_h,
+                            id_prefix=f"attachment_{img.uuid}_crop",
+                        )
+                        if inner_svg:
+                            elements.append(
+                                f'<g{transform}>'
+                                f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" viewBox="0 0 {crop_w:.2f} {crop_h:.2f}" overflow="hidden">'
+                                f'<g transform="translate({img_x:.2f},{img_y:.2f})">{inner_svg}</g>'
+                                f'</svg>'
+                                f'</g>'
+                            )
+                        else:
+                            pdf_b64 = base64.b64encode(idata).decode("ascii")
+                            elements.append(
+                                f'<g{transform}>'
+                                f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" viewBox="0 0 {crop_w:.2f} {crop_h:.2f}" overflow="hidden">'
+                                f'<g transform="translate({img_x:.2f},{img_y:.2f})">'
+                                f'<g class="gn-pdf-placeholder" data-pdf-b64="{pdf_b64}" data-pdf-page="0" data-width="{orig_w:.2f}" data-height="{orig_h:.2f}"></g>'
+                                f'</g>'
+                                f'</svg>'
+                                f'</g>'
+                            )
+                    else:
+                        elements.append(
+                            f'<g{transform}>'
+                            f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" viewBox="0 0 {crop_w:.2f} {crop_h:.2f}" overflow="hidden">'
+                            f'<image href="data:{mime};base64,{img_b64}" x="{img_x:.2f}" y="{img_y:.2f}" width="{orig_w:.2f}" height="{orig_h:.2f}" preserveAspectRatio="none"/>'
+                            f'</svg>'
+                            f'</g>'
+                        )
+                else:
+                    transform_attr = ""
+                    if abs(rot_deg) > 0.01:
+                        cx, cy = crop_x + crop_w / 2.0, crop_y + crop_h / 2.0
+                        transform_attr = f' transform="rotate({rot_deg:.2f}, {cx:.2f}, {cy:.2f})"'
+
+                    if is_pdf_attachment:
+                        inner_svg = render_pdf_page_to_svg(
+                            idata,
+                            page_index=0,
+                            width=crop_w,
+                            height=crop_h,
+                            id_prefix=f"attachment_{img.uuid}",
+                        )
+                        if inner_svg:
+                            elements.append(
+                                f'<g{transform_attr}>'
+                                f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}">{inner_svg}</svg>'
+                                f'</g>'
+                            )
+                        else:
+                            pdf_b64 = base64.b64encode(idata).decode("ascii")
+                            elements.append(
+                                f'<g{transform_attr}>'
+                                f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}">'
+                                f'<g class="gn-pdf-placeholder" data-pdf-b64="{pdf_b64}" data-pdf-page="0" data-width="{crop_w:.2f}" data-height="{crop_h:.2f}"></g>'
+                                f'</svg>'
+                                f'</g>'
+                            )
+                    else:
+                        elements.append(
+                            f'<image href="data:{mime};base64,{img_b64}" x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" preserveAspectRatio="none"{transform_attr}/>'
+                        )
+            except Exception:
+                pass
+
+    # Determine sticky note open/close state override
+    state_override: bool | None = None
+    if sticky_note_state:
+        st_lower = sticky_note_state.lower().strip()
+        if st_lower == "open":
+            state_override = True
+        elif st_lower in ("close", "closed"):
+            state_override = False
+
+    # Render sticky notes cards and icons
+    sticky_note_map = {note.uuid: note for note in page.sticky_notes}
+    for note in page.sticky_notes:
+        is_open = state_override if state_override is not None else note.is_open
+        nx = note.x * dpi_scale
+        ny = note.y * dpi_scale
+        if is_open:
+            nw = note.width * dpi_scale
+            nh = note.height * dpi_scale
+            elements.append(f'<!-- Sticky Note (Expanded): {html.escape(note.uuid)} -->')
+            elements.append(
+                f'<rect x="{nx:.2f}" y="{ny:.2f}" width="{nw:.2f}" height="{nh:.2f}" rx="8" ry="8" fill="{note.color_hex}" fill-opacity="0.95" stroke="rgba(0,0,0,0.15)" stroke-width="0.8"/>'
+            )
+            if note.author:
+                tx = nx + 12.0 * dpi_scale
+                ty = ny + nh - 12.0 * dpi_scale
+                font_stack = _format_font_family_stack("sans-serif")
+                elements.append(
+                    f'<text x="{tx:.2f}" y="{ty:.2f}" font-family="{html.escape(font_stack)}" font-size="10" fill="#555555" font-weight="500">{html.escape(note.author)}</text>'
+                )
+        else:
+            # Render folded note icon indicator at (nx, ny) with natural opacity overlay
+            elements.append(f'<!-- Sticky Note (Folded): {html.escape(note.uuid)} -->')
+            elements.append(
+                f'<g transform="translate({nx:.2f}, {ny:.2f})">'
+                f'<path d="M 3 0 L 14 0 C 16 0 17 1 17 3 L 17 14 L 11 20 L 3 20 C 1 20 0 19 0 17 L 0 3 C 0 1 1 0 3 0 Z" fill="{note.color_hex}" stroke="rgba(0,0,0,0.25)" stroke-width="0.8" stroke-linejoin="round"/>'
+                f'<path d="M 11 20 L 11 15 C 11 14.5 11.5 14 12 14 L 17 14 Z" fill="black" fill-opacity="0.18" stroke="rgba(0,0,0,0.25)" stroke-width="0.8" stroke-linejoin="round"/>'
+                f'</g>'
+            )
+
+    # Render vector shapes
+    arrow_shapes = [s for s in page.shapes if getattr(s, "start_arrow", False) or getattr(s, "end_arrow", False)]
+    if arrow_shapes:
+        arrow_colors = sorted({s.color_hex for s in arrow_shapes})
+        defs_elements = ['<defs>']
+        for color in arrow_colors:
+            color_clean = color.replace('#', '')
+
+            open_start_path = "M 10 0 L 0 5 L 10 10"
+            open_end_path = "M 0 0 L 10 5 L 0 10"
+            filled_start_path = "M 10 0 L 0 5 L 10 10 Z"
+            filled_end_path = "M 0 0 L 10 5 L 0 10 Z"
+
+            # Dual formulas: Open V-Shape aligns to tip vertex; Solid Triangle aligns to solid base
+            rx_open_start = _get_marker_ref_x(open_start_path, "min")
+            rx_open_end = _get_marker_ref_x(open_end_path, "max")
+            rx_filled_start = _get_marker_ref_x(filled_start_path, "max")
+            rx_filled_end = _get_marker_ref_x(filled_end_path, "min")
+
+            # Open V-shape arrowhead (Style 1)
+            defs_elements.append(
+                f'<marker id="arrow-start-open-{color_clean}" viewBox="0 0 10 10" refX="{rx_open_start:.2f}" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
+                f'<path d="{open_start_path}" fill="none" stroke="{color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
+                f'</marker>'
+                f'<marker id="arrow-end-open-{color_clean}" viewBox="0 0 10 10" refX="{rx_open_end:.2f}" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
+                f'<path d="{open_end_path}" fill="none" stroke="{color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
+                f'</marker>'
+            )
+            # Filled triangle arrowhead (Style 2)
+            defs_elements.append(
+                f'<marker id="arrow-start-filled-{color_clean}" viewBox="0 0 10 10" refX="{rx_filled_start:.2f}" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
+                f'<path d="{filled_start_path}" fill="{color}"/>'
+                f'</marker>'
+                f'<marker id="arrow-end-filled-{color_clean}" viewBox="0 0 10 10" refX="{rx_filled_end:.2f}" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
+                f'<path d="{filled_end_path}" fill="{color}"/>'
+                f'</marker>'
+            )
+            # Circle dot arrowhead (Style 3)
+            defs_elements.append(
+                f'<marker id="arrow-start-dot-{color_clean}" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
+                f'<circle cx="5" cy="5" r="4" fill="{color}"/>'
+                f'</marker>'
+                f'<marker id="arrow-end-dot-{color_clean}" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
+                f'<circle cx="5" cy="5" r="4" fill="{color}"/>'
+                f'</marker>'
+            )
+        defs_elements.append('</defs>')
+        elements.append("".join(defs_elements))
+
+    stroke_uuids = {s.uuid for s in page.strokes if s.uuid}
+
+    for shape in page.shapes:
+        if shape.uuid and shape.uuid in stroke_uuids:
+            continue
+
+        if shape.parent_uuid and shape.parent_uuid in sticky_note_map:
+            parent_note = sticky_note_map[shape.parent_uuid]
+            parent_is_open = state_override if state_override is not None else parent_note.is_open
+            if not parent_is_open:
+                continue
+            pts = tuple((px + parent_note.x, py + parent_note.y) for px, py in shape.points)
+            cx = (shape.cx + parent_note.x) if shape.cx is not None else None
+            cy = (shape.cy + parent_note.y) if shape.cy is not None else None
+        else:
+            pts = shape.points
+            cx = shape.cx
+            cy = shape.cy
+
+        is_polyline = 1 in shape.field_numbers or 2 not in shape.field_numbers or shape.shape_type == "polyline"
+        stroke_w = max(0.5, shape.stroke_width * dpi_scale)
+
+        dash_pattern = getattr(shape, "dash_pattern", None)
+        dash_attr = ""
+        if dash_pattern:
+            first_val = dash_pattern[0]
+            gap_val = dash_pattern[1] if len(dash_pattern) > 1 else dash_pattern[0]
+            if first_val <= 2.5:
+                dot_gap = max(stroke_w * 1.5, gap_val * dpi_scale)
+                dash_attr = f' stroke-dasharray="0 {dot_gap:.2f}"'
+            else:
+                dash_len = max(stroke_w * 2.0, first_val * dpi_scale)
+                gap_len = max(stroke_w * 1.5, gap_val * dpi_scale)
+                dash_attr = f' stroke-dasharray="{dash_len:.2f} {gap_len:.2f}"'
+
+        marker_attr = ""
+        c_clean = shape.color_hex.replace('#', '')
+        s_style = int(getattr(shape, "start_arrow", 0))
+        e_style = int(getattr(shape, "end_arrow", 0))
+
+        if s_style == 1:
+            marker_attr += f' marker-start="url(#arrow-start-open-{c_clean})"'
+        elif s_style == 2 or (isinstance(getattr(shape, "start_arrow", False), bool) and shape.start_arrow):
+            marker_attr += f' marker-start="url(#arrow-start-filled-{c_clean})"'
+        elif s_style >= 3:
+            marker_attr += f' marker-start="url(#arrow-start-dot-{c_clean})"'
+
+        if e_style == 1:
+            marker_attr += f' marker-end="url(#arrow-end-open-{c_clean})"'
+        elif e_style == 2 or (isinstance(getattr(shape, "end_arrow", False), bool) and shape.end_arrow):
+            marker_attr += f' marker-end="url(#arrow-end-filled-{c_clean})"'
+        elif e_style >= 3:
+            marker_attr += f' marker-end="url(#arrow-end-dot-{c_clean})"'
+
+        is_filled = getattr(shape, "is_filled", True)
+        if fill_shapes and is_filled:
+            fill_opacity = getattr(shape, "fill_alpha", getattr(shape, "alpha", 1.0))
+            fill_attr = f'fill="{shape.color_hex}" fill-opacity="{fill_opacity:.2f}"'
+        else:
+            fill_attr = 'fill="none"'
+
+        c_rad = getattr(shape, "corner_radius", 0.0)
+        is_dotted = bool(dash_pattern and dash_pattern[0] <= 2.5)
+        if marker_attr:
+            join_cap_attr = 'stroke-linecap="butt" stroke-linejoin="miter"'
+        else:
+            join_cap_attr = 'stroke-linecap="round" stroke-linejoin="round"'
+
+        if shape.shape_type == "ellipse" and cx is not None and cy is not None:
+            ellipse_cx = cx * dpi_scale
+            ellipse_cy = cy * dpi_scale
+            rx = (shape.rx or 0.0) * dpi_scale
+            ry = (shape.ry or 0.0) * dpi_scale
+            elements.append(
+                f'<ellipse cx="{ellipse_cx:.2f}" cy="{ellipse_cy:.2f}" rx="{rx:.2f}" ry="{ry:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} {fill_attr}/>'
+            )
+        elif shape.shape_type == "capsule":
+            left = min(p[0] for p in pts) * dpi_scale
+            top = min(p[1] for p in pts) * dpi_scale
+            right = max(p[0] for p in pts) * dpi_scale
+            bottom = max(p[1] for p in pts) * dpi_scale
+            w = right - left
+            h = bottom - top
+            r_val = min(w, h) / 2.0
+            elements.append(
+                f'<rect x="{left:.2f}" y="{top:.2f}" width="{w:.2f}" height="{h:.2f}" rx="{r_val:.2f}" ry="{r_val:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr}{marker_attr} {fill_attr}/>'
+            )
+        elif shape.shape_type == "rectangle" and len(pts) == 5:
+            left = min(p[0] for p in pts) * dpi_scale
+            top = min(p[1] for p in pts) * dpi_scale
+            right = max(p[0] for p in pts) * dpi_scale
+            bottom = max(p[1] for p in pts) * dpi_scale
+            w = right - left
+            h = bottom - top
+            if c_rad > 0.0:
+                rx_val = min(c_rad * dpi_scale, w / 4.0, h / 4.0)
+            else:
+                rx_val = 0.0
+            elements.append(
+                f'<rect x="{left:.2f}" y="{top:.2f}" width="{w:.2f}" height="{h:.2f}" rx="{rx_val:.2f}" ry="{rx_val:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} {fill_attr}/>'
+            )
+        elif shape.shape_type == "polygon":
+            is_closed = (len(pts) > 1 and pts[-1] == pts[0]) or is_filled
+            d_path = _rounded_polygon_svg_path(pts, c_rad, dpi_scale, is_closed=is_closed)
+            elements.append(
+                f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} {fill_attr}/>'
+            )
+        elif is_polyline:
+            if len(pts) == 2:
+                (x1, y1), (x2, y2) = pts
+                elements.append(
+                    f'<line x1="{x1 * dpi_scale:.2f}" y1="{y1 * dpi_scale:.2f}" x2="{x2 * dpi_scale:.2f}" y2="{y2 * dpi_scale:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} fill="none"/>'
+                )
+            elif len(pts) == 3:
+                (x0, y0), (x1, y1), (x2, y2) = pts
+                area = abs((x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0))
+                dist = math.hypot(x2 - x0, y2 - y0)
+                if dist > 0 and (area / dist) < 3.0:
+                    elements.append(
+                        f'<line x1="{x0 * dpi_scale:.2f}" y1="{y0 * dpi_scale:.2f}" x2="{x2 * dpi_scale:.2f}" y2="{y2 * dpi_scale:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} fill="none"/>'
+                    )
+                else:
+                    d_path = _catmull_rom_to_svg_path(pts, dpi_scale)
+                    elements.append(
+                        f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} fill="none"/>'
+                    )
+            else:
+                d_path = _catmull_rom_to_svg_path(pts, dpi_scale)
+                elements.append(
+                    f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} fill="none"/>'
+                )
+        else:
+            # Curves
+            if len(pts) == 3:
+                p0, p1, p2 = pts
+                d_path = (
+                    f"M {p0[0] * dpi_scale:.2f} {p0[1] * dpi_scale:.2f} "
+                    f"Q {p1[0] * dpi_scale:.2f} {p1[1] * dpi_scale:.2f} "
+                    f"{p2[0] * dpi_scale:.2f} {p2[1] * dpi_scale:.2f}"
+                )
+            elif len(pts) == 4:
+                p0, p1, p2, p3 = pts
+                d_path = (
+                    f"M {p0[0] * dpi_scale:.2f} {p0[1] * dpi_scale:.2f} "
+                    f"C {p1[0] * dpi_scale:.2f} {p1[1] * dpi_scale:.2f} "
+                    f"{p2[0] * dpi_scale:.2f} {p2[1] * dpi_scale:.2f} "
+                    f"{p3[0] * dpi_scale:.2f} {p3[1] * dpi_scale:.2f}"
+                )
+            else:
+                path = [f'M {pts[0][0] * dpi_scale:.2f} {pts[0][1] * dpi_scale:.2f}']
+                for x, y in pts[1:]:
+                    path.append(f'L {x * dpi_scale:.2f} {y * dpi_scale:.2f}')
+                d_path = " ".join(path)
+            elements.append(
+                f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr}{marker_attr} {fill_attr}/>'
+            )
+
+    shape_uuids = {shape.uuid for shape in page.shapes if shape.uuid}
+    from .stroke import StrokePoint
+
+    for stroke in page.strokes:
+        if stroke.uuid in shape_uuids:
+            continue
+
+        pts = stroke.points
+        outline_polys = stroke.outline_polygons
+
+        if stroke.parent_uuid and stroke.parent_uuid in sticky_note_map:
+            parent_note = sticky_note_map[stroke.parent_uuid]
+            parent_is_open = state_override if state_override is not None else parent_note.is_open
+            if not parent_is_open:
+                # Skip strokes belonging to folded notes
+                continue
+            # Shift stroke points by parent note origin
+            pts = tuple(StrokePoint(pt.x + parent_note.x, pt.y + parent_note.y, pt.pressure) for pt in stroke.points)
+            if outline_polys:
+                outline_polys = tuple(
+                    tuple((px + parent_note.x, py + parent_note.y) for px, py in poly)
+                    for poly in outline_polys
+                )
+
+        dash_pattern = getattr(stroke, "dash_pattern", None)
+        if stroke.is_dot and pts:
+            # Single point / Dot
+            pt = pts[0]
+            cx, cy = pt.x * dpi_scale, pt.y * dpi_scale
+            r = max(0.12, (stroke.width * pt.pressure * 0.5) * dpi_scale)
+            elements.append(
+                f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r:.2f}" fill="{stroke.color_hex}" fill-opacity="{stroke.alpha:.2f}" stroke="none"/>'
+            )
+        elif dash_pattern:
+            stroke_w = max(0.5, stroke.width * dpi_scale)
+            first_val = dash_pattern[0]
+            gap_val = dash_pattern[1] if len(dash_pattern) > 1 else dash_pattern[0]
+            if first_val <= 2.5:
+                dot_gap = max(stroke_w * 1.5, gap_val * dpi_scale)
+                dash_attr = f' stroke-dasharray="0 {dot_gap:.2f}"'
+            else:
+                dash_len = max(stroke_w * 2.0, first_val * dpi_scale)
+                gap_len = max(stroke_w * 1.5, gap_val * dpi_scale)
+                dash_attr = f' stroke-dasharray="{dash_len:.2f} {gap_len:.2f}"'
+            
+            stroke_pts = tuple((pt.x, pt.y) for pt in pts)
+            if len(stroke_pts) >= 2:
+                d_path = _catmull_rom_to_svg_path(stroke_pts, dpi_scale)
+                elements.append(
+                    f'<path d="{d_path}" stroke="{stroke.color_hex}" stroke-opacity="{stroke.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr} fill="none"/>'
+                )
+        else:
+            ribbon_d = build_stroke_ribbon(
+                pts,
+                stroke.width,
+                dpi_scale,
+                tpl_format=stroke.tpl_format,
+                outline_polygons=outline_polys,
+                is_cut_start=stroke.is_cut_start,
+                is_cut_end=stroke.is_cut_end,
+            )
+            if ribbon_d:
+                elements.append(
+                    f'<path d="{ribbon_d}" fill="{stroke.color_hex}" fill-opacity="{stroke.alpha:.2f}" stroke="none"/>'
+                )
+
+    # Render rich text elements grouped by text box
+    text_boxes: dict[tuple[float, float, str], list[TextElement]] = {}
+    for te in page.text_elements:
+        key = (round(te.x, 1), round(te.y, 1), te.uuid)
+        text_boxes.setdefault(key, []).append(te)
+
+    for (bx, by, uuid), te_list in text_boxes.items():
+        box_x = bx * dpi_scale
+        box_y = by * dpi_scale
+
+        # Exact text box width and height from protobuf
+        max_box_width = max((te.width for te in te_list if te.width > 0), default=0.0) * dpi_scale
+        max_box_height = max((te.height for te in te_list if te.height > 0), default=0.0) * dpi_scale
+
+        # Group text items into distinct lines across the text box
+        lines: list[list[tuple[TextElement, str]]] = [[]]
+        for te in te_list:
+            txt = te.text or ""
+            parts = txt.split("\n")
+            for i, part in enumerate(parts):
+                if i > 0:
+                    lines.append([])
+                lines[-1].append((te, part))
+
+        # Calculate line heights and total content height
+        line_heights: list[float] = []
+        line_font_sizes: list[float] = []
+        for line_items in lines:
+            fs_max = 14.0 * dpi_scale
+            for te, _ in line_items:
+                fs = te.font_size * dpi_scale
+                if fs >= 8.0:
+                    fs_max = max(fs_max, fs)
+                elif fs < 8.0 and te.font_size > 0:
+                    fs_max = max(fs_max, 24.0 * dpi_scale)
+            line_font_sizes.append(fs_max)
+            line_heights.append(fs_max * 1.15)
+
+        bw = max_box_width if max_box_width > 0 else 50.0
+        primary_fs = line_font_sizes[0]
+        is_sticky = any(uuid == note.uuid for note in page.sticky_notes)
+        top_pad = (10.0 * dpi_scale) if is_sticky else (6.0 * dpi_scale)
+        left_pad = (10.0 * dpi_scale) if is_sticky else (6.0 * dpi_scale)
+        right_pad = (10.0 * dpi_scale) if is_sticky else (6.0 * dpi_scale)
+
+        bw = max_box_width if max_box_width > 0 else 50.0
+        primary_fs = line_font_sizes[0]
+        fit_bh = max_box_height if max_box_height > 0 else sum(line_heights)
+        fit_by = box_y
+
+        # Sticky Note text is top-anchored; regular text boxes remain
+        # vertically centered within their available content area.
+        bottom_pad = top_pad
+        total_content_height = sum(line_heights)
+        available_height = fit_bh - top_pad - bottom_pad
+        if is_sticky:
+            vertical_offset = 0.0
+        else:
+            vertical_offset = max(0.0, (available_height - total_content_height) / 2.0)
+
+        ly_top = fit_by + top_pad + vertical_offset
+
+        # GoodNotes sticker text is rendered above the sticker artwork with
+        # an opaque text-box background. Identify it only when the parsed
+        # text box substantially overlaps a parsed image attachment; this
+        # keeps ordinary page text and unrelated shapes unchanged.
+        text_area = max_box_width * max_box_height
+        sticker_text_background = False
+        if text_area > 0.0:
+            text_left = box_x
+            text_top = fit_by
+            text_right = text_left + bw
+            text_bottom = text_top + fit_bh
+            for image in page.image_elements:
+                image_left = image.x * dpi_scale
+                image_top = image.y * dpi_scale
+                image_right = image_left + image.width * dpi_scale
+                image_bottom = image_top + image.height * dpi_scale
+                overlap_w = max(0.0, min(text_right, image_right) - max(text_left, image_left))
+                overlap_h = max(0.0, min(text_bottom, image_bottom) - max(text_top, image_top))
+                if overlap_w * overlap_h >= text_area * 0.90:
+                    sticker_text_background = True
+                    break
+
+        if sticker_text_background:
+            # Use the color explicitly stored in the text payload instead of
+            # assuming a white sticker background.
+            background_color = te_list[0].background_color_hex
+            background_alpha = te_list[0].background_alpha
+            if background_color is not None and background_alpha > 0.0:
+                elements.append(f'<!-- Sticker Text Background ({html.escape(uuid)}) -->')
+                elements.append(
+                    f'<rect x="{box_x:.2f}" y="{fit_by:.2f}" width="{bw:.2f}" height="{fit_bh:.2f}" '
+                    f'fill="{background_color}" fill-opacity="{background_alpha:.3f}"/>'
+                )
+
+        # Draw text box border matching GoodNotes UI selection bounds
+        is_tb_open = (
+            textbox_state is True
+            or (isinstance(textbox_state, str) and textbox_state.lower() in ("open", "true", "on", "1"))
+        )
+        if is_tb_open:
+            elements.append(f'<!-- Text Box Border ({html.escape(uuid)}) -->')
+            elements.append(
+                f'<rect x="{box_x:.2f}" y="{fit_by:.2f}" width="{bw:.2f}" height="{fit_bh:.2f}" fill="none" stroke="#38BDF8" stroke-width="0.8"/>'
+            )
+
+        current_row_top = ly_top
+        numbered_counter = 0
+
+        for line_idx, line_items in enumerate(lines):
+            has_numbered = any(te.list_type == "numbered" for te, _ in line_items)
+            if has_numbered:
+                numbered_counter += 1
+
+            # Center of this line's row. Using dominant-baseline="central"
+            # below hands the actual glyph-to-baseline offset to the SVG
+            # renderer, which uses the real font metrics -- unlike a fixed
+            # 0.75*font-size guess, this centers correctly regardless of
+            # whether the text has descenders (e.g. all-caps or digits
+            # like "WFH"/"2011" vs lowercase text with "g"/"y"/"p").
+            row_center_y = current_row_top + line_heights[line_idx] / 2.0
+
+            for te, line_str in line_items:
+                if not line_str.strip() and len(line_items) == 1 and line_idx == len(lines) - 1:
+                    continue
+
+                font_size_pt = te.font_size * dpi_scale
+                if font_size_pt < 8.0:
+                    font_size_pt = 24.0 * dpi_scale
+
+                display_text = line_str
+                if te.list_type == "bullet" and display_text:
+                    display_text = f"• {display_text}"
+                elif te.list_type == "numbered" and display_text:
+                    display_text = f"{numbered_counter}. {display_text}"
+
+                font_stack = _format_font_family_stack(te.font_family, display_text)
+                style_attrs: list[str] = [
+                    f'font-family="{html.escape(font_stack)}"',
+                    f'font-size="{font_size_pt:.2f}"',
+                    f'fill="{te.color_hex}"',
+                    'dominant-baseline="central"',
+                ]
+                if te.alpha < 1.0:
+                    style_attrs.append(f'fill-opacity="{te.alpha:.2f}"')
+                if te.is_bold:
+                    style_attrs.append('font-weight="bold"')
+                if te.is_italic:
+                    style_attrs.append('font-style="italic"')
+
+                decorations: list[str] = []
+                if te.is_underline:
+                    decorations.append("underline")
+                if te.is_strikethrough:
+                    decorations.append("line-through")
+                if decorations:
+                    style_attrs.append(f'text-decoration="{" ".join(decorations)}"')
+
+                # Use `bw` (the box's authoritative width, same value used
+                # to draw the box/debug border) rather than this single
+                # TextElement's own te.width. Individual runs within the
+                # same box can report slightly different widths, which
+                # previously caused center/right alignment to drift off
+                # the box's true center by however much that run's width
+                # fell short of the box.
+                line_style_attrs = list(style_attrs)
+
+                tx = box_x + left_pad
+                if te.alignment == "center":
+                    line_style_attrs.append('text-anchor="middle"')
+                    if bw > 0:
+                        tx = box_x + bw / 2.0
+                    else:
+                        tx = box_x + left_pad + 50.0
+                elif te.alignment == "right":
+                    line_style_attrs.append('text-anchor="end"')
+                    if bw > 0:
+                        tx = box_x + bw - right_pad
+                else:
+                    line_style_attrs.append('text-anchor="start"')
+
+                escaped_text = html.escape(display_text)
+                style_str = " ".join(line_style_attrs)
+
+                if escaped_text:
+                    elements.append(
+                        f'<text x="{tx:.2f}" y="{row_center_y:.2f}" {style_str}>{escaped_text}</text>'
+                    )
+
+            current_row_top += line_heights[line_idx]
+
+    # Render fallback text fragments if no structured text elements found
+    if not page.text_elements:
+        for frag in page.text_fragments:
+            if frag.text and len(frag.text) < 200 and frag.format != "uuid" and not (len(frag.text) == 36 and frag.text.count("-") == 4):
+                escaped_text = html.escape(frag.text)
+                fallback_font_stack = _format_font_family_stack("sans-serif", frag.text)
+                elements.append(
+                    f'<text x="50" y="50" font-family="{html.escape(fallback_font_stack)}" font-size="14" fill="#333333"><!-- Fragment: {escaped_text} --></text>'
+                )
+
+    elements.append('</svg>\n')
+    return '\n'.join(elements)
+
+
 def write_svg(
     document: GoodNotesDocument,
     directory: str | Path,
     fill_shapes: bool = True,
     sticky_note_state: str | None = None,
-    textbox_state: bool = False,
+    textbox_state: bool | str | None = False,
     parse_all: bool = False,
     export_pdf: bool | str | Path = False,
 ) -> list[Path]:
@@ -279,675 +953,18 @@ def write_svg(
         pages = document.pages(parse_all=parse_all)
     except TypeError:
         pages = document.pages()
-    
-    # GoodNotes internal coordinates are 132 DPI, PDF canvas is 72 DPI
-    dpi_scale = 72.0 / 132.0
 
     for page in pages:
-        pw, ph = page.dimensions.width, page.dimensions.height
         name = f"page_{page.index + 1}_{page.member_path.replace('/', '_')}.svg"
         target = output / name
-
-        elements: list[str] = [
-            f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{pw:.2f}" height="{ph:.2f}" viewBox="0 0 {pw:.2f} {ph:.2f}">',
-            f'<!-- GoodNotes Page {page.index + 1} ({page.uuid}) -->',
-        ]
-
-        if page.background_attachment_path and page.background_attachment_path in document.member_names():
-            elements.append(f'<!-- Background Attachment: {html.escape(page.background_attachment_path)} -->')
-            try:
-                bdata = document.read(page.background_attachment_path)
-                if bdata.startswith((b"\xff\xd8\xff", b"\x89PNG")):
-                    mime = "image/jpeg" if bdata.startswith(b"\xff\xd8\xff") else "image/png"
-                    img_b64 = base64.b64encode(bdata).decode("ascii")
-                    elements.append(
-                        f'<image href="data:{mime};base64,{img_b64}" x="0" y="0" width="{pw:.2f}" height="{ph:.2f}" preserveAspectRatio="none"/>'
-                    )
-                elif bdata.startswith(b"%PDF"):
-                    pdf_svg = render_pdf_page_to_svg(
-                        bdata,
-                        page_index=max(0, page.pdf_page_index - 1),
-                        width=pw,
-                        height=ph,
-                        id_prefix=f"background_{page.index}",
-                    )
-                    if pdf_svg:
-                        elements.append(pdf_svg)
-                    else:
-                        pdf_b64 = base64.b64encode(bdata).decode("ascii")
-                        target_p_idx = max(0, page.pdf_page_index - 1)
-                        elements.append(
-                            f'<g class="gn-pdf-placeholder" data-pdf-b64="{pdf_b64}" data-pdf-page="{target_p_idx}" data-width="{pw:.2f}" data-height="{ph:.2f}"></g>'
-                        )
-            except Exception:
-                pass
-
-        # Render image elements (placed right above background, beneath strokes, shapes and text)
-        for img in page.image_elements:
-            att_path = None
-            if f"attachments/{img.attachment_uuid}" in document.member_names():
-                att_path = f"attachments/{img.attachment_uuid}"
-            if att_path:
-                try:
-                    idata = document.read(att_path)
-                    is_pdf_attachment = idata.startswith(b"%PDF")
-                    mime = "image/jpeg" if idata.startswith(b"\xff\xd8\xff") else "image/png"
-                    img_b64 = None if is_pdf_attachment else base64.b64encode(idata).decode("ascii")
-                    crop_x = img.x * dpi_scale
-                    crop_y = img.y * dpi_scale
-                    crop_w = img.width * dpi_scale
-                    crop_h = img.height * dpi_scale
-                    rot_deg = img.rotation_rad * (180.0 / 3.141592653589793)
-
-                    elements.append(f'<!-- Image Attachment: {html.escape(img.attachment_uuid)} -->')
-
-                    is_cropped = (
-                        img.orig_width > 0
-                        and img.orig_height > 0
-                        and (abs(img.width - img.orig_width) > 0.1 or abs(img.height - img.orig_height) > 0.1)
-                    )
-
-                    if is_cropped:
-                        cx = crop_x + crop_w / 2.0
-                        cy = crop_y + crop_h / 2.0
-                        orig_w = img.orig_width * dpi_scale
-                        orig_h = img.orig_height * dpi_scale
-                        img_x = (img.orig_x - img.x) * dpi_scale
-                        img_y = (img.orig_y - img.y) * dpi_scale
-
-                        transform = f' transform="rotate({rot_deg:.2f}, {cx:.2f}, {cy:.2f})"' if abs(rot_deg) > 0.01 else ""
-
-                        if is_pdf_attachment:
-                            # Vector sticker/attachment: rasterizing to PNG/JPEG would
-                            # mislabel the mime type and fail to decode, so render the
-                            # PDF page as an SVG fragment sized to the *original*
-                            # (uncropped) attachment box, then reuse the same
-                            # translate + viewBox-clip technique used for raster crops.
-                            inner_svg = render_pdf_page_to_svg(
-                                idata,
-                                page_index=0,
-                                width=orig_w,
-                                height=orig_h,
-                                id_prefix=f"attachment_{img.uuid}_crop",
-                            )
-                            if inner_svg:
-                                elements.append(
-                                    f'<g{transform}>'
-                                    f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" viewBox="0 0 {crop_w:.2f} {crop_h:.2f}" overflow="hidden">'
-                                    f'<g transform="translate({img_x:.2f},{img_y:.2f})">{inner_svg}</g>'
-                                    f'</svg>'
-                                    f'</g>'
-                                )
-                            else:
-                                pdf_b64 = base64.b64encode(idata).decode("ascii")
-                                elements.append(
-                                    f'<g{transform}>'
-                                    f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" viewBox="0 0 {crop_w:.2f} {crop_h:.2f}" overflow="hidden">'
-                                    f'<g transform="translate({img_x:.2f},{img_y:.2f})">'
-                                    f'<g class="gn-pdf-placeholder" data-pdf-b64="{pdf_b64}" data-pdf-page="0" data-width="{orig_w:.2f}" data-height="{orig_h:.2f}"></g>'
-                                    f'</g>'
-                                    f'</svg>'
-                                    f'</g>'
-                                )
-                        else:
-                            elements.append(
-                                f'<g{transform}>'
-                                f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" viewBox="0 0 {crop_w:.2f} {crop_h:.2f}" overflow="hidden">'
-                                f'<image href="data:{mime};base64,{img_b64}" x="{img_x:.2f}" y="{img_y:.2f}" width="{orig_w:.2f}" height="{orig_h:.2f}" preserveAspectRatio="none"/>'
-                                f'</svg>'
-                                f'</g>'
-                            )
-                    else:
-                        transform_attr = ""
-                        if abs(rot_deg) > 0.01:
-                            cx, cy = crop_x + crop_w / 2.0, crop_y + crop_h / 2.0
-                            transform_attr = f' transform="rotate({rot_deg:.2f}, {cx:.2f}, {cy:.2f})"'
-
-                        if is_pdf_attachment:
-                            inner_svg = render_pdf_page_to_svg(
-                                idata,
-                                page_index=0,
-                                width=crop_w,
-                                height=crop_h,
-                                id_prefix=f"attachment_{img.uuid}",
-                            )
-                            if inner_svg:
-                                elements.append(
-                                    f'<g{transform_attr}>'
-                                    f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}">{inner_svg}</svg>'
-                                    f'</g>'
-                                )
-                            else:
-                                pdf_b64 = base64.b64encode(idata).decode("ascii")
-                                elements.append(
-                                    f'<g{transform_attr}>'
-                                    f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}">'
-                                    f'<g class="gn-pdf-placeholder" data-pdf-b64="{pdf_b64}" data-pdf-page="0" data-width="{crop_w:.2f}" data-height="{crop_h:.2f}"></g>'
-                                    f'</svg>'
-                                    f'</g>'
-                                )
-                        else:
-                            elements.append(
-                                f'<image href="data:{mime};base64,{img_b64}" x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" preserveAspectRatio="none"{transform_attr}/>'
-                            )
-                except Exception:
-                    pass
-
-        # Determine sticky note open/close state override
-        state_override: bool | None = None
-        if sticky_note_state:
-            st_lower = sticky_note_state.lower().strip()
-            if st_lower == "open":
-                state_override = True
-            elif st_lower in ("close", "closed"):
-                state_override = False
-
-        # Render sticky notes cards and icons
-        sticky_note_map = {note.uuid: note for note in page.sticky_notes}
-        for note in page.sticky_notes:
-            is_open = state_override if state_override is not None else note.is_open
-            nx = note.x * dpi_scale
-            ny = note.y * dpi_scale
-            if is_open:
-                nw = note.width * dpi_scale
-                nh = note.height * dpi_scale
-                elements.append(f'<!-- Sticky Note (Expanded): {html.escape(note.uuid)} -->')
-                elements.append(
-                    f'<rect x="{nx:.2f}" y="{ny:.2f}" width="{nw:.2f}" height="{nh:.2f}" rx="8" ry="8" fill="{note.color_hex}" fill-opacity="0.95" stroke="rgba(0,0,0,0.15)" stroke-width="0.8"/>'
-                )
-                if note.author:
-                    tx = nx + 12.0 * dpi_scale
-                    ty = ny + nh - 12.0 * dpi_scale
-                    font_stack = _format_font_family_stack("sans-serif")
-                    elements.append(
-                        f'<text x="{tx:.2f}" y="{ty:.2f}" font-family="{html.escape(font_stack)}" font-size="10" fill="#555555" font-weight="500">{html.escape(note.author)}</text>'
-                    )
-            else:
-                # Render folded note icon indicator at (nx, ny) with natural opacity overlay
-                elements.append(f'<!-- Sticky Note (Folded): {html.escape(note.uuid)} -->')
-                elements.append(
-                    f'<g transform="translate({nx:.2f}, {ny:.2f})">'
-                    f'<path d="M 3 0 L 14 0 C 16 0 17 1 17 3 L 17 14 L 11 20 L 3 20 C 1 20 0 19 0 17 L 0 3 C 0 1 1 0 3 0 Z" fill="{note.color_hex}" stroke="rgba(0,0,0,0.25)" stroke-width="0.8" stroke-linejoin="round"/>'
-                    f'<path d="M 11 20 L 11 15 C 11 14.5 11.5 14 12 14 L 17 14 Z" fill="black" fill-opacity="0.18" stroke="rgba(0,0,0,0.25)" stroke-width="0.8" stroke-linejoin="round"/>'
-                    f'</g>'
-                )
-
-        # Render vector shapes
-        arrow_shapes = [s for s in page.shapes if getattr(s, "start_arrow", False) or getattr(s, "end_arrow", False)]
-        if arrow_shapes:
-            arrow_colors = sorted({s.color_hex for s in arrow_shapes})
-            defs_elements = ['<defs>']
-            for color in arrow_colors:
-                color_clean = color.replace('#', '')
-
-                open_start_path = "M 10 0 L 0 5 L 10 10"
-                open_end_path = "M 0 0 L 10 5 L 0 10"
-                filled_start_path = "M 10 0 L 0 5 L 10 10 Z"
-                filled_end_path = "M 0 0 L 10 5 L 0 10 Z"
-
-                # Dual formulas: Open V-Shape aligns to tip vertex; Solid Triangle aligns to solid base
-                rx_open_start = _get_marker_ref_x(open_start_path, "min")
-                rx_open_end = _get_marker_ref_x(open_end_path, "max")
-                rx_filled_start = _get_marker_ref_x(filled_start_path, "max")
-                rx_filled_end = _get_marker_ref_x(filled_end_path, "min")
-
-                # Open V-shape arrowhead (Style 1)
-                defs_elements.append(
-                    f'<marker id="arrow-start-open-{color_clean}" viewBox="0 0 10 10" refX="{rx_open_start:.2f}" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
-                    f'<path d="{open_start_path}" fill="none" stroke="{color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
-                    f'</marker>'
-                    f'<marker id="arrow-end-open-{color_clean}" viewBox="0 0 10 10" refX="{rx_open_end:.2f}" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
-                    f'<path d="{open_end_path}" fill="none" stroke="{color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
-                    f'</marker>'
-                )
-                # Filled triangle arrowhead (Style 2)
-                defs_elements.append(
-                    f'<marker id="arrow-start-filled-{color_clean}" viewBox="0 0 10 10" refX="{rx_filled_start:.2f}" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
-                    f'<path d="{filled_start_path}" fill="{color}"/>'
-                    f'</marker>'
-                    f'<marker id="arrow-end-filled-{color_clean}" viewBox="0 0 10 10" refX="{rx_filled_end:.2f}" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
-                    f'<path d="{filled_end_path}" fill="{color}"/>'
-                    f'</marker>'
-                )
-                # Circle dot arrowhead (Style 3)
-                defs_elements.append(
-                    f'<marker id="arrow-start-dot-{color_clean}" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
-                    f'<circle cx="5" cy="5" r="4" fill="{color}"/>'
-                    f'</marker>'
-                    f'<marker id="arrow-end-dot-{color_clean}" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">'
-                    f'<circle cx="5" cy="5" r="4" fill="{color}"/>'
-                    f'</marker>'
-                )
-            defs_elements.append('</defs>')
-            elements.append("".join(defs_elements))
-
-        stroke_uuids = {s.uuid for s in page.strokes if s.uuid}
-
-        for shape in page.shapes:
-            if shape.uuid and shape.uuid in stroke_uuids:
-                continue
-
-            if shape.parent_uuid and shape.parent_uuid in sticky_note_map:
-                parent_note = sticky_note_map[shape.parent_uuid]
-                parent_is_open = state_override if state_override is not None else parent_note.is_open
-                if not parent_is_open:
-                    continue
-                pts = tuple((px + parent_note.x, py + parent_note.y) for px, py in shape.points)
-                cx = (shape.cx + parent_note.x) if shape.cx is not None else None
-                cy = (shape.cy + parent_note.y) if shape.cy is not None else None
-            else:
-                pts = shape.points
-                cx = shape.cx
-                cy = shape.cy
-
-            is_polyline = 1 in shape.field_numbers or 2 not in shape.field_numbers or shape.shape_type == "polyline"
-            stroke_w = max(0.5, shape.stroke_width * dpi_scale)
-
-            dash_pattern = getattr(shape, "dash_pattern", None)
-            dash_attr = ""
-            if dash_pattern:
-                first_val = dash_pattern[0]
-                gap_val = dash_pattern[1] if len(dash_pattern) > 1 else dash_pattern[0]
-                if first_val <= 2.5:
-                    dot_gap = max(stroke_w * 1.5, gap_val * dpi_scale)
-                    dash_attr = f' stroke-dasharray="0 {dot_gap:.2f}"'
-                else:
-                    dash_len = max(stroke_w * 2.0, first_val * dpi_scale)
-                    gap_len = max(stroke_w * 1.5, gap_val * dpi_scale)
-                    dash_attr = f' stroke-dasharray="{dash_len:.2f} {gap_len:.2f}"'
-
-            marker_attr = ""
-            c_clean = shape.color_hex.replace('#', '')
-            s_style = int(getattr(shape, "start_arrow", 0))
-            e_style = int(getattr(shape, "end_arrow", 0))
-
-            if s_style == 1:
-                marker_attr += f' marker-start="url(#arrow-start-open-{c_clean})"'
-            elif s_style == 2 or (isinstance(getattr(shape, "start_arrow", False), bool) and shape.start_arrow):
-                marker_attr += f' marker-start="url(#arrow-start-filled-{c_clean})"'
-            elif s_style >= 3:
-                marker_attr += f' marker-start="url(#arrow-start-dot-{c_clean})"'
-
-            if e_style == 1:
-                marker_attr += f' marker-end="url(#arrow-end-open-{c_clean})"'
-            elif e_style == 2 or (isinstance(getattr(shape, "end_arrow", False), bool) and shape.end_arrow):
-                marker_attr += f' marker-end="url(#arrow-end-filled-{c_clean})"'
-            elif e_style >= 3:
-                marker_attr += f' marker-end="url(#arrow-end-dot-{c_clean})"'
-
-            is_filled = getattr(shape, "is_filled", True)
-            if fill_shapes and is_filled:
-                fill_opacity = getattr(shape, "fill_alpha", getattr(shape, "alpha", 1.0))
-                fill_attr = f'fill="{shape.color_hex}" fill-opacity="{fill_opacity:.2f}"'
-            else:
-                fill_attr = 'fill="none"'
-
-            c_rad = getattr(shape, "corner_radius", 0.0)
-            is_dotted = bool(dash_pattern and dash_pattern[0] <= 2.5)
-            if marker_attr:
-                join_cap_attr = 'stroke-linecap="butt" stroke-linejoin="miter"'
-            else:
-                join_cap_attr = 'stroke-linecap="round" stroke-linejoin="round"'
-
-            if shape.shape_type == "ellipse" and cx is not None and cy is not None:
-                ellipse_cx = cx * dpi_scale
-                ellipse_cy = cy * dpi_scale
-                rx = (shape.rx or 0.0) * dpi_scale
-                ry = (shape.ry or 0.0) * dpi_scale
-                elements.append(
-                    f'<ellipse cx="{ellipse_cx:.2f}" cy="{ellipse_cy:.2f}" rx="{rx:.2f}" ry="{ry:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} {fill_attr}/>'
-                )
-            elif shape.shape_type == "capsule":
-                left = min(p[0] for p in pts) * dpi_scale
-                top = min(p[1] for p in pts) * dpi_scale
-                right = max(p[0] for p in pts) * dpi_scale
-                bottom = max(p[1] for p in pts) * dpi_scale
-                w = right - left
-                h = bottom - top
-                r_val = min(w, h) / 2.0
-                elements.append(
-                    f'<rect x="{left:.2f}" y="{top:.2f}" width="{w:.2f}" height="{h:.2f}" rx="{r_val:.2f}" ry="{r_val:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr}{marker_attr} {fill_attr}/>'
-                )
-            elif shape.shape_type == "rectangle" and len(pts) == 5:
-                left = min(p[0] for p in pts) * dpi_scale
-                top = min(p[1] for p in pts) * dpi_scale
-                right = max(p[0] for p in pts) * dpi_scale
-                bottom = max(p[1] for p in pts) * dpi_scale
-                w = right - left
-                h = bottom - top
-                if c_rad > 0.0:
-                    rx_val = min(c_rad * dpi_scale, w / 4.0, h / 4.0)
-                else:
-                    rx_val = 0.0
-                elements.append(
-                    f'<rect x="{left:.2f}" y="{top:.2f}" width="{w:.2f}" height="{h:.2f}" rx="{rx_val:.2f}" ry="{rx_val:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} {fill_attr}/>'
-                )
-            elif shape.shape_type == "polygon":
-                is_closed = (len(pts) > 1 and pts[-1] == pts[0]) or is_filled
-                d_path = _rounded_polygon_svg_path(pts, c_rad, dpi_scale, is_closed=is_closed)
-                elements.append(
-                    f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} {fill_attr}/>'
-                )
-            elif is_polyline:
-                if len(pts) == 2:
-                    (x1, y1), (x2, y2) = pts
-                    elements.append(
-                        f'<line x1="{x1 * dpi_scale:.2f}" y1="{y1 * dpi_scale:.2f}" x2="{x2 * dpi_scale:.2f}" y2="{y2 * dpi_scale:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} fill="none"/>'
-                    )
-                elif len(pts) == 3:
-                    (x0, y0), (x1, y1), (x2, y2) = pts
-                    area = abs((x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0))
-                    dist = math.hypot(x2 - x0, y2 - y0)
-                    if dist > 0 and (area / dist) < 3.0:
-                        elements.append(
-                            f'<line x1="{x0 * dpi_scale:.2f}" y1="{y0 * dpi_scale:.2f}" x2="{x2 * dpi_scale:.2f}" y2="{y2 * dpi_scale:.2f}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} fill="none"/>'
-                        )
-                    else:
-                        d_path = _catmull_rom_to_svg_path(pts, dpi_scale)
-                        elements.append(
-                            f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} fill="none"/>'
-                        )
-                else:
-                    d_path = _catmull_rom_to_svg_path(pts, dpi_scale)
-                    elements.append(
-                        f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" {join_cap_attr}{dash_attr}{marker_attr} fill="none"/>'
-                    )
-            else:
-                # Curves
-                if len(pts) == 3:
-                    p0, p1, p2 = pts
-                    d_path = (
-                        f"M {p0[0] * dpi_scale:.2f} {p0[1] * dpi_scale:.2f} "
-                        f"Q {p1[0] * dpi_scale:.2f} {p1[1] * dpi_scale:.2f} "
-                        f"{p2[0] * dpi_scale:.2f} {p2[1] * dpi_scale:.2f}"
-                    )
-                elif len(pts) == 4:
-                    p0, p1, p2, p3 = pts
-                    d_path = (
-                        f"M {p0[0] * dpi_scale:.2f} {p0[1] * dpi_scale:.2f} "
-                        f"C {p1[0] * dpi_scale:.2f} {p1[1] * dpi_scale:.2f} "
-                        f"{p2[0] * dpi_scale:.2f} {p2[1] * dpi_scale:.2f} "
-                        f"{p3[0] * dpi_scale:.2f} {p3[1] * dpi_scale:.2f}"
-                    )
-                else:
-                    path = [f'M {pts[0][0] * dpi_scale:.2f} {pts[0][1] * dpi_scale:.2f}']
-                    for x, y in pts[1:]:
-                        path.append(f'L {x * dpi_scale:.2f} {y * dpi_scale:.2f}')
-                    d_path = " ".join(path)
-                elements.append(
-                    f'<path d="{d_path}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr}{marker_attr} {fill_attr}/>'
-                )
-
-        shape_uuids = {shape.uuid for shape in page.shapes if shape.uuid}
-        from .stroke import StrokePoint
-
-        for stroke in page.strokes:
-            if stroke.uuid in shape_uuids:
-                continue
-
-            pts = stroke.points
-            outline_polys = stroke.outline_polygons
-
-            if stroke.parent_uuid and stroke.parent_uuid in sticky_note_map:
-                parent_note = sticky_note_map[stroke.parent_uuid]
-                parent_is_open = state_override if state_override is not None else parent_note.is_open
-                if not parent_is_open:
-                    # Skip strokes belonging to folded notes
-                    continue
-                # Shift stroke points by parent note origin
-                pts = tuple(StrokePoint(pt.x + parent_note.x, pt.y + parent_note.y, pt.pressure) for pt in stroke.points)
-                if outline_polys:
-                    outline_polys = tuple(
-                        tuple((px + parent_note.x, py + parent_note.y) for px, py in poly)
-                        for poly in outline_polys
-                    )
-
-            dash_pattern = getattr(stroke, "dash_pattern", None)
-            if stroke.is_dot and pts:
-                # Single point / Dot
-                pt = pts[0]
-                cx, cy = pt.x * dpi_scale, pt.y * dpi_scale
-                r = max(0.12, (stroke.width * pt.pressure * 0.5) * dpi_scale)
-                elements.append(
-                    f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r:.2f}" fill="{stroke.color_hex}" fill-opacity="{stroke.alpha:.2f}" stroke="none"/>'
-                )
-            elif dash_pattern:
-                stroke_w = max(0.5, stroke.width * dpi_scale)
-                first_val = dash_pattern[0]
-                gap_val = dash_pattern[1] if len(dash_pattern) > 1 else dash_pattern[0]
-                if first_val <= 2.5:
-                    dot_gap = max(stroke_w * 1.5, gap_val * dpi_scale)
-                    dash_attr = f' stroke-dasharray="0 {dot_gap:.2f}"'
-                else:
-                    dash_len = max(stroke_w * 2.0, first_val * dpi_scale)
-                    gap_len = max(stroke_w * 1.5, gap_val * dpi_scale)
-                    dash_attr = f' stroke-dasharray="{dash_len:.2f} {gap_len:.2f}"'
-                
-                stroke_pts = tuple((pt.x, pt.y) for pt in pts)
-                if len(stroke_pts) >= 2:
-                    d_path = _catmull_rom_to_svg_path(stroke_pts, dpi_scale)
-                    elements.append(
-                        f'<path d="{d_path}" stroke="{stroke.color_hex}" stroke-opacity="{stroke.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr} fill="none"/>'
-                    )
-            else:
-                ribbon_d = build_stroke_ribbon(
-                    pts,
-                    stroke.width,
-                    dpi_scale,
-                    tpl_format=stroke.tpl_format,
-                    outline_polygons=outline_polys,
-                    is_cut_start=stroke.is_cut_start,
-                    is_cut_end=stroke.is_cut_end,
-                )
-                if ribbon_d:
-                    elements.append(
-                        f'<path d="{ribbon_d}" fill="{stroke.color_hex}" fill-opacity="{stroke.alpha:.2f}" stroke="none"/>'
-                    )
-
-        # Render rich text elements grouped by text box
-        text_boxes: dict[tuple[float, float, str], list[TextElement]] = {}
-        for te in page.text_elements:
-            key = (round(te.x, 1), round(te.y, 1), te.uuid)
-            text_boxes.setdefault(key, []).append(te)
-
-        for (bx, by, uuid), te_list in text_boxes.items():
-            box_x = bx * dpi_scale
-            box_y = by * dpi_scale
-
-            # Exact text box width and height from protobuf
-            max_box_width = max((te.width for te in te_list if te.width > 0), default=0.0) * dpi_scale
-            max_box_height = max((te.height for te in te_list if te.height > 0), default=0.0) * dpi_scale
-
-            # Group text items into distinct lines across the text box
-            lines: list[list[tuple[TextElement, str]]] = [[]]
-            for te in te_list:
-                txt = te.text or ""
-                parts = txt.split("\n")
-                for i, part in enumerate(parts):
-                    if i > 0:
-                        lines.append([])
-                    lines[-1].append((te, part))
-
-            # Calculate line heights and total content height
-            line_heights: list[float] = []
-            line_font_sizes: list[float] = []
-            for line_items in lines:
-                fs_max = 14.0 * dpi_scale
-                for te, _ in line_items:
-                    fs = te.font_size * dpi_scale
-                    if fs >= 8.0:
-                        fs_max = max(fs_max, fs)
-                    elif fs < 8.0 and te.font_size > 0:
-                        fs_max = max(fs_max, 24.0 * dpi_scale)
-                line_font_sizes.append(fs_max)
-                line_heights.append(fs_max * 1.15)
-
-            bw = max_box_width if max_box_width > 0 else 50.0
-            primary_fs = line_font_sizes[0]
-            is_sticky = any(uuid == note.uuid for note in page.sticky_notes)
-            top_pad = (10.0 * dpi_scale) if is_sticky else (6.0 * dpi_scale)
-            left_pad = (10.0 * dpi_scale) if is_sticky else (6.0 * dpi_scale)
-            right_pad = (10.0 * dpi_scale) if is_sticky else (6.0 * dpi_scale)
-
-            bw = max_box_width if max_box_width > 0 else 50.0
-            primary_fs = line_font_sizes[0]
-            fit_bh = max_box_height if max_box_height > 0 else sum(line_heights)
-            fit_by = box_y
-
-            # Sticky Note text is top-anchored; regular text boxes remain
-            # vertically centered within their available content area.
-            bottom_pad = top_pad
-            total_content_height = sum(line_heights)
-            available_height = fit_bh - top_pad - bottom_pad
-            if is_sticky:
-                vertical_offset = 0.0
-            else:
-                vertical_offset = max(0.0, (available_height - total_content_height) / 2.0)
-
-            ly_top = fit_by + top_pad + vertical_offset
-
-            # GoodNotes sticker text is rendered above the sticker artwork with
-            # an opaque text-box background. Identify it only when the parsed
-            # text box substantially overlaps a parsed image attachment; this
-            # keeps ordinary page text and unrelated shapes unchanged.
-            text_area = max_box_width * max_box_height
-            sticker_text_background = False
-            if text_area > 0.0:
-                text_left = box_x
-                text_top = fit_by
-                text_right = text_left + bw
-                text_bottom = text_top + fit_bh
-                for image in page.image_elements:
-                    image_left = image.x * dpi_scale
-                    image_top = image.y * dpi_scale
-                    image_right = image_left + image.width * dpi_scale
-                    image_bottom = image_top + image.height * dpi_scale
-                    overlap_w = max(0.0, min(text_right, image_right) - max(text_left, image_left))
-                    overlap_h = max(0.0, min(text_bottom, image_bottom) - max(text_top, image_top))
-                    if overlap_w * overlap_h >= text_area * 0.90:
-                        sticker_text_background = True
-                        break
-
-            if sticker_text_background:
-                # Use the color explicitly stored in the text payload instead of
-                # assuming a white sticker background.
-                background_color = te_list[0].background_color_hex
-                background_alpha = te_list[0].background_alpha
-                if background_color is not None and background_alpha > 0.0:
-                    elements.append(f'<!-- Sticker Text Background ({html.escape(uuid)}) -->')
-                    elements.append(
-                        f'<rect x="{box_x:.2f}" y="{fit_by:.2f}" width="{bw:.2f}" height="{fit_bh:.2f}" '
-                        f'fill="{background_color}" fill-opacity="{background_alpha:.3f}"/>'
-                    )
-
-            # Draw text box border matching GoodNotes UI selection bounds
-            is_tb_open = (
-                textbox_state is True
-                or (isinstance(textbox_state, str) and textbox_state.lower() in ("open", "true", "on", "1"))
-            )
-            if is_tb_open:
-                elements.append(f'<!-- Text Box Border ({html.escape(uuid)}) -->')
-                elements.append(
-                    f'<rect x="{box_x:.2f}" y="{fit_by:.2f}" width="{bw:.2f}" height="{fit_bh:.2f}" fill="none" stroke="#38BDF8" stroke-width="0.8"/>'
-                )
-
-            current_row_top = ly_top
-            numbered_counter = 0
-
-            for line_idx, line_items in enumerate(lines):
-                has_numbered = any(te.list_type == "numbered" for te, _ in line_items)
-                if has_numbered:
-                    numbered_counter += 1
-
-                # Center of this line's row. Using dominant-baseline="central"
-                # below hands the actual glyph-to-baseline offset to the SVG
-                # renderer, which uses the real font metrics -- unlike a fixed
-                # 0.75*font-size guess, this centers correctly regardless of
-                # whether the text has descenders (e.g. all-caps or digits
-                # like "WFH"/"2011" vs lowercase text with "g"/"y"/"p").
-                row_center_y = current_row_top + line_heights[line_idx] / 2.0
-
-                for te, line_str in line_items:
-                    if not line_str.strip() and len(line_items) == 1 and line_idx == len(lines) - 1:
-                        continue
-
-                    font_size_pt = te.font_size * dpi_scale
-                    if font_size_pt < 8.0:
-                        font_size_pt = 24.0 * dpi_scale
-
-                    display_text = line_str
-                    if te.list_type == "bullet" and display_text:
-                        display_text = f"• {display_text}"
-                    elif te.list_type == "numbered" and display_text:
-                        display_text = f"{numbered_counter}. {display_text}"
-
-                    font_stack = _format_font_family_stack(te.font_family, display_text)
-                    style_attrs: list[str] = [
-                        f'font-family="{html.escape(font_stack)}"',
-                        f'font-size="{font_size_pt:.2f}"',
-                        f'fill="{te.color_hex}"',
-                        'dominant-baseline="central"',
-                    ]
-                    if te.alpha < 1.0:
-                        style_attrs.append(f'fill-opacity="{te.alpha:.2f}"')
-                    if te.is_bold:
-                        style_attrs.append('font-weight="bold"')
-                    if te.is_italic:
-                        style_attrs.append('font-style="italic"')
-
-                    decorations: list[str] = []
-                    if te.is_underline:
-                        decorations.append("underline")
-                    if te.is_strikethrough:
-                        decorations.append("line-through")
-                    if decorations:
-                        style_attrs.append(f'text-decoration="{" ".join(decorations)}"')
-
-                    # Use `bw` (the box's authoritative width, same value used
-                    # to draw the box/debug border) rather than this single
-                    # TextElement's own te.width. Individual runs within the
-                    # same box can report slightly different widths, which
-                    # previously caused center/right alignment to drift off
-                    # the box's true center by however much that run's width
-                    # fell short of the box.
-                    line_style_attrs = list(style_attrs)
-
-                    tx = box_x + left_pad
-                    if te.alignment == "center":
-                        line_style_attrs.append('text-anchor="middle"')
-                        if bw > 0:
-                            tx = box_x + bw / 2.0
-                        else:
-                            tx = box_x + left_pad + 50.0
-                    elif te.alignment == "right":
-                        line_style_attrs.append('text-anchor="end"')
-                        if bw > 0:
-                            tx = box_x + bw - right_pad
-                    else:
-                        line_style_attrs.append('text-anchor="start"')
-
-                    escaped_text = html.escape(display_text)
-                    style_str = " ".join(line_style_attrs)
-
-                    if escaped_text:
-                        elements.append(
-                            f'<text x="{tx:.2f}" y="{row_center_y:.2f}" {style_str}>{escaped_text}</text>'
-                        )
-
-                current_row_top += line_heights[line_idx]
-
-        # Render fallback text fragments if no structured text elements found
-        if not page.text_elements:
-            for frag in page.text_fragments:
-                if frag.text and len(frag.text) < 200 and frag.format != "uuid" and not (len(frag.text) == 36 and frag.text.count("-") == 4):
-                    escaped_text = html.escape(frag.text)
-                    fallback_font_stack = _format_font_family_stack("sans-serif", frag.text)
-                    elements.append(
-                        f'<text x="50" y="50" font-family="{html.escape(fallback_font_stack)}" font-size="14" fill="#333333"><!-- Fragment: {escaped_text} --></text>'
-                    )
-
-        elements.append('</svg>\n')
-        target.write_text('\n'.join(elements), encoding="utf-8")
+        svg_str = page_to_svg(
+            page=page,
+            document=document,
+            fill_shapes=fill_shapes,
+            sticky_note_state=sticky_note_state,
+            textbox_state=textbox_state,
+        )
+        target.write_text(svg_str, encoding="utf-8")
         written.append(target)
 
     if export_pdf:
@@ -987,7 +1004,18 @@ def _ensure_cairo_loaded() -> None:
 
 def svg_to_pdf_bytes(svg_data: str | bytes) -> bytes:
     """Convert SVG XML string or bytes to PDF bytes using CairoSVG (with PyMuPDF fallback)."""
-    if isinstance(svg_data, str):
+    if isinstance(svg_data, bytes):
+        try:
+            svg_text = svg_data.decode("utf-8")
+        except UnicodeDecodeError:
+            svg_text = None
+    else:
+        svg_text = svg_data
+
+    if svg_text is not None and "<mask" in svg_text and "mask=" in svg_text:
+        svg_text = resolve_svg_image_masks(svg_text)
+        svg_bytes = svg_text.encode("utf-8")
+    elif isinstance(svg_data, str):
         svg_bytes = svg_data.encode("utf-8")
     else:
         svg_bytes = svg_data

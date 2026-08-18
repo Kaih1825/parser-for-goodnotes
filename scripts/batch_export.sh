@@ -36,6 +36,8 @@ files=(
     "Page1.goodnotes"
     "dot.goodnotes"
     "font.goodnotes"
+    # "CA.goodnotes"
+    # "p6.goodnotes"
 )
 
 mkdir -p output_svgs

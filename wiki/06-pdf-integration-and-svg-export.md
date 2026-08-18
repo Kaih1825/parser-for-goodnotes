@@ -103,17 +103,20 @@ To achieve visually correct overlay relationships (such as strokes drawn on the 
 +-------------------------------------------------------------------+
 ```
 
-### SVG Export Feature Option Controls
+### In-Memory Streaming & Single-Page Rendering (`page_to_svg`)
 
-The `gn-export-svg` command-line tool provides various advanced rendering toggle switches:
+To support high-throughput pipelines, WebAssembly (Pyodide) browser environments, and multi-page notebooks with over 100+ pages without disk I/O overhead, the engine exports [`page_to_svg()`](../src/goodnotes_re/export.py):
 
-- **`sticky_note_state` (`--sticky-note-state open|close`)**:
-  - `open`: Force expands all sticky notes, drawing yellow translucent cards with their content.
-  - `close`: Force collapses all sticky notes, drawing only a small sticky note icon in the top left corner.
-- **`textbox_state` (`--textbox open|close`)**:
-  - `open`: Draws sky blue (`#38BDF8`) bounding boxes around text boxes (restoring the GoodNotes IDE selection state).
-- **`fill_shapes` (`--no-fill`)**:
-  - Disables the translucent filling of vector shapes (`fill="none"`), drawing only the outlines.
+```python
+from goodnotes_re import GoodNotesDocument, page_to_svg
+
+with GoodNotesDocument.open("notebook.goodnotes") as doc:
+    pages = doc.pages(parse_all=True)
+    # Stream SVG directly in memory (zero disk I/O, O(1) per page)
+    svg_content = page_to_svg(pages[0], doc, fill_shapes=True)
+```
+
+This avoids creating temporary directories or rewriting entire documents on every page access.
 
 ---
 
@@ -257,17 +260,20 @@ def render_pdf_page_to_svg(pdf_bytes: bytes, page_index: int, width: float, heig
 +-------------------------------------------------------------------+
 ```
 
-### SVG 導出功能選項控制
+### 純記憶體高效串流與單頁渲染 (`page_to_svg`)
 
-`gn-export-svg` 命令行工具提供多種高級繪製切換開關：
+為支援高輸送量管線、WebAssembly (Pyodide) 瀏覽器前端環境，以及在處理超過 100+ 頁的大型筆記本時避免頻繁寫入實體/虛擬磁碟產生的 I/O 開銷，核心引擎提供了 [`page_to_svg()`](../src/goodnotes_re/export.py)：
 
-- **`sticky_note_state` (`--sticky-note-state open|close`)**：
-  - `open`：強制展開所有便條紙，繪製黃色半透明卡片與內文。
-  - `close`：強制折疊所有便條紙，僅在左上角繪製小巧的便條紙圖示。
-- **`textbox_state` (`--textbox open|close`)**：
-  - `open`：繪製天藍色 (`#38BDF8`) 的文字框外框選取邊界（還原 GoodNotes IDE 選取狀態）。
-- **`fill_shapes` (`--no-fill`)**：
-  - 關閉向量圖形的半透明填色 (`fill="none"`)，僅繪製外框。
+```python
+from goodnotes_re import GoodNotesDocument, page_to_svg
+
+with GoodNotesDocument.open("notebook.goodnotes") as doc:
+    pages = doc.pages(parse_all=True)
+    # 純記憶體快速產生單頁 SVG 字串（零磁碟 I/O，單頁 O(1) 秒開）
+    svg_content = page_to_svg(pages[0], doc, fill_shapes=True)
+```
+
+此機制大幅降低了重複建立暫存目錄的開銷，令多頁筆記與網頁端體驗更為敏捷。
 
 ---
 

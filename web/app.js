@@ -349,7 +349,7 @@ import json
 import tempfile
 from pathlib import Path
 from goodnotes_re.archive import GoodNotesDocument
-from goodnotes_re.export import write_svg
+from goodnotes_re.export import page_to_svg, write_svg
 
 current_doc = None
 current_pages = []
@@ -380,14 +380,7 @@ def get_page_svg(page_idx):
     global current_doc, current_pages
     if not current_doc or not current_pages or page_idx < 0 or page_idx >= len(current_pages):
         return ""
-    
-    with tempfile.TemporaryDirectory() as tmpdir:
-        written = write_svg(current_doc, tmpdir, fill_shapes=True, parse_all=True)
-        if 0 <= page_idx < len(written):
-            return Path(written[page_idx]).read_text(encoding="utf-8")
-        elif written:
-            return Path(written[0]).read_text(encoding="utf-8")
-    return ""
+    return page_to_svg(current_pages[page_idx], current_doc, fill_shapes=True)
 
 def get_page_stats(page_idx):
     global current_pages
@@ -403,6 +396,24 @@ def get_page_stats(page_idx):
         "shapes_count": len(p.shapes),
         "text_count": len(p.text_elements),
         "images_count": len(p.image_elements),
+    }
+
+def get_page_bundle(page_idx):
+    global current_doc, current_pages
+    if not current_doc or not current_pages or page_idx < 0 or page_idx >= len(current_pages):
+        return {}
+    p = current_pages[page_idx]
+    svg_str = page_to_svg(p, current_doc, fill_shapes=True)
+    return {
+        "index": p.index,
+        "uuid": p.uuid,
+        "width": p.dimensions.width,
+        "height": p.dimensions.height,
+        "strokes_count": len(p.strokes),
+        "shapes_count": len(p.shapes),
+        "text_count": len(p.text_elements),
+        "images_count": len(p.image_elements),
+        "svg": svg_str,
     }
 
 def export_json_ast():
@@ -471,6 +482,8 @@ async function processGoodNotesBuffer(arrayBuffer, filename) {
   await yieldThread(40);
 
   try {
+    pdfDocCache.clear();
+    pdfPageImageCache.clear();
     state.currentDocBytes = new Uint8Array(arrayBuffer);
     state.currentDocName = filename;
 
@@ -525,6 +538,10 @@ async function processGoodNotesBuffer(arrayBuffer, filename) {
   }
 }
 
+// Global Caches for High-Performance Rendering
+const pdfDocCache = new Map();
+const pdfPageImageCache = new Map();
+
 /**
  * Render the current page SVG
  */
@@ -537,20 +554,16 @@ async function renderCurrentPage(showModal = true) {
       activeStep: 3,
       stepLabels: ["1. Read Archive", "2. Decode Protobuf", "3. Render View"],
     });
-    await yieldThread(20);
+    await yieldThread(10);
   }
 
   try {
-    const getSvgFn = state.pyodide.globals.get("get_page_svg");
-    const getStatsFn = state.pyodide.globals.get("get_page_stats");
+    const getBundleFn = state.pyodide.globals.get("get_page_bundle");
+    const bundleProxy = getBundleFn(state.currentPageIndex);
+    const bundle = bundleProxy.toJs();
+    bundleProxy.destroy();
 
-    // Fetch SVG text
-    state.currentSvgString = getSvgFn(state.currentPageIndex);
-
-    // Fetch Page Stats
-    const statsProxy = getStatsFn(state.currentPageIndex);
-    const stats = statsProxy.toJs();
-    statsProxy.destroy();
+    state.currentSvgString = bundle.get("svg") || "";
 
     // Inject SVG into DOM
     el.svgStage.innerHTML = state.currentSvgString;
@@ -559,13 +572,13 @@ async function renderCurrentPage(showModal = true) {
     await resolvePdfPlaceholders(el.svgStage);
     state.currentSvgString = el.svgStage.innerHTML;
 
-    // Update stats UI
+    // Update Stats UI
     el.statPages.textContent = `${state.pageCount}`;
-    el.statCurPage.textContent = `${state.currentPageIndex + 1} / ${state.pageCount}`;
-    el.statStrokes.textContent = `${stats.get("strokes_count") || 0}`;
-    const w = Math.round(stats.get("width") || 0);
-    const h = Math.round(stats.get("height") || 0);
-    el.statDimensions.textContent = `${w} × ${h}`;
+    el.statCurPage.textContent = `${state.currentPageIndex + 1}`;
+    el.statStrokes.textContent = `${bundle.get("strokes_count") || 0}`;
+    const w = bundle.get("width") || 0;
+    const h = bundle.get("height") || 0;
+    el.statDimensions.textContent = `${Math.round(w)} × ${Math.round(h)} pt`;
 
     // Update Pagination Toolbar
     el.pageIndicator.textContent = `Page ${state.currentPageIndex + 1} / ${state.pageCount}`;
@@ -583,7 +596,7 @@ async function renderCurrentPage(showModal = true) {
 }
 
 /**
- * Render any PDF background / sticker placeholders via PDF.js into sharp SVG <image> elements
+ * Render any PDF background / sticker placeholders via PDF.js into sharp SVG <image> elements (cached)
  */
 async function resolvePdfPlaceholders(containerElement) {
   if (!window.pdfjsLib) return;
@@ -600,34 +613,41 @@ async function resolvePdfPlaceholders(containerElement) {
 
       if (!b64) continue;
 
-      // Decode base64 to binary Uint8Array
-      const binaryString = atob(b64);
-      const len = binaryString.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+      const cacheKey = `${b64.length}_${pageIdx}_${Math.round(width)}_${Math.round(height)}`;
+      let pngDataUrl = pdfPageImageCache.get(cacheKey);
+
+      if (!pngDataUrl) {
+        let pdfDoc = pdfDocCache.get(b64);
+        if (!pdfDoc) {
+          const binaryString = atob(b64);
+          const len = binaryString.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+          pdfDocCache.set(b64, pdfDoc);
+        }
+
+        const pdfPageNum = Math.min(Math.max(1, pageIdx + 1), pdfDoc.numPages);
+        const pdfPage = await pdfDoc.getPage(pdfPageNum);
+
+        const scale = 2.0;
+        const viewport = pdfPage.getViewport({ scale });
+
+        const canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext("2d");
+
+        await pdfPage.render({
+          canvasContext: ctx,
+          viewport: viewport,
+        }).promise;
+
+        pngDataUrl = canvas.toDataURL("image/png");
+        pdfPageImageCache.set(cacheKey, pngDataUrl);
       }
-
-      // Load PDF document using PDF.js
-      const pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
-      const pdfPageNum = Math.min(Math.max(1, pageIdx + 1), pdfDoc.numPages);
-      const pdfPage = await pdfDoc.getPage(pdfPageNum);
-
-      // Render at 2x scale for sharp high-DPI display
-      const scale = 2.0;
-      const viewport = pdfPage.getViewport({ scale });
-
-      const canvas = document.createElement("canvas");
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      const ctx = canvas.getContext("2d");
-
-      await pdfPage.render({
-        canvasContext: ctx,
-        viewport: viewport,
-      }).promise;
-
-      const pngDataUrl = canvas.toDataURL("image/png");
 
       // Replace placeholder with standard SVG <image>
       const imgElem = document.createElementNS("http://www.w3.org/2000/svg", "image");
@@ -897,8 +917,7 @@ async function exportDocumentToPdf() {
   let pdfDoc = null;
 
   try {
-    const getSvgFn = state.pyodide.globals.get("get_page_svg");
-    const getStatsFn = state.pyodide.globals.get("get_page_stats");
+    const getBundleFn = state.pyodide.globals.get("get_page_bundle");
 
     updateProgress({
       title: t("exportingPdf"),
@@ -907,10 +926,10 @@ async function exportDocumentToPdf() {
       activeStep: 1,
       stepLabels: [t("stepPrepare"), t("stepRenderPages"), t("stepSavePdf")],
     });
-    await yieldThread(40);
+    await yieldThread(10);
 
     for (let i = 0; i < state.pageCount; i++) {
-      const stepPct = Math.round(10 + ((i + 1) / state.pageCount) * 80);
+      const stepPct = Math.round(5 + ((i + 1) / state.pageCount) * 90);
 
       updateProgress({
         title: t("exportingPdf"),
@@ -918,23 +937,24 @@ async function exportDocumentToPdf() {
         percent: stepPct,
         activeStep: 2,
       });
-      // Yield main thread to allow browser UI paint & 60fps animation
-      await yieldThread(30);
 
-      const svgRaw = getSvgFn(i);
+      // Non-blocking yield to keep browser UI 60fps responsive without locking
+      await yieldThread(0);
+
+      const bundleProxy = getBundleFn(i);
+      const bundle = bundleProxy.toJs();
+      bundleProxy.destroy();
+
+      const svgRaw = bundle.get("svg") || "";
+      const pw = bundle.get("width") || 612;
+      const ph = bundle.get("height") || 792;
+      const orientation = pw > ph ? "landscape" : "portrait";
+
       const tempDiv = document.createElement("div");
       tempDiv.innerHTML = svgRaw;
 
-      // Resolve background & sticker PDF placeholders
+      // Resolve background & sticker PDF placeholders (cached)
       await resolvePdfPlaceholders(tempDiv);
-
-      const statsProxy = getStatsFn(i);
-      const stats = statsProxy.toJs();
-      statsProxy.destroy();
-
-      const pw = stats.get("width") || 612;
-      const ph = stats.get("height") || 792;
-      const orientation = pw > ph ? "landscape" : "portrait";
 
       const svgElem = tempDiv.querySelector("svg");
 
@@ -1001,10 +1021,6 @@ async function exportDocumentToPdf() {
       if (tempDiv.parentNode) {
         document.body.removeChild(tempDiv);
       }
-
-      console.log(`[PDF Export] Page ${i + 1}/${state.pageCount} rendered (Vector: ${vectorRendered})`);
-
-      await yieldThread(20);
     }
 
     const docBase = state.currentDocName.replace(/\.goodnotes$/i, "") || "document";
@@ -1016,7 +1032,7 @@ async function exportDocumentToPdf() {
       percent: 98,
       activeStep: 3,
     });
-    await yieldThread(50);
+    await yieldThread(20);
 
     pdfDoc.save(filename);
     showToast(t("toastPdfSuccess", filename, state.pageCount), "success", 4500);
