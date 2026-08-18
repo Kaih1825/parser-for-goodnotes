@@ -124,7 +124,7 @@ async function initPyodideRuntime() {
       indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/",
     });
 
-    updateStatus("loading", "Loading GoodNotes Parser Package...");
+    updateStatus("loading", "Loading Parser Engine...");
 
     // Try finding and unpacking the wheel from candidates
     const ts = Date.now();
@@ -254,6 +254,10 @@ function hideLoading() {
   el.loadingOverlay.classList.add("hidden");
 }
 
+function isGoodNotesFile(filename) {
+  return typeof filename === "string" && filename.trim().toLowerCase().endsWith(".goodnotes");
+}
+
 /**
  * Parse and load GoodNotes binary ArrayBuffer into Pyodide
  */
@@ -263,9 +267,14 @@ async function processGoodNotesBuffer(arrayBuffer, filename) {
     return;
   }
 
+  if (!isGoodNotesFile(filename)) {
+    showToast(`Invalid format for "${filename}". Only .goodnotes files are supported.`, "error", 5000);
+    return;
+  }
+
   const mbSize = (arrayBuffer.byteLength / 1024 / 1024).toFixed(2);
   updateProgress({
-    title: "Opening GoodNotes Document",
+    title: "Opening .goodnotes Archive",
     detail: `Reading "${filename}" (${mbSize} MB)...`,
     percent: 15,
     activeStep: 1,
@@ -499,6 +508,11 @@ function setupEventListeners() {
   el.fileInput.addEventListener("change", (e) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (!isGoodNotesFile(file.name)) {
+        showToast(`Invalid file format "${file.name}". Only .goodnotes files are supported.`, "error", 5000);
+        el.fileInput.value = "";
+        return;
+      }
       const reader = new FileReader();
       updateProgress({
         title: "Reading File",
@@ -530,6 +544,10 @@ function setupEventListeners() {
   el.dropzone.addEventListener("drop", (e) => {
     const file = e.dataTransfer?.files?.[0];
     if (file) {
+      if (!isGoodNotesFile(file.name)) {
+        showToast(`Invalid file format "${file.name}". Only .goodnotes files are supported.`, "error", 5000);
+        return;
+      }
       const reader = new FileReader();
       updateProgress({
         title: "Reading Dropped File",
@@ -732,6 +750,13 @@ async function exportDocumentToPdf() {
         pdfDoc.addPage([pw, ph], orientation);
       }
 
+      // Attach tempDiv offscreen to DOM so svg2pdf can compute geometry and styles
+      tempDiv.style.position = "absolute";
+      tempDiv.style.left = "-99999px";
+      tempDiv.style.top = "-99999px";
+      tempDiv.style.visibility = "hidden";
+      document.body.appendChild(tempDiv);
+
       // Convert SVG vector paths, shapes and text natively into PDF vector instructions
       let vectorRendered = false;
       if (svgElem) {
@@ -744,7 +769,15 @@ async function exportDocumentToPdf() {
               height: ph,
             });
             vectorRendered = true;
-          } else if (window.svg2pdf) {
+          } else if (window.svg2pdf && typeof window.svg2pdf.svg2pdf === "function") {
+            await window.svg2pdf.svg2pdf(svgElem, pdfDoc, {
+              x: 0,
+              y: 0,
+              width: pw,
+              height: ph,
+            });
+            vectorRendered = true;
+          } else if (typeof window.svg2pdf === "function") {
             await window.svg2pdf(svgElem, pdfDoc, {
               x: 0,
               y: 0,
@@ -764,6 +797,13 @@ async function exportDocumentToPdf() {
         const imgData = canvas.toDataURL("image/jpeg", 0.95);
         pdfDoc.addImage(imgData, "JPEG", 0, 0, pw, ph, undefined, "FAST");
       }
+
+      // Clean up temp DOM container
+      if (tempDiv.parentNode) {
+        document.body.removeChild(tempDiv);
+      }
+
+      console.log(`[PDF Export] Page ${i + 1}/${state.pageCount} rendered (Vector: ${vectorRendered})`);
 
       await yieldThread(20);
     }

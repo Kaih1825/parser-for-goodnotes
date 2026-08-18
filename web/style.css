@@ -381,6 +381,73 @@ body {
   margin-bottom: 2px;
 }
 
+/* Legal Disclaimer */
+.legal-disclaimer {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.legal-disclaimer strong {
+  color: var(--text-secondary);
+}
+
+.legal-disclaimer a {
+  color: var(--accent-blue);
+  text-decoration: underline;
+}
+
+.legal-disclaimer a:hover {
+  color: var(--accent-cyan);
+}
+
+/* App Footer */
+.app-footer {
+  background-color: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+  padding: 8px 24px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.footer-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.footer-content p {
+  margin: 0;
+}
+
+.footer-content a {
+  color: var(--text-secondary);
+  text-decoration: underline;
+}
+
+.footer-content a:hover {
+  color: var(--accent-cyan);
+}
+
+.footer-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.footer-links .sep {
+  color: var(--border-color);
+}
+
 /* Preview Panel */
 .preview-panel {
   flex: 1;

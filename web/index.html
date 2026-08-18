@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GoodNotes Document Parser & Vector SVG Viewer</title>
-  <meta name="description" content="Parse and convert GoodNotes 5 & 6 (.goodnotes) files to high-fidelity SVG and JSON directly in your browser with 100% local WebAssembly.">
+  <title>Document Parser for GoodNotes · Independent Vector SVG & PDF Viewer</title>
+  <meta name="description" content="An independent, open-source in-browser tool to inspect, parse, and convert user-supplied .goodnotes 5 & 6 archives into vector SVG, PDF, and JSON directly with 100% local WebAssembly.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
   <div class="app-container">
@@ -25,8 +25,8 @@
           </svg>
         </div>
         <div class="header-titles">
-          <h1>GoodNotes Parser <span class="badge-tag">WebAssembly</span></h1>
-          <p class="subtitle">Schema-Free Vector SVG & JSON Document Inspector</p>
+          <h1>Document Parser for GoodNotes <span class="badge-tag">WebAssembly</span></h1>
+          <p class="subtitle">Independent Vector SVG, PDF & JSON Archive Inspector</p>
         </div>
       </div>
       <div class="header-right">
@@ -132,6 +132,11 @@
             <p>Documents are decoded in-browser via WebAssembly. Nothing is ever sent to a server.</p>
           </div>
         </div>
+
+        <!-- Legal Disclaimer Notice -->
+        <div class="legal-disclaimer">
+          <p><strong>Disclaimer:</strong> This independent open-source project is not affiliated with, endorsed by, sponsored by, or officially connected to Goodnotes Limited. See <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/LEGAL-NOTICE.md" target="_blank" rel="noopener">LEGAL-NOTICE.md</a>.</p>
+        </div>
       </aside>
 
       <!-- Viewport / Canvas Area -->
@@ -169,8 +174,8 @@
                 <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
               </svg>
             </div>
-            <h3>No GoodNotes Document Loaded</h3>
-            <p>Upload a <code>.goodnotes</code> notebook or select a quick sample on the left to start inspecting.</p>
+            <h3>No .goodnotes Document Loaded</h3>
+            <p>Upload a user-supplied <code>.goodnotes</code> notebook or select a quick sample on the left to start inspecting.</p>
           </div>
 
           <!-- Rich Progress & Processing Overlay -->
@@ -201,6 +206,20 @@
         </div>
       </section>
     </main>
+
+    <!-- Footer Legal Notice & Links -->
+    <footer class="app-footer">
+      <div class="footer-content">
+        <p><strong>Document Parser for GoodNotes</strong> is an independent open-source project released under the <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>. It is not affiliated with, endorsed by, or sponsored by Goodnotes Limited.</p>
+        <div class="footer-links">
+          <a href="https://github.com/Kaih1825/document-parser-for-goodnotes" target="_blank" rel="noopener">GitHub</a>
+          <span class="sep">•</span>
+          <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/LEGAL-NOTICE.md" target="_blank" rel="noopener">Legal Notice</a>
+          <span class="sep">•</span>
+          <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a>
+        </div>
+      </div>
+    </footer>
   </div>
 
   <!-- Toast Notification Container -->
@@ -209,13 +228,13 @@
   <!-- CDN Dependencies -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/svg2pdf.js/2.2.3/svg2pdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.4/dist/svg2pdf.umd.min.js"></script>
   <script>
     if (window.pdfjsLib) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
     }
   </script>
   <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>
