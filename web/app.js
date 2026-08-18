@@ -719,8 +719,7 @@ async function exportDocumentToPdf() {
       const ph = stats.get("height") || 792;
       const orientation = pw > ph ? "landscape" : "portrait";
 
-      const canvas = await svgToCanvas(tempDiv.innerHTML, pw, ph, 2.0);
-      const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      const svgElem = tempDiv.querySelector("svg");
 
       if (i === 0) {
         pdfDoc = new jsPDF({
@@ -729,9 +728,40 @@ async function exportDocumentToPdf() {
           format: [pw, ph],
           compress: true,
         });
-        pdfDoc.addImage(imgData, "JPEG", 0, 0, pw, ph, undefined, "FAST");
       } else {
         pdfDoc.addPage([pw, ph], orientation);
+      }
+
+      // Convert SVG vector paths, shapes and text natively into PDF vector instructions
+      let vectorRendered = false;
+      if (svgElem) {
+        try {
+          if (typeof pdfDoc.svg === "function") {
+            await pdfDoc.svg(svgElem, {
+              x: 0,
+              y: 0,
+              width: pw,
+              height: ph,
+            });
+            vectorRendered = true;
+          } else if (window.svg2pdf) {
+            await window.svg2pdf(svgElem, pdfDoc, {
+              x: 0,
+              y: 0,
+              width: pw,
+              height: ph,
+            });
+            vectorRendered = true;
+          }
+        } catch (vecErr) {
+          console.warn("[PDF Export] Vector svg2pdf fallback to canvas:", vecErr);
+        }
+      }
+
+      // High-resolution fallback if vector bridge unavailable
+      if (!vectorRendered) {
+        const canvas = await svgToCanvas(tempDiv.innerHTML, pw, ph, 2.0);
+        const imgData = canvas.toDataURL("image/jpeg", 0.95);
         pdfDoc.addImage(imgData, "JPEG", 0, 0, pw, ph, undefined, "FAST");
       }
 

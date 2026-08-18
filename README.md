@@ -7,18 +7,11 @@
 > **Vibe Coding Disclaimer**: This entire project was developed through **Vibe Coding** (AI-assisted rapid pair-programming and exploratory development). While the parser has been verified against test corpora, code and architecture choices reflect an experimental AI-driven iteration style. Use at your own discretion!
 
 [![Live Web Demo](https://img.shields.io/badge/🚀%20Live%20Demo-Try%20in%20Browser-blueviolet?style=for-the-badge)](https://kaih1825.github.io/parser-for-goodnotes/)
-[![Web Demo Status](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml/badge.svg?branch=main)](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml)
 
+[![Web Demo Status](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml/badge.svg?branch=main)](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml)
 ![CI](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
-
-> [!TIP]
-> ### 🌐 Interactive Web Demo (Zero Installation Required)
-> **Try the parser and vector SVG renderer directly in your browser:**  
-> 👉 **[https://kaih1825.github.io/parser-for-goodnotes/](https://kaih1825.github.io/parser-for-goodnotes/)**
->
-> *⚡ 100% Client-Side WebAssembly (Pyodide) — Instant vector preview, multi-page inspection & downloads with complete local privacy.*
 
 An independent, open-source, fully typed Python toolkit for inspecting and parsing user-supplied GoodNotes 5 and 6 `.goodnotes` archives. It decodes protobuf **wire format** directly, parses Apple LZ4 framed streams, decodes Troy Hanson TPL memory images, extracts observed RGBA stroke data, and exports documents to JSON and SVG.
 
@@ -172,18 +165,12 @@ See also the [Contributing Guide](CONTRIBUTING.md).
 > **Vibe Coding 免責聲明**：本專案完全採用 **Vibe Coding**（AI 輔助快速結對程式設計與探索式開發）進行構建。雖然解析器已通過測試樣本驗證，但程式碼結構與架構選擇體現了 AI 驅動的實驗性疊代風格。請自行評估並謹慎使用！
 
 [![Live Web Demo](https://img.shields.io/badge/🚀%20Live%20Demo-Try%20in%20Browser-blueviolet?style=for-the-badge)](https://kaih1825.github.io/parser-for-goodnotes/)
-[![Web Demo Status](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml/badge.svg?branch=main)](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml)
 
+[![Web Demo Status](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml/badge.svg?branch=main)](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/pages.yml)
 ![CI](https://github.com/Kaih1825/document-parser-for-goodnotes/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
-> [!TIP]
-> ### 🌐 瀏覽器線上互動式 Demo（免安裝）
-> **無需安裝 Python 環境，直接在瀏覽器解析並預覽向量 SVG：**  
-> 👉 **[https://kaih1825.github.io/parser-for-goodnotes/](https://kaih1825.github.io/parser-for-goodnotes/)**
->
-> *⚡ 100% 瀏覽器本地 WebAssembly (Pyodide) 運算 — 支援檔案拖放、即時預覽、分頁切換與向量 SVG / JSON 匯出，筆記完全不外流。*
 
 一套獨立、開源且完整型別化的 Python 工具組，用於檢視與解析使用者提供的 GoodNotes 5 與 GoodNotes 6 `.goodnotes` 封存檔。它可直接解碼 protobuf **wire format**、解析 Apple LZ4 框架串流、解碼 Troy Hanson TPL 記憶體映像、擷取觀察到的 RGBA 筆跡資料，並將文件匯出為 JSON 與 SVG。
 
