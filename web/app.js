@@ -56,7 +56,7 @@ async function initPyodideRuntime() {
 
     updateStatus("loading", "Loading GoodNotes Parser Package...");
 
-    // Try finding the wheel in root or dist directory with cache-busting
+    // Try finding and unpacking the wheel from candidates
     const ts = Date.now();
     const wheelCandidates = [
       `./goodnotes_document_parser-0.1.0-py3-none-any.whl?v=${ts}`,
@@ -67,25 +67,21 @@ async function initPyodideRuntime() {
     let loaded = false;
     for (const wheelUrl of wheelCandidates) {
       try {
-        const resp = await fetch(wheelUrl, { method: "HEAD" });
+        const resp = await fetch(wheelUrl, { cache: "no-store" });
         if (resp.ok) {
-          await state.pyodide.loadPackage(wheelUrl);
+          const wheelBuffer = await resp.arrayBuffer();
+          await state.pyodide.unpackArchive(wheelBuffer, "whl");
           loaded = true;
-          console.log(`[Parser] Loaded package wheel from ${wheelUrl}`);
+          console.log(`[Parser] Successfully unpacked package wheel from ${wheelUrl}`);
           break;
         }
       } catch (e) {
-        // continue
+        console.warn(`[Parser] Attempt to fetch ${wheelUrl} failed:`, e);
       }
     }
 
     if (!loaded) {
-      // Fallback: try loading wheel directly from relative path
-      try {
-        await state.pyodide.loadPackage(`./goodnotes_document_parser-0.1.0-py3-none-any.whl?v=${ts}`);
-      } catch (err) {
-        console.warn("[Parser] Wheel load fallback: trying standard import", err);
-      }
+      throw new Error("Could not find or load goodnotes_document_parser wheel package.");
     }
 
     // Define Python bridge helpers
