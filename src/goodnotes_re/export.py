@@ -289,7 +289,7 @@ def write_svg(
         target = output / name
 
         elements: list[str] = [
-            f'<svg xmlns="http://www.w3.org/2000/svg" width="{pw:.2f}" height="{ph:.2f}" viewBox="0 0 {pw:.2f} {ph:.2f}">',
+            f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{pw:.2f}" height="{ph:.2f}" viewBox="0 0 {pw:.2f} {ph:.2f}">',
             f'<!-- GoodNotes Page {page.index + 1} ({page.uuid}) -->',
         ]
 

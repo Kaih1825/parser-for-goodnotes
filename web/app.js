@@ -432,9 +432,8 @@ async function resolvePdfPlaceholders(containerElement) {
 
       const pngDataUrl = canvas.toDataURL("image/png");
 
-      // Replace placeholder with SVG <image>
+      // Replace placeholder with standard SVG <image>
       const imgElem = document.createElementNS("http://www.w3.org/2000/svg", "image");
-      imgElem.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", pngDataUrl);
       imgElem.setAttribute("href", pngDataUrl);
       imgElem.setAttribute("x", "0");
       imgElem.setAttribute("y", "0");
@@ -629,7 +628,16 @@ function setupEventListeners() {
  */
 function svgToCanvas(svgString, width, height, scale = 2.0) {
   return new Promise((resolve, reject) => {
-    const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+    // Guarantee proper XML / SVG namespaces
+    let processedSvg = svgString;
+    if (!processedSvg.includes('xmlns="http://www.w3.org/2000/svg"')) {
+      processedSvg = processedSvg.replace(/<svg\b/, '<svg xmlns="http://www.w3.org/2000/svg"');
+    }
+    if (!processedSvg.includes('xmlns:xlink=')) {
+      processedSvg = processedSvg.replace(/<svg\b/, '<svg xmlns:xlink="http://www.w3.org/1999/xlink"');
+    }
+
+    const blob = new Blob([processedSvg], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -644,9 +652,9 @@ function svgToCanvas(svgString, width, height, scale = 2.0) {
       URL.revokeObjectURL(url);
       resolve(canvas);
     };
-    img.onerror = (err) => {
+    img.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(err);
+      reject(new Error("Failed to rasterize SVG page to Canvas image."));
     };
     img.src = url;
   });
