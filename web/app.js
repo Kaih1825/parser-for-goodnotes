@@ -245,6 +245,10 @@ async function renderCurrentPage() {
     // Inject SVG into DOM
     el.svgStage.innerHTML = state.currentSvgString;
 
+    // Resolve any PDF background / sticker placeholders using PDF.js
+    await resolvePdfPlaceholders(el.svgStage);
+    state.currentSvgString = el.svgStage.innerHTML;
+
     // Update stats UI
     el.statPages.textContent = `${state.pageCount}`;
     el.statCurPage.textContent = `${state.currentPageIndex + 1} / ${state.pageCount}`;
@@ -264,6 +268,69 @@ async function renderCurrentPage() {
     console.error("[Parser] Page render failed:", err);
   } finally {
     hideLoading();
+  }
+}
+
+/**
+ * Render any PDF background / sticker placeholders via PDF.js into sharp SVG <image> elements
+ */
+async function resolvePdfPlaceholders(containerElement) {
+  if (!window.pdfjsLib) return;
+
+  const placeholders = Array.from(containerElement.querySelectorAll(".gn-pdf-placeholder"));
+  if (placeholders.length === 0) return;
+
+  for (const node of placeholders) {
+    try {
+      const b64 = node.getAttribute("data-pdf-b64");
+      const pageIdx = parseInt(node.getAttribute("data-pdf-page") || "0", 10);
+      const width = parseFloat(node.getAttribute("data-width") || "100");
+      const height = parseFloat(node.getAttribute("data-height") || "100");
+
+      if (!b64) continue;
+
+      // Decode base64 to binary Uint8Array
+      const binaryString = atob(b64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      // Load PDF document using PDF.js
+      const pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const pdfPageNum = Math.min(Math.max(1, pageIdx + 1), pdfDoc.numPages);
+      const pdfPage = await pdfDoc.getPage(pdfPageNum);
+
+      // Render at 2x scale for sharp high-DPI display
+      const scale = 2.0;
+      const viewport = pdfPage.getViewport({ scale });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d");
+
+      await pdfPage.render({
+        canvasContext: ctx,
+        viewport: viewport,
+      }).promise;
+
+      const pngDataUrl = canvas.toDataURL("image/png");
+
+      // Replace placeholder with SVG <image>
+      const imgElem = document.createElementNS("http://www.w3.org/2000/svg", "image");
+      imgElem.setAttribute("href", pngDataUrl);
+      imgElem.setAttribute("x", "0");
+      imgElem.setAttribute("y", "0");
+      imgElem.setAttribute("width", width.toFixed(2));
+      imgElem.setAttribute("height", height.toFixed(2));
+      imgElem.setAttribute("preserveAspectRatio", "none");
+
+      node.parentNode.replaceChild(imgElem, node);
+    } catch (err) {
+      console.warn("[PDF.js] Failed to render PDF placeholder:", err);
+    }
   }
 }
 

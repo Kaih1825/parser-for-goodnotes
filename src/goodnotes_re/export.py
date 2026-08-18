@@ -231,6 +231,12 @@ def write_svg(
                     )
                     if pdf_svg:
                         elements.append(pdf_svg)
+                    else:
+                        pdf_b64 = base64.b64encode(bdata).decode("ascii")
+                        target_p_idx = max(0, page.pdf_page_index - 1)
+                        elements.append(
+                            f'<g class="gn-pdf-placeholder" data-pdf-b64="{pdf_b64}" data-pdf-page="{target_p_idx}" data-width="{pw:.2f}" data-height="{ph:.2f}"></g>'
+                        )
             except Exception:
                 pass
 
@@ -290,6 +296,17 @@ def write_svg(
                                     f'</svg>'
                                     f'</g>'
                                 )
+                            else:
+                                pdf_b64 = base64.b64encode(idata).decode("ascii")
+                                elements.append(
+                                    f'<g{transform}>'
+                                    f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}" viewBox="0 0 {crop_w:.2f} {crop_h:.2f}" overflow="hidden">'
+                                    f'<g transform="translate({img_x:.2f},{img_y:.2f})">'
+                                    f'<g class="gn-pdf-placeholder" data-pdf-b64="{pdf_b64}" data-pdf-page="0" data-width="{orig_w:.2f}" data-height="{orig_h:.2f}"></g>'
+                                    f'</g>'
+                                    f'</svg>'
+                                    f'</g>'
+                                )
                         else:
                             elements.append(
                                 f'<g{transform}>'
@@ -316,6 +333,15 @@ def write_svg(
                                 elements.append(
                                     f'<g{transform_attr}>'
                                     f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}">{inner_svg}</svg>'
+                                    f'</g>'
+                                )
+                            else:
+                                pdf_b64 = base64.b64encode(idata).decode("ascii")
+                                elements.append(
+                                    f'<g{transform_attr}>'
+                                    f'<svg x="{crop_x:.2f}" y="{crop_y:.2f}" width="{crop_w:.2f}" height="{crop_h:.2f}">'
+                                    f'<g class="gn-pdf-placeholder" data-pdf-b64="{pdf_b64}" data-pdf-page="0" data-width="{crop_w:.2f}" data-height="{crop_h:.2f}"></g>'
+                                    f'</svg>'
                                     f'</g>'
                                 )
                         else:
