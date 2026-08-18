@@ -41,7 +41,7 @@ It **deliberately does NOT use heuristic float scanning**.
 - **Stroke & Color Parsing**: Direct protobuf trailer decoding after `bv4$` to extract exact RGBA colors and highlighter transparency.
 - **Stroke Support**: Parses a growing set of dots, lines, curves, pen tools, highlighters, erasers, shapes, and moved/copied elements observed in the test corpus.
 - **Page & Background Resolution**: Automatic PDF background `/MediaBox` dimension detection (A4, Letter, landscape vs. portrait), page ordering, text fragments, and sticky notes (便條紙) content extraction.
-- **CLI Tools**: `gn-inspect`, `gn-dump`, `gn-diff`, `gn-export-json`, `gn-export-svg`.
+- **CLI Tools**: `gn-inspect`, `gn-dump`, `gn-diff`, `gn-export-json`, `gn-export-svg`, `gn-export-pdf`.
 
 ### Feature Support Status
 
@@ -101,6 +101,12 @@ gn-export-json sample.goodnotes -o document.json
 
 # Export vector SVG pages with exact stroke ribbons, colors, and dimensions
 gn-export-svg sample.goodnotes -o pages-svg
+
+# Export vector SVGs and package all pages into a PDF
+gn-export-svg sample.goodnotes -o pages-svg --pdf
+
+# Directly export multi-page PDF document
+gn-export-pdf sample.goodnotes -o document.pdf
 ```
 
 Or via module invocation:
@@ -200,7 +206,7 @@ See also the [Contributing Guide](CONTRIBUTING.md).
 - **筆跡與色彩解析**：解析 `bv4$` 後的 protobuf trailer，以擷取精確 RGBA 顏色與螢光筆透明度。
 - **筆跡與幾何元件支援**：解析測試樣本中觀察到的單點、直線、曲線、鋼筆/原子筆工具、螢光筆、橡皮擦切口、圖形及移動/複製元素。
 - **頁面與背景解析**：自動偵測 PDF `/MediaBox` 尺寸（A4、Letter、橫向與直向）、頁面順序、文字片段與便條紙內容。
-- **CLI 工具**：`gn-inspect`、`gn-dump`、`gn-diff`、`gn-export-json`、`gn-export-svg`。
+- **CLI 工具**：`gn-inspect`、`gn-dump`、`gn-diff`、`gn-export-json`、`gn-export-svg`、`gn-export-pdf`。
 
 ### 功能支援狀態
 
@@ -260,6 +266,12 @@ gn-export-json sample.goodnotes -o document.json
 
 # 匯出包含精確筆跡緞帶、顏色與尺寸的向量 SVG 頁面
 gn-export-svg sample.goodnotes -o pages-svg
+
+# 匯出向量 SVG 並同步按頁面順序打包為 PDF
+gn-export-svg sample.goodnotes -o pages-svg --pdf
+
+# 直接將整份筆記匯出為多頁 PDF 文件
+gn-export-pdf sample.goodnotes -o document.pdf
 ```
 
 完整 CLI 參考請參閱 [`cli.md`](cli.md)。

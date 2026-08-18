@@ -1,8 +1,7 @@
-[中文](#中文)
-
 <a id="english"></a>
 
 # 02 - ZIP Archive and Protobuf Wire Format Analysis
+[中文](#中文)
 
 This chapter introduces the internal ZIP container layout of `.goodnotes` files and how this toolkit directly parses the Protobuf Wire format and Length-Delimited Protobuf Streams without relying on any `.proto` definition files.
 
@@ -156,11 +155,10 @@ In the next chapter, **[03 - Apple LZ4 Compression and TPL Memory Image](03-comp
 
 ---
 
-[English](#english)
-
 <a id="中文"></a>
 
 # 02 - ZIP 容器與 Protobuf Wire 解析 (Archive & Wire Format)
+[English](#english)
 
 本章節介紹 `.goodnotes` 檔案的 ZIP 內部容器佈局，以及本工具包在不依賴任何 `.proto` 定義檔的情況下，如何直接解析 Protobuf Wire 格式與長度前綴分幀串流（Length-Delimited Protobuf Streams）。
 

@@ -1,8 +1,7 @@
-[中文](#中文)
-
 <a id="english"></a>
 
 # Legal and Release Notice
+[中文](#中文)
 
 > This document is a project-maintainer notice, not legal advice.
 
@@ -47,11 +46,10 @@ The original source code in this repository is licensed under the MIT License in
 
 ---
 
-[English](#english)
-
 <a id="中文"></a>
 
 # 法律與發佈聲明 (Legal and Release Notice)
+[English](#english)
 
 > 本文件為專案維護者聲明，非正式法律意見。
 

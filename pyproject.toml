@@ -12,6 +12,7 @@ license = {text = "MIT"}
 authors = [{name = "Document Parser for GoodNotes contributors"}]
 classifiers = ["Programming Language :: Python :: 3", "Typing :: Typed"]
 dependencies = [
+    "cairosvg>=2.8.2",
     "PyMuPDF>=1.23.0",
 ]
 
@@ -36,6 +37,7 @@ gn-dump = "goodnotes_re.cli:dump_main"
 gn-diff = "goodnotes_re.cli:diff_main"
 gn-export-json = "goodnotes_re.cli:export_json_main"
 gn-export-svg = "goodnotes_re.cli:export_svg_main"
+gn-export-pdf = "goodnotes_re.cli:export_pdf_main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/goodnotes_re"]

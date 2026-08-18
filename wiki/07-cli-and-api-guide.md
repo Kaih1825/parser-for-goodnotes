@@ -1,8 +1,7 @@
-[中文](#中文)
-
 <a id="english"></a>
 
 # 07 - CLI & Python API Guide
+[中文](#中文)
 
 This chapter provides instructions for using the **Document Parser for GoodNotes** command-line interface (CLI) tools and the Python API library.
 
@@ -10,14 +9,15 @@ This chapter provides instructions for using the **Document Parser for GoodNotes
 
 ## 1. CLI Tool Suite
 
-After installation, the package provides 5 global command-line tools (which can also be invoked via `python3 -m goodnotes_re.cli`):
+After installation, the package provides 6 global command-line tools (which can also be invoked via `python3 -m goodnotes_re.cli`):
 
 ```
                                 ┌── gn-inspect (Inspect ZIP file directory and SHA256)
                                 ├── gn-dump (Lossless dump to JSON)
 python3 -m goodnotes_re.cli ───┼── gn-diff (Compare differences between two .goodnotes members)
                                 ├── gn-export-json (Export full structure as JSON)
-                                └── gn-export-svg (Export vector SVG pages)
+                                ├── gn-export-svg (Export vector SVG pages)
+                                └── gn-export-pdf (Compile vector pages directly into PDF)
 ```
 
 ---
@@ -88,19 +88,31 @@ gn-export-svg samples/Teat.goodnotes -o pages-svg/
 
 #### Advanced Parameters:
 - `-s, --sticky-note-state {open,close,auto}`: Controls sticky note state (`open` expands the card, `close` collapses the icon).
-- `-b, --textbox {open,close}`: Controls whether to draw the blue text selection bounding box (`open` displays the border).
+- `-b, --textbox [open|close]`: Controls whether to draw the text box bounding border.
+- `-a, --parse-all`: Parses all pages in the document instead of only the active page.
 - `--no-fill`: Disables filling for vector shapes.
+- `--pdf [filename.pdf]`: Packages all exported SVG pages in sequence into a single PDF document.
 
 ```sh
-# Example: Generate SVGs displaying text bounding boxes and expanded sticky notes
-gn-export-svg samples/Teat.goodnotes -o output_svgs/ -b open -s open
+# Example: Generate SVGs and compile directly into PDF
+gn-export-svg samples/Teat.goodnotes -o output_svgs/ --pdf
+```
+
+---
+
+### 1.6 `gn-export-pdf` - Direct Multi-Page PDF Exporter
+
+Renders all pages according to the vector SVG pipeline and compiles them directly into a multi-page PDF document.
+
+```sh
+gn-export-pdf samples/Teat.goodnotes -o Teat.pdf
 ```
 
 ---
 
 ## 2. Python API Guide
 
-The core API is encapsulated in the `GoodNotesDocument` class.
+The core API is encapsulated in the `GoodNotesDocument` class and `export` modules.
 
 ### 2.1 Opening and Reading Documents
 
@@ -123,7 +135,7 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
 
 ```python
 with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
-    pages = doc.pages()
+    pages = doc.pages(parse_all=True)
     for page in pages:
         print(f"=== Page {page.index + 1} (UUID: {page.uuid}) ===")
         print(f"Dimensions: {page.dimensions.width} x {page.dimensions.height} pt, Landscape: {page.dimensions.is_landscape}")
@@ -146,7 +158,7 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
 
 ```python
 with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
-    for page in doc.pages():
+    for page in doc.pages(parse_all=True):
         # Read vector shapes
         for shape in page.shapes:
             print(f"Shape type: {shape.shape_type}, Color: {shape.color_hex}")
@@ -162,22 +174,32 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
 
 ---
 
-### 2.4 Directly Invoking the Vector SVG Exporter
+### 2.4 Directly Invoking the Vector SVG and PDF Exporters
 
 ```python
 from pathlib import Path
-from goodnotes_re import GoodNotesDocument
-from goodnotes_re.export import write_svg
+from goodnotes_re import GoodNotesDocument, write_svg, write_pdf, svgs_to_pdf, svg_to_pdf_bytes
 
 with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
+    # 1. Export SVG pages
     svg_paths = write_svg(
         document=doc,
         directory="output_svgs",
         fill_shapes=True,
         sticky_note_state="open",
-        textbox_state="close"
+        textbox_state=True,
+        parse_all=True,
     )
     print("Generated SVG files:", svg_paths)
+
+    # 2. Export direct multi-page PDF
+    pdf_path = write_pdf(
+        document=doc,
+        output="output_svgs/Teat.pdf",
+        sticky_note_state="open",
+        parse_all=True,
+    )
+    print("Generated PDF file:", pdf_path)
 ```
 
 ---
@@ -186,11 +208,10 @@ In the next chapter, **[08 - Testing, Building, and Publishing](08-testing-build
 
 ---
 
-[English](#english)
-
 <a id="中文"></a>
 
 # 07 - CLI 工具與 Python API 指南 (CLI & API Guide)
+[English](#english)
 
 本章節提供 **Document Parser for GoodNotes** 的命令行 CLI 工具說明與 Python API 程式庫調用指南。
 
@@ -198,14 +219,15 @@ In the next chapter, **[08 - Testing, Building, and Publishing](08-testing-build
 
 ## 1. CLI 工具套件 (CLI Tool Suite)
 
-套件安裝後會提供 5 個全域命令列工具（亦可透過 `python3 -m goodnotes_re.cli` 調用）：
+套件安裝後會提供 6 個全域命令列工具（亦可透過 `python3 -m goodnotes_re.cli` 調用）：
 
 ```
                                 ┌── gn-inspect (檢視 ZIP 檔案目錄與 SHA256)
                                 ├── gn-dump (無損 dump 成 JSON)
 python3 -m goodnotes_re.cli ───┼── gn-diff (比較兩個 .goodnotes 成員差異)
                                 ├── gn-export-json (匯出完整結構為 JSON)
-                                └── gn-export-svg (匯出向量 SVG 頁面)
+                                ├── gn-export-svg (匯出向量 SVG 頁面)
+                                └── gn-export-pdf (直接將向量頁面編譯為 PDF)
 ```
 
 ---
@@ -276,19 +298,31 @@ gn-export-svg samples/Teat.goodnotes -o pages-svg/
 
 #### 高級參數：
 - `-s, --sticky-note-state {open,close,auto}`：控制便條紙狀態 (`open` 展開卡片, `close` 折疊圖示)。
-- `-b, --textbox {open,close}`：控制是否繪製藍色文字選取框 (`open` 顯示外框)。
+- `-b, --textbox [open|close]`：控制是否繪製藍色文字選取框。
+- `-a, --parse-all`：解析並匯出整份文件所有的頁面（而非僅活動頁）。
 - `--no-fill`：關閉向量圖形填色。
+- `--pdf [filename.pdf]`：將所有匯出的 SVG 頁面依序打包成單一多頁 PDF 檔案。
 
 ```sh
-# 範例：繪製顯示文字選取框且展開便條紙的 SVG
-gn-export-svg samples/Teat.goodnotes -o output_svgs/ -b open -s open
+# 範例：匯出 SVG 並同步打包成 PDF
+gn-export-svg samples/Teat.goodnotes -o output_svgs/ --pdf
+```
+
+---
+
+### 1.6 `gn-export-pdf` - 直接匯出多頁 PDF
+
+將各頁依照向量 SVG 渲染邏輯直接編譯打包為單一多頁 PDF 文件。
+
+```sh
+gn-export-pdf samples/Teat.goodnotes -o Teat.pdf
 ```
 
 ---
 
 ## 2. Python 程式庫 API 指南 (Python API Guide)
 
-核心 API 封裝於 `GoodNotesDocument` 類別中。
+核心 API 封裝於 `GoodNotesDocument` 類別與 `export` 模組中。
 
 ### 2.1 開啟與讀取文件
 
@@ -311,7 +345,7 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
 
 ```python
 with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
-    pages = doc.pages()
+    pages = doc.pages(parse_all=True)
     for page in pages:
         print(f"=== 頁面 {page.index + 1} (UUID: {page.uuid}) ===")
         print(f"尺寸: {page.dimensions.width} x {page.dimensions.height} pt, 橫向: {page.dimensions.is_landscape}")
@@ -334,7 +368,7 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
 
 ```python
 with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
-    for page in doc.pages():
+    for page in doc.pages(parse_all=True):
         # 讀取向量圖形
         for shape in page.shapes:
             print(f"圖形類型: {shape.shape_type}, 顏色: {shape.color_hex}")
@@ -350,22 +384,32 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
 
 ---
 
-### 2.4 直接調用向量 SVG 匯出器
+### 2.4 直接調用向量 SVG 與 PDF 匯出器
 
 ```python
 from pathlib import Path
-from goodnotes_re import GoodNotesDocument
-from goodnotes_re.export import write_svg
+from goodnotes_re import GoodNotesDocument, write_svg, write_pdf, svgs_to_pdf, svg_to_pdf_bytes
 
 with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
+    # 1. 匯出各頁 SVG 向量圖
     svg_paths = write_svg(
         document=doc,
         directory="output_svgs",
         fill_shapes=True,
         sticky_note_state="open",
-        textbox_state="close"
+        textbox_state=True,
+        parse_all=True,
     )
     print("生成的 SVG 檔案列表:", svg_paths)
+
+    # 2. 直接編譯為多頁 PDF
+    pdf_path = write_pdf(
+        document=doc,
+        output="output_svgs/Teat.pdf",
+        sticky_note_state="open",
+        parse_all=True,
+    )
+    print("生成的 PDF 檔案路徑:", pdf_path)
 ```
 
 ---

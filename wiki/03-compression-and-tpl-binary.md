@@ -1,8 +1,7 @@
-[中文](#中文)
-
 <a id="english"></a>
 
 # 03 - Apple LZ4 Compression and TPL Binary Format (Apple LZ4 壓縮與 TPL 記憶體映像)
+[中文](#中文)
 
 This chapter provides an in-depth analysis of the core binary technologies used by GoodNotes to store Ink Strokes: the Apple Framed LZ4 compression format (`bv41`/`bv4$`), the Troy Hanson TPL memory image (`tpl\0`) structure, and the Protobuf Trailer (containing stroke RGBA colors and Lasso move vectors) that immediately follows the `bv4$` magic marker.
 
@@ -180,11 +179,10 @@ In the next chapter, **[04 - Stroke Geometry and Vector Ribbon Rendering](04-str
 
 ---
 
-[English](#english)
-
 <a id="中文"></a>
 
 # 03 - Apple LZ4 壓縮與 TPL 記憶體映像 (Compression & TPL Binary)
+[English](#english)
 
 本章節深入分析 GoodNotes 儲存筆跡（Ink Stroke）的核心二進位技術：Apple Framed LZ4 壓縮格式 (`bv41`/`bv4$`)、Troy Hanson TPL 記憶體映像 (`tpl\0`) 結構，以及在 `bv4$` 魔術標記之後緊跟的 Protobuf Trailer（筆跡 RGBA 顏色與 Lasso 移動向量）。
 

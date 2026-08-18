@@ -1,8 +1,7 @@
-[中文](#中文)
-
 <a id="english"></a>
 
 # 05 - Shapes, Text & Elements
+[中文](#中文)
 
 This chapter introduces the analysis of various geometric and multimedia elements recorded on GoodNotes pages, including vector shapes, marker arrows, rich text/typewriter text elements, sticky notes, and image attachments & crops.
 
@@ -74,8 +73,8 @@ For early or simple text, GoodNotes uses the RTF format. [`rtf_to_text()`](../sr
 Sticky Notes in GoodNotes are yellow/colored cards where users can attach notes or messages.
 
 In `parse_sticky_notes()` within [`element.py`](../src/goodnotes_re/element.py):
-- **Card Attributes**: Extract $(x, y)$ coordinates, default size (256x256), background color `color_hex` (default yellow `#FAE778`), and author `author`.
-- **Fold/Unfold State (`is_open`)**: Check Tag 7 for a hidden flag. If folded (`is_folded=True`), the SVG rendering will display it as a small sticky note icon with a folded corner at the bottom right; if unfolded, it will be rendered as a full translucent background card.
+- **Card Attributes**: Extract $(x, y)$ coordinates, size (from Tag 21), background color `color_hex` (from Tag 30), and author `author` (from Tag 33).
+- **Fold/Unfold State (`is_open`)**: Check **Tag 40** on the Type 35 Message. When Tag 40 is present (`f40 == 1`), the note is expanded/open (`is_open=True`) and rendered as a full translucent background card with child strokes/shapes; when Tag 40 is absent or `0`, the note is folded/collapsed (`is_open=False`) and SVG rendering displays a compact folded sticky note icon indicator.
 
 ---
 
@@ -103,11 +102,10 @@ In the next chapter, **[06 - PDF Integration and SVG Export](06-pdf-integration-
 
 ---
 
-[English](#english)
-
 <a id="中文"></a>
 
 # 05 - 圖形、文字與頁面元素 (Shapes, Text & Elements)
+[English](#english)
 
 本章節介紹 GoodNotes 頁面上記錄的各種幾何與多媒體元素解析，包含向量圖形 (Shapes)、端點箭頭 Marker、富文本/打字機文字框 (Text Elements)、便條紙 (Sticky Notes) 以及圖片貼圖與裁切 (Image Attachments & Crops)。
 
@@ -176,11 +174,11 @@ GoodNotes 中的打字機文字框（Text Element）儲存於 Type 35 Record 內
 
 ## 4. 便條紙解析 (`Sticky Note`)
 
-便條紙（Sticky Note）在 GoodNotes 中是黃色/彩色卡片，上方可供使用者貼上記錄或留言。
+便條紙（Sticky Note）在 GoodNotes 中是黃色/彩色卡片，上方可供使用者貼上記錄或手寫/打字內容。
 
 在 [`element.py`](../src/goodnotes_re/element.py) 的 `parse_sticky_notes()` 中：
-- **卡片屬性**：提取 $(x, y)$ 座標、預設尺寸 (256x256)、背景顏色 `color_hex` (預設黃色 `#FAE778`) 以及作者 `author`。
-- **折疊/展開狀態 (`is_open`)**：檢視 Tag 7 內是否有隱藏標誌。若折疊 (`is_folded=True`)，SVG 繪製時會將其渲染為右下角帶有折角的便條紙小圖示；若展開，則渲染為完整的半透明背景卡片。
+- **卡片屬性**：提取 $(x, y)$ 座標、尺寸 (從 Tag 21)、背景顏色 `color_hex` (從 Tag 30，預設黃色 `#FAE778`) 以及作者 `author` (從 Tag 33)。
+- **折疊/展開狀態 (`is_open`)**：檢視 Type 35 Message 內的 **Tag 40**。當 Tag 40 存在 (`f40 == 1`)，表示便條紙為展開狀態 (`is_open=True`)，SVG 會繪製完整半透明卡片並顯示其子筆跡/圖形；當 Tag 40 不存在或為 `0` 時，表示便條紙為折疊收合狀態 (`is_open=False`)，SVG 繪製時會將其渲染為右下角帶有折角的便條紙小圖示。
 
 ---
 

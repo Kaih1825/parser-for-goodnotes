@@ -9,7 +9,7 @@ from .element import PageElement
 from .shape import ShapePath
 from .stroke import Stroke, StrokePoint
 from .page import Page, PageDimensions
-from .export import write_json, write_svg
+from .export import svg_to_pdf_bytes, svgs_to_pdf, write_json, write_pdf, write_svg
 
 __all__ = [
     "Field",
@@ -27,6 +27,9 @@ __all__ = [
     "decode_apple_lz4",
     "decode_message",
     "decode_tpl",
+    "svg_to_pdf_bytes",
+    "svgs_to_pdf",
     "write_json",
+    "write_pdf",
     "write_svg",
 ]

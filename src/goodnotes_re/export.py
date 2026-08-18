@@ -5,7 +5,7 @@ import html
 import json
 import math
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Sequence
 
 from .archive import GoodNotesDocument
 from .pdf import render_pdf_page_to_svg
@@ -176,18 +176,100 @@ def _get_marker_ref_x(path_d: str, align: str = "tip") -> float:
     return (min(x_coords) + max(x_coords)) / 2.0
 
 
+def _format_font_family_stack(font_family: str | None, sample_text: str = "") -> str:
+    """Build a comprehensive CSS font-family fallback stack supporting CJK (Chinese, Japanese, Korean).
+
+    Detects the script of sample_text (Japanese Hiragana/Katakana, Korean Hangul, or Chinese Hanzi)
+    and prioritizes the corresponding native system fonts to prevent Cairo from missing glyphs.
+    """
+    clean = (font_family or "").strip()
+    if not clean:
+        clean = "sans-serif"
+
+    lower = clean.lower()
+    is_serif = any(k in lower for k in ("times", "serif", "georgia", "song", "mincho", "myeongjo", "batang"))
+    is_mono = any(k in lower for k in ("courier", "mono", "menlo", "consolas", "gothic coding"))
+
+    # Script detection from sample_text
+    has_jp = any(0x3040 <= ord(c) <= 0x30FF or 0x31F0 <= ord(c) <= 0x31FF for c in sample_text) if sample_text else False
+    has_kr = any(0xAC00 <= ord(c) <= 0xD7AF or 0x1100 <= ord(c) <= 0x11FF or 0x3130 <= ord(c) <= 0x318F for c in sample_text) if sample_text else False
+    has_cjk = any(ord(c) >= 0x2E80 for c in sample_text) if sample_text else False
+
+    # Font definitions by language / script
+    tc_sans = ["PingFang TC", "Heiti TC", "Microsoft JhengHei", "Noto Sans CJK TC"]
+    sc_sans = ["PingFang SC", "Heiti SC", "Microsoft YaHei", "Noto Sans CJK SC"]
+    jp_sans = ["Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", "Noto Sans JP", "MS Gothic"]
+    kr_sans = ["Apple SD Gothic Neo", "Malgun Gothic", "NanumGothic", "Noto Sans KR", "Gulim"]
+
+    tc_serif = ["Songti TC", "STSong", "SimSun", "Noto Serif CJK TC"]
+    sc_serif = ["Songti SC", "STSong", "SimSun", "Noto Serif CJK SC"]
+    jp_serif = ["Hiragino Mincho ProN", "Yu Mincho", "MS Mincho", "Noto Serif JP"]
+    kr_serif = ["Apple Myungjo", "Batang", "NanumMyeongjo", "Noto Serif KR"]
+
+    mono_fonts = ["PingFang TC", "Hiragino Sans", "Apple SD Gothic Neo", "Microsoft JhengHei", "monospace"]
+
+    if is_mono:
+        fallbacks = mono_fonts
+    elif is_serif:
+        if has_jp:
+            fallbacks = jp_serif + tc_serif + sc_serif + kr_serif + ["serif"]
+        elif has_kr:
+            fallbacks = kr_serif + tc_serif + sc_serif + jp_serif + ["serif"]
+        else:
+            fallbacks = tc_serif + sc_serif + jp_serif + kr_serif + ["serif"]
+    else:
+        if has_jp:
+            fallbacks = jp_sans + tc_sans + sc_sans + kr_sans + ["-apple-system", "BlinkMacSystemFont", "sans-serif"]
+        elif has_kr:
+            fallbacks = kr_sans + tc_sans + sc_sans + jp_sans + ["-apple-system", "BlinkMacSystemFont", "sans-serif"]
+        else:
+            fallbacks = tc_sans + sc_sans + jp_sans + kr_sans + ["-apple-system", "BlinkMacSystemFont", "sans-serif"]
+
+    is_known_cjk_font = any(
+        k in lower
+        for k in (
+            "tc", "sc", "hk", "tw", "jp", "kr", "cjk", "pingfang", "songti", "heiti",
+            "kaiti", "wawati", "yahei", "jhenghei", "simsun", "simhei", "mingliu",
+            "biaukai", "dfkai", "hiragino", "gothic", "mincho", "meiryo", "yu gothic",
+            "nanum", "malgun", "apple sd gothic", "batang", "myungjo"
+        )
+    ) or any(ord(c) >= 0x2E80 for c in clean)
+
+    items: list[str] = []
+    if is_known_cjk_font or not has_cjk:
+        if clean not in ("sans-serif", "serif", "monospace"):
+            items.append(f'"{clean}"' if " " in clean else clean)
+        for fb in fallbacks:
+            formatted_fb = f'"{fb}"' if " " in fb else fb
+            if formatted_fb not in items:
+                items.append(formatted_fb)
+    else:
+        for fb in fallbacks:
+            formatted_fb = f'"{fb}"' if " " in fb else fb
+            if formatted_fb not in items:
+                items.append(formatted_fb)
+        if clean not in ("sans-serif", "serif", "monospace"):
+            formatted_clean = f'"{clean}"' if " " in clean else clean
+            if formatted_clean not in items:
+                items.append(formatted_clean)
+
+    return ", ".join(items)
+
+
 def write_svg(
     document: GoodNotesDocument,
     directory: str | Path,
     fill_shapes: bool = True,
     sticky_note_state: str | None = None,
     textbox_state: bool = False,
-    parse_all: bool = False
+    parse_all: bool = False,
+    export_pdf: bool | str | Path = False,
 ) -> list[Path]:
     """Export SVG vector pages for each page in the GoodNotes document.
 
     sticky_note_state: Optional override for sticky notes state ('open' or 'close').
     textbox_state: Optional toggle for drawing text box bounding borders ('open' or 'close').
+    export_pdf: Optional flag or path to package exported SVG pages into a single PDF.
     """
     output = Path(directory)
     output.mkdir(parents=True, exist_ok=True)
@@ -376,8 +458,9 @@ def write_svg(
                 if note.author:
                     tx = nx + 12.0 * dpi_scale
                     ty = ny + nh - 12.0 * dpi_scale
+                    font_stack = _format_font_family_stack("sans-serif")
                     elements.append(
-                        f'<text x="{tx:.2f}" y="{ty:.2f}" font-family="sans-serif" font-size="10" fill="#555555" font-weight="500">{html.escape(note.author)}</text>'
+                        f'<text x="{tx:.2f}" y="{ty:.2f}" font-family="{html.escape(font_stack)}" font-size="10" fill="#555555" font-weight="500">{html.escape(note.author)}</text>'
                     )
             else:
                 # Render folded note icon indicator at (nx, ny) with natural opacity overlay
@@ -792,8 +875,15 @@ def write_svg(
                     if font_size_pt < 8.0:
                         font_size_pt = 24.0 * dpi_scale
 
+                    display_text = line_str
+                    if te.list_type == "bullet" and display_text:
+                        display_text = f"• {display_text}"
+                    elif te.list_type == "numbered" and display_text:
+                        display_text = f"{numbered_counter}. {display_text}"
+
+                    font_stack = _format_font_family_stack(te.font_family, display_text)
                     style_attrs: list[str] = [
-                        f'font-family="{html.escape(te.font_family)}"',
+                        f'font-family="{html.escape(font_stack)}"',
                         f'font-size="{font_size_pt:.2f}"',
                         f'fill="{te.color_hex}"',
                         'dominant-baseline="central"',
@@ -836,12 +926,6 @@ def write_svg(
                     else:
                         line_style_attrs.append('text-anchor="start"')
 
-                    display_text = line_str
-                    if te.list_type == "bullet" and display_text:
-                        display_text = f"• {display_text}"
-                    elif te.list_type == "numbered" and display_text:
-                        display_text = f"{numbered_counter}. {display_text}"
-
                     escaped_text = html.escape(display_text)
                     style_str = " ".join(line_style_attrs)
 
@@ -857,12 +941,131 @@ def write_svg(
             for frag in page.text_fragments:
                 if frag.text and len(frag.text) < 200 and frag.format != "uuid" and not (len(frag.text) == 36 and frag.text.count("-") == 4):
                     escaped_text = html.escape(frag.text)
+                    fallback_font_stack = _format_font_family_stack("sans-serif", frag.text)
                     elements.append(
-                        f'<text x="50" y="50" font-family="sans-serif" font-size="14" fill="#333333"><!-- Fragment: {escaped_text} --></text>'
+                        f'<text x="50" y="50" font-family="{html.escape(fallback_font_stack)}" font-size="14" fill="#333333"><!-- Fragment: {escaped_text} --></text>'
                     )
 
         elements.append('</svg>\n')
         target.write_text('\n'.join(elements), encoding="utf-8")
         written.append(target)
 
+    if export_pdf:
+        if isinstance(export_pdf, (str, Path)) and str(export_pdf) != "True":
+            pdf_path = Path(export_pdf)
+            if pdf_path.is_dir():
+                doc_name = document.path.stem if getattr(document, "path", None) else "document"
+                pdf_path = pdf_path / f"{doc_name}.pdf"
+        else:
+            doc_name = document.path.stem if getattr(document, "path", None) else "document"
+            pdf_path = output / f"{doc_name}.pdf"
+
+        svgs_to_pdf(written, pdf_path)
+        written.append(pdf_path)
+
     return written
+
+
+def _ensure_cairo_loaded() -> None:
+    import os
+    import sys
+    import ctypes.util
+
+    if sys.platform == "darwin":
+        orig_find = ctypes.util.find_library
+        def _find_library(name: str) -> str | None:
+            res = orig_find(name)
+            if not res:
+                for p in ["/opt/homebrew/lib", "/usr/local/lib", "/opt/local/lib"]:
+                    for ext in [".dylib", ".2.dylib", "-2.dylib", ".0.dylib", ".so"]:
+                        candidate = os.path.join(p, f"lib{name}{ext}")
+                        if os.path.exists(candidate):
+                            return candidate
+            return res
+        ctypes.util.find_library = _find_library
+
+
+def svg_to_pdf_bytes(svg_data: str | bytes) -> bytes:
+    """Convert SVG XML string or bytes to PDF bytes using CairoSVG (with PyMuPDF fallback)."""
+    if isinstance(svg_data, str):
+        svg_bytes = svg_data.encode("utf-8")
+    else:
+        svg_bytes = svg_data
+
+    try:
+        _ensure_cairo_loaded()
+        import cairosvg
+        return cairosvg.svg2pdf(bytestring=svg_bytes)
+    except Exception:
+        import fitz
+        svg_doc = fitz.open(stream=svg_bytes, filetype="svg")
+        pdf_bytes = svg_doc.convert_to_pdf()
+        svg_doc.close()
+        return pdf_bytes
+
+
+def svgs_to_pdf(
+    svg_sources: Sequence[str | Path | bytes],
+    output: str | Path,
+) -> Path:
+    """Compile multiple SVG files or SVG XML strings/bytes in sequence into a single multi-page PDF using CairoSVG."""
+    import fitz
+
+    output_path = Path(output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    pdf_doc = fitz.open()
+
+    for item in svg_sources:
+        if isinstance(item, Path):
+            svg_bytes = item.read_bytes()
+        elif isinstance(item, str):
+            if item.strip().startswith("<svg") or item.strip().startswith("<?xml"):
+                svg_bytes = item.encode("utf-8")
+            elif Path(item).is_file():
+                svg_bytes = Path(item).read_bytes()
+            else:
+                svg_bytes = item.encode("utf-8")
+        elif isinstance(item, bytes):
+            svg_bytes = item
+        else:
+            raise ValueError(f"Unsupported SVG source type: {type(item)}")
+
+        page_pdf_bytes = svg_to_pdf_bytes(svg_bytes)
+        page_doc = fitz.open("pdf", page_pdf_bytes)
+        pdf_doc.insert_pdf(page_doc)
+        page_doc.close()
+
+    pdf_doc.save(str(output_path))
+    pdf_doc.close()
+    return output_path
+
+
+def write_pdf(
+    document: GoodNotesDocument,
+    output: str | Path,
+    fill_shapes: bool = True,
+    sticky_note_state: str | None = None,
+    textbox_state: bool = False,
+    parse_all: bool = False,
+) -> Path:
+    """Export all document pages to vector SVGs in order and compile into a single multi-page PDF via CairoSVG."""
+    import tempfile
+
+    output_path = Path(output)
+    if output_path.is_dir() or str(output).endswith(("/", "\\")):
+        doc_stem = document.path.stem if getattr(document, "path", None) else "document"
+        output_path = output_path / f"{doc_stem}.pdf"
+    elif output_path.suffix.lower() != ".pdf":
+        output_path = output_path.with_suffix(".pdf")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        svg_paths = write_svg(
+            document,
+            tmp_dir,
+            fill_shapes=fill_shapes,
+            sticky_note_state=sticky_note_state,
+            textbox_state=textbox_state,
+            parse_all=parse_all,
+            export_pdf=False,
+        )
+        return svgs_to_pdf(svg_paths, output_path)

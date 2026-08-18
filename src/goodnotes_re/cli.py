@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Sequence
 
 from .archive import GoodNotesDocument
-from .export import write_json, write_svg
+from .export import write_json, write_pdf, write_svg
 
 
 def _parser(command: str) -> argparse.ArgumentParser:
@@ -50,12 +50,17 @@ def export_svg_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("document", type=Path)
     parser.add_argument("-o", "--output", type=Path, required=True)
     parser.add_argument("-s", "--sticky-note-state", choices=["open", "close", "auto"], default=None, help="Force sticky notes state: open (expand all) or close (collapse all)")
-    # parser.add_argument("-b", "--textbox", choices=["open", "close"], default="close", help="Toggle text box bounding borders: open (show borders) or close (hide borders)")
-    # parser.add_argument("-a", "--parse-all", choices=["true", "false"], default="false", help="Parse all page or only active page: true (parse all) or false (only active page)")
-    parser.add_argument("-b", "--textbox", action="store_true", help="Show text box bounding borders")
+    parser.add_argument("-b", "--textbox", nargs="?", const=True, default=False, help="Show text box bounding borders (flag or -b open / -b close)")
     parser.add_argument("-a", "--parse-all", action="store_true", help="Parse all pages instead of only active page")
     parser.add_argument("--no-fill", dest="fill_shapes", action="store_false", help="Do not fill vector shapes")
     parser.set_defaults(fill_shapes=True)
+    parser.add_argument(
+        "--pdf",
+        nargs="?",
+        const=True,
+        default=False,
+        help="Package exported SVG pages in sequence into a single PDF (optionally specify custom PDF filename)",
+    )
     args = parser.parse_args(argv)
     with GoodNotesDocument.open(args.document) as document:
         paths = write_svg(
@@ -65,8 +70,32 @@ def export_svg_main(argv: Sequence[str] | None = None) -> int:
             sticky_note_state=args.sticky_note_state,
             textbox_state=args.textbox,
             parse_all=args.parse_all,
+            export_pdf=args.pdf,
         )
     print("\n".join(str(path) for path in paths))
+    return 0
+
+
+def export_pdf_main(argv: Sequence[str] | None = None) -> int:
+    parser = _parser("gn-export-pdf")
+    parser.add_argument("document", type=Path)
+    parser.add_argument("-o", "--output", type=Path, required=True)
+    parser.add_argument("-s", "--sticky-note-state", choices=["open", "close", "auto"], default=None, help="Force sticky notes state: open (expand all) or close (collapse all)")
+    parser.add_argument("-b", "--textbox", nargs="?", const=True, default=False, help="Show text box bounding borders (flag or -b open / -b close)")
+    parser.add_argument("-a", "--parse-all", action="store_true", help="Parse all pages instead of only active page")
+    parser.add_argument("--no-fill", dest="fill_shapes", action="store_false", help="Do not fill vector shapes")
+    parser.set_defaults(fill_shapes=True)
+    args = parser.parse_args(argv)
+    with GoodNotesDocument.open(args.document) as document:
+        pdf_path = write_pdf(
+            document,
+            args.output,
+            fill_shapes=args.fill_shapes,
+            sticky_note_state=args.sticky_note_state,
+            textbox_state=args.textbox,
+            parse_all=args.parse_all,
+        )
+    print(str(pdf_path))
     return 0
 
 
@@ -92,7 +121,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     import sys
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:
-        print("Usage: python -m goodnotes_re.cli [gn-inspect|gn-dump|gn-diff|gn-export-json|gn-export-svg] ...")
+        print("Usage: python -m goodnotes_re.cli [gn-inspect|gn-dump|gn-diff|gn-export-json|gn-export-svg|gn-export-pdf] ...")
         return 1
     cmd = args[0].replace("gn-", "")
     rest = args[1:]
@@ -106,6 +135,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return export_json_main(rest)
     elif cmd == "export-svg":
         return export_svg_main(rest)
+    elif cmd == "export-pdf":
+        return export_pdf_main(rest)
     else:
         # Fallback to inspect_main with all args
         return inspect_main(args)

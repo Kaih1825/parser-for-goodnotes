@@ -97,11 +97,34 @@ class PageTests(unittest.TestCase):
             page = document.pages()[0]
             self.assertEqual(len(page.sticky_notes), 2)
             open_notes = [sn for sn in page.sticky_notes if sn.is_open]
+            self.assertEqual(len(open_notes), 2)
+            self.assertEqual(open_notes[0].author, "KAI")
+            self.assertEqual(open_notes[0].color_hex, "#FAE778")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with GoodNotesDocument.open(sample) as document:
+                written = write_svg(document, tmpdir)
+            svg_text = written[0].read_text(encoding="utf-8")
+            self.assertIn("Sticky Note (Expanded)", svg_text)
+            self.assertIn(">KAI<", svg_text)
+
+    def test_newgn6_sticky_notes(self) -> None:
+        sample = resolve_sample("NewGN6.goodnotes")
+        if not sample.exists():
+            self.skipTest("NewGN6.goodnotes not present")
+        with GoodNotesDocument.open(sample) as document:
+            page = document.pages()[0]
+            self.assertEqual(len(page.sticky_notes), 2)
+            open_notes = [sn for sn in page.sticky_notes if sn.is_open]
             folded_notes = [sn for sn in page.sticky_notes if not sn.is_open]
             self.assertEqual(len(open_notes), 1)
             self.assertEqual(len(folded_notes), 1)
+            # Green note is open/expanded
+            self.assertEqual(open_notes[0].color_hex, "#ACF595")
             self.assertEqual(open_notes[0].author, "KAI")
-            self.assertEqual(open_notes[0].color_hex, "#FAE778")
+            # Pink note is folded/collapsed
+            self.assertEqual(folded_notes[0].color_hex, "#FDCCE9")
+            self.assertEqual(folded_notes[0].author, "KAI")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with GoodNotesDocument.open(sample) as document:

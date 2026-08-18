@@ -1,8 +1,7 @@
-[中文](#中文)
-
 <a id="english"></a>
 
 # 09 - Current Format Analysis Findings
+[中文](#中文)
 
 This chapter documents the observations of the GoodNotes format currently implemented via the project's source code and tested against the corpus. This is not an official GoodNotes format specification; fields not verified across multiple corpora should only be considered as the current binary format analysis hypothesis.
 
@@ -197,11 +196,10 @@ This is much more reliable than directly searching for floats, UUIDs, or fixed b
 
 ---
 
-[English](#english)
-
 <a id="中文"></a>
 
 # 09 - 目前格式分析發現 (Current Format Analysis Findings)
+[English](#english)
 
 本章記錄目前已由專案原始碼 (source code) 與測試語料庫 (corpus) 實際落地的 GoodNotes 格式觀察。這不是 GoodNotes 官方格式規格；未經多份語料庫驗證的欄位只應視為目前的二進位格式分析假說 (binary format analysis hypothesis)。
 

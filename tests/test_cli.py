@@ -4,7 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from goodnotes_re.cli import diff_main, export_json_main, export_svg_main, inspect_main
+from goodnotes_re.cli import diff_main, export_json_main, export_pdf_main, export_svg_main, inspect_main
+from goodnotes_re import GoodNotesDocument, svgs_to_pdf, write_pdf
 
 
 def resolve_sample(name: str) -> Path:
@@ -41,6 +42,46 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(code, 0)
                 svg_files = list(Path(tmp_dir).glob("*.svg"))
                 self.assertGreater(len(svg_files), 0)
+
+    def test_export_svg_with_pdf_flag_cli(self) -> None:
+        if self.dataset_file.exists():
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                code = export_svg_main([str(self.dataset_file), "-o", tmp_dir, "--pdf"])
+                self.assertEqual(code, 0)
+                svg_files = list(Path(tmp_dir).glob("*.svg"))
+                pdf_files = list(Path(tmp_dir).glob("*.pdf"))
+                self.assertGreater(len(svg_files), 0)
+                self.assertEqual(len(pdf_files), 1)
+                self.assertTrue(pdf_files[0].name.endswith(".pdf"))
+                self.assertGreater(pdf_files[0].stat().st_size, 0)
+
+    def test_export_svg_with_custom_pdf_cli(self) -> None:
+        if self.dataset_file.exists():
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                custom_pdf = Path(tmp_dir) / "custom_packaged.pdf"
+                code = export_svg_main([str(self.dataset_file), "-o", tmp_dir, "--pdf", str(custom_pdf)])
+                self.assertEqual(code, 0)
+                self.assertTrue(custom_pdf.exists())
+                self.assertGreater(custom_pdf.stat().st_size, 0)
+
+    def test_export_pdf_cli(self) -> None:
+        if self.dataset_file.exists():
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                pdf_out = Path(tmp_dir) / "output.pdf"
+                code = export_pdf_main([str(self.dataset_file), "-o", str(pdf_out)])
+                self.assertEqual(code, 0)
+                self.assertTrue(pdf_out.exists())
+                self.assertGreater(pdf_out.stat().st_size, 0)
+
+    def test_write_pdf_and_svgs_to_pdf_api(self) -> None:
+        if self.dataset_file.exists():
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                pdf_out = Path(tmp_dir) / "direct.pdf"
+                with GoodNotesDocument.open(self.dataset_file) as doc:
+                    result_path = write_pdf(doc, pdf_out)
+                    self.assertEqual(result_path, pdf_out)
+                    self.assertTrue(pdf_out.exists())
+                    self.assertGreater(pdf_out.stat().st_size, 0)
 
     def test_export_svg_no_fill_cli(self) -> None:
         if self.dataset_file.exists():

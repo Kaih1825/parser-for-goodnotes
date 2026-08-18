@@ -27,6 +27,7 @@ const el = {
   statCurPage: document.getElementById("stat-cur-page"),
   statStrokes: document.getElementById("stat-strokes"),
   statDimensions: document.getElementById("stat-dimensions"),
+  btnDownloadPdf: document.getElementById("btn-download-pdf"),
   btnDownloadSvg: document.getElementById("btn-download-svg"),
   btnDownloadJson: document.getElementById("btn-download-json"),
   btnPrevPage: document.getElementById("btn-prev-page"),
@@ -39,9 +40,78 @@ const el = {
   emptyState: document.getElementById("empty-state"),
   loadingOverlay: document.getElementById("loading-spinner"),
   loadingMsg: document.getElementById("loading-msg"),
+  progressTitle: document.getElementById("progress-title"),
+  progressPercent: document.getElementById("progress-percent"),
+  progressBarFill: document.getElementById("progress-bar-fill"),
+  step1: document.getElementById("step-1"),
+  step2: document.getElementById("step-2"),
+  step3: document.getElementById("step-3"),
+  toastContainer: document.getElementById("toast-container"),
   svgStage: document.getElementById("svg-stage"),
   sampleButtons: document.querySelectorAll(".btn-sample"),
 };
+
+/**
+ * Yield control back to browser event loop to allow UI rendering and smooth 60fps animations
+ */
+function yieldThread(ms = 16) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Show Toast Notification
+ */
+function showToast(message, type = "success", duration = 3500) {
+  if (!el.toastContainer) return;
+
+  const toast = document.createElement("div");
+  toast.className = `toast-item ${type}`;
+
+  const icon = type === "success" ? "✓" : type === "error" ? "✗" : "ℹ";
+  toast.innerHTML = `<span style="font-weight: 700;">${icon}</span><span>${message}</span>`;
+
+  el.toastContainer.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add("fade-out");
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
+/**
+ * Update Progress Modal with animated progress bar and steps
+ */
+function updateProgress({ title = "Processing Document", detail = "", percent = 0, activeStep = 1, stepLabels = null }) {
+  if (el.progressTitle && title) el.progressTitle.textContent = title;
+  if (el.loadingMsg && detail) el.loadingMsg.textContent = detail;
+  if (el.progressPercent) el.progressPercent.textContent = `${Math.min(100, Math.max(0, Math.round(percent)))}%`;
+  if (el.progressBarFill) el.progressBarFill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+
+  if (stepLabels && stepLabels.length === 3) {
+    if (el.step1) el.step1.textContent = stepLabels[0];
+    if (el.step2) el.step2.textContent = stepLabels[1];
+    if (el.step3) el.step3.textContent = stepLabels[2];
+  }
+
+  [el.step1, el.step2, el.step3].forEach((stepEl, idx) => {
+    if (!stepEl) return;
+    const stepNum = idx + 1;
+    stepEl.className = "step-badge";
+    if (stepNum < activeStep) {
+      stepEl.classList.add("completed");
+    } else if (stepNum === activeStep) {
+      stepEl.classList.add("active");
+    }
+  });
+
+  el.loadingOverlay.classList.remove("hidden");
+}
+
+function hideProgress() {
+  if (el.loadingOverlay) {
+    el.loadingOverlay.classList.add("hidden");
+  }
+}
 
 /**
  * Initialize Pyodide Runtime & Python Parser Package
@@ -189,14 +259,31 @@ function hideLoading() {
  */
 async function processGoodNotesBuffer(arrayBuffer, filename) {
   if (!state.isReady) {
-    alert("WebAssembly engine is still initializing. Please wait a moment.");
+    showToast("WebAssembly engine is still initializing. Please wait...", "info");
     return;
   }
 
-  showLoading(`Parsing ${filename}...`);
+  const mbSize = (arrayBuffer.byteLength / 1024 / 1024).toFixed(2);
+  updateProgress({
+    title: "Opening GoodNotes Document",
+    detail: `Reading "${filename}" (${mbSize} MB)...`,
+    percent: 15,
+    activeStep: 1,
+    stepLabels: ["1. Read Archive", "2. Decode Protobuf", "3. Render View"],
+  });
+  await yieldThread(40);
+
   try {
     state.currentDocBytes = new Uint8Array(arrayBuffer);
     state.currentDocName = filename;
+
+    updateProgress({
+      title: "Decoding Protobuf Wire Streams",
+      detail: "Extracting Apple LZ4 streams and stroke ribbons...",
+      percent: 45,
+      activeStep: 2,
+    });
+    await yieldThread(40);
 
     // Send bytes to Python runtime
     const loadFn = state.pyodide.globals.get("load_document_bytes");
@@ -207,26 +294,55 @@ async function processGoodNotesBuffer(arrayBuffer, filename) {
     state.pageCount = docInfo.get("page_count") || 1;
     state.currentPageIndex = 0;
 
+    updateProgress({
+      title: "Rendering Vector Canvas",
+      detail: `Parsed ${state.pageCount} page(s). Rendering first page...`,
+      percent: 80,
+      activeStep: 3,
+    });
+    await yieldThread(30);
+
     // Render first page
-    await renderCurrentPage();
+    await renderCurrentPage(false);
 
     // Show stats card & hide empty state
     el.emptyState.classList.add("hidden");
     el.svgStage.classList.remove("hidden");
     el.docStatsCard.classList.remove("hidden");
+
+    updateProgress({
+      title: "Ready",
+      detail: `Loaded ${state.pageCount} page(s) successfully!`,
+      percent: 100,
+      activeStep: 3,
+    });
+    await yieldThread(180);
+
+    showToast(`✓ Loaded "${filename}" (${state.pageCount} pages)`, "success");
   } catch (err) {
     console.error("[Parser] Document parsing failed:", err);
+    showToast("Parsing failed: " + err.message, "error", 5000);
     alert("Error parsing .goodnotes document:\n" + err.message);
   } finally {
-    hideLoading();
+    hideProgress();
   }
 }
 
 /**
  * Render the current page SVG
  */
-async function renderCurrentPage() {
-  showLoading(`Rendering page ${state.currentPageIndex + 1}...`);
+async function renderCurrentPage(showModal = true) {
+  if (showModal) {
+    updateProgress({
+      title: `Rendering Page ${state.currentPageIndex + 1}`,
+      detail: "Building vector strokes and PDF template background...",
+      percent: 50,
+      activeStep: 3,
+      stepLabels: ["1. Read Archive", "2. Decode Protobuf", "3. Render View"],
+    });
+    await yieldThread(20);
+  }
+
   try {
     const getSvgFn = state.pyodide.globals.get("get_page_svg");
     const getStatsFn = state.pyodide.globals.get("get_page_stats");
@@ -263,8 +379,9 @@ async function renderCurrentPage() {
     applyZoom();
   } catch (err) {
     console.error("[Parser] Page render failed:", err);
+    showToast("Render error: " + err.message, "error");
   } finally {
-    hideLoading();
+    if (showModal) hideProgress();
   }
 }
 
@@ -326,7 +443,6 @@ async function resolvePdfPlaceholders(containerElement) {
       imgElem.setAttribute("preserveAspectRatio", "none");
 
       node.parentNode.replaceChild(imgElem, node);
-      console.log(`[PDF.js] Rendered PDF page ${pdfPageNum} background (${width}x${height})`);
     } catch (err) {
       console.warn("[PDF.js] Failed to render PDF placeholder:", err);
     }
@@ -342,24 +458,36 @@ function applyZoom() {
 }
 
 /**
- * Fetch and process sample archive
+ * Fetch and process sample archive with full progress feedback
  */
 async function loadSample(samplePath, buttonElement) {
-  el.sampleButtons.forEach(b => b.classList.remove("active"));
-  if (buttonElement) buttonElement.classList.add("active");
+  el.sampleButtons.forEach(b => b.classList.remove("active", "is-loading"));
+  if (buttonElement) {
+    buttonElement.classList.add("active", "is-loading");
+  }
 
-  showLoading(`Fetching sample ${samplePath}...`);
+  updateProgress({
+    title: "Fetching Sample Archive",
+    detail: `Downloading ${samplePath}...`,
+    percent: 10,
+    activeStep: 1,
+    stepLabels: ["1. Download", "2. Decode Protobuf", "3. Render View"],
+  });
+  await yieldThread(30);
+
   try {
-    const resp = await fetch(samplePath);
+    const resp = await fetch(samplePath, { cache: "no-store" });
     if (!resp.ok) throw new Error(`HTTP error ${resp.status}`);
     const buffer = await resp.arrayBuffer();
     const filename = samplePath.split("/").pop();
     await processGoodNotesBuffer(buffer, filename);
   } catch (err) {
     console.error("[Parser] Failed to load sample:", err);
+    showToast(`Could not load sample: ${err.message}`, "error");
     alert(`Could not load sample from ${samplePath}.\nPlease verify the file exists.`);
   } finally {
-    hideLoading();
+    if (buttonElement) buttonElement.classList.remove("is-loading");
+    hideProgress();
   }
 }
 
@@ -373,6 +501,12 @@ function setupEventListeners() {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
+      updateProgress({
+        title: "Reading File",
+        detail: `Loading ${file.name}...`,
+        percent: 10,
+        activeStep: 1,
+      });
       reader.onload = () => processGoodNotesBuffer(reader.result, file.name);
       reader.readAsArrayBuffer(file);
     }
@@ -398,6 +532,12 @@ function setupEventListeners() {
     const file = e.dataTransfer?.files?.[0];
     if (file) {
       const reader = new FileReader();
+      updateProgress({
+        title: "Reading Dropped File",
+        detail: `Reading ${file.name}...`,
+        percent: 10,
+        activeStep: 1,
+      });
       reader.onload = () => processGoodNotesBuffer(reader.result, file.name);
       reader.readAsArrayBuffer(file);
     }
@@ -442,6 +582,11 @@ function setupEventListeners() {
     applyZoom();
   });
 
+  // Download Multi-page PDF
+  if (el.btnDownloadPdf) {
+    el.btnDownloadPdf.addEventListener("click", exportDocumentToPdf);
+  }
+
   // Download SVG
   el.btnDownloadSvg.addEventListener("click", () => {
     if (!state.currentSvgString) return;
@@ -449,10 +594,12 @@ function setupEventListeners() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     const docBase = state.currentDocName.replace(/\.goodnotes$/i, "") || "document";
+    const filename = `${docBase}_page_${state.currentPageIndex + 1}.svg`;
     a.href = url;
-    a.download = `${docBase}_page_${state.currentPageIndex + 1}.svg`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+    showToast(`✓ Downloaded ${filename}`, "success");
   });
 
   // Download JSON
@@ -465,14 +612,144 @@ function setupEventListeners() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       const docBase = state.currentDocName.replace(/\.goodnotes$/i, "") || "document";
+      const filename = `${docBase}_ast.json`;
       a.href = url;
-      a.download = `${docBase}_ast.json`;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
+      showToast(`✓ Exported ${filename}`, "success");
     } catch (err) {
-      alert("JSON export failed: " + err.message);
+      showToast("JSON export failed: " + err.message, "error");
     }
   });
+}
+
+/**
+ * Convert SVG string into high-res Canvas element
+ */
+function svgToCanvas(svgString, width, height, scale = 2.0) {
+  return new Promise((resolve, reject) => {
+    const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas);
+    };
+    img.onerror = (err) => {
+      URL.revokeObjectURL(url);
+      reject(err);
+    };
+    img.src = url;
+  });
+}
+
+/**
+ * Export full GoodNotes document as a single multi-page PDF in browser with non-blocking async rendering
+ */
+async function exportDocumentToPdf() {
+  if (!state.isReady || !state.currentDocBytes || state.pageCount <= 0) {
+    showToast("No document is currently loaded.", "info");
+    return;
+  }
+
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    showToast("jsPDF library is not available.", "error");
+    return;
+  }
+
+  if (el.btnDownloadPdf) el.btnDownloadPdf.classList.add("is-loading");
+
+  const { jsPDF } = window.jspdf;
+  let pdfDoc = null;
+
+  try {
+    const getSvgFn = state.pyodide.globals.get("get_page_svg");
+    const getStatsFn = state.pyodide.globals.get("get_page_stats");
+
+    updateProgress({
+      title: "Exporting Multi-Page PDF",
+      detail: `Initializing PDF builder for ${state.pageCount} page(s)...`,
+      percent: 5,
+      activeStep: 1,
+      stepLabels: ["1. Prepare", "2. Render Pages", "3. Save PDF"],
+    });
+    await yieldThread(40);
+
+    for (let i = 0; i < state.pageCount; i++) {
+      const stepPct = Math.round(10 + ((i + 1) / state.pageCount) * 80);
+
+      updateProgress({
+        title: "Exporting Multi-Page PDF",
+        detail: `Rendering page ${i + 1} of ${state.pageCount} (${stepPct}%)...`,
+        percent: stepPct,
+        activeStep: 2,
+      });
+      // Yield main thread to allow browser UI paint & 60fps animation
+      await yieldThread(30);
+
+      const svgRaw = getSvgFn(i);
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = svgRaw;
+
+      // Resolve background & sticker PDF placeholders
+      await resolvePdfPlaceholders(tempDiv);
+
+      const statsProxy = getStatsFn(i);
+      const stats = statsProxy.toJs();
+      statsProxy.destroy();
+
+      const pw = stats.get("width") || 612;
+      const ph = stats.get("height") || 792;
+      const orientation = pw > ph ? "landscape" : "portrait";
+
+      const canvas = await svgToCanvas(tempDiv.innerHTML, pw, ph, 2.0);
+      const imgData = canvas.toDataURL("image/jpeg", 0.95);
+
+      if (i === 0) {
+        pdfDoc = new jsPDF({
+          orientation: orientation,
+          unit: "pt",
+          format: [pw, ph],
+          compress: true,
+        });
+        pdfDoc.addImage(imgData, "JPEG", 0, 0, pw, ph, undefined, "FAST");
+      } else {
+        pdfDoc.addPage([pw, ph], orientation);
+        pdfDoc.addImage(imgData, "JPEG", 0, 0, pw, ph, undefined, "FAST");
+      }
+
+      await yieldThread(20);
+    }
+
+    const docBase = state.currentDocName.replace(/\.goodnotes$/i, "") || "document";
+    const filename = `${docBase}.pdf`;
+
+    updateProgress({
+      title: "Exporting Multi-Page PDF",
+      detail: `Compressing and saving "${filename}"...`,
+      percent: 98,
+      activeStep: 3,
+    });
+    await yieldThread(50);
+
+    pdfDoc.save(filename);
+    showToast(`✓ Successfully exported "${filename}" (${state.pageCount} pages)`, "success", 4500);
+  } catch (err) {
+    console.error("[PDF Export] Export failed:", err);
+    showToast("Failed to export PDF: " + err.message, "error", 5000);
+  } finally {
+    if (el.btnDownloadPdf) el.btnDownloadPdf.classList.remove("is-loading");
+    hideProgress();
+  }
 }
 
 // Bootstrap Application

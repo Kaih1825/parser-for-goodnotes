@@ -1,8 +1,7 @@
-[中文](#中文)
-
 <a id="english"></a>
 
 # 06 - PDF Backgrounds and SVG Vector Export (PDF & SVG Integration)
+[中文](#中文)
 
 This chapter explains how to parse GoodNotes' embedded PDF template backgrounds, the spatial coordinate transformation matrix between 132 DPI and 72 DPI, integration with PyMuPDF (fitz), and the complete details of rendering all strokes, shapes, and text into layered vector SVG image files.
 
@@ -118,15 +117,45 @@ The `gn-export-svg` command-line tool provides various advanced rendering toggle
 
 ---
 
+## 5. Multi-Page Vector PDF Compilation (`CairoSVG` + `PyMuPDF`)
+
+GoodNotes notebooks can be compiled directly into multi-page PDF documents while preserving 100% of the SVG rendering logic:
+
+1. **Vector Rendering (`CairoSVG`)**:
+   - Each page is first rendered to SVG according to the document's vector geometries.
+   - `cairosvg.svg2pdf(bytestring=svg_bytes)` converts each SVG into lossless vector PDF bytes (`svg_to_pdf_bytes`).
+   - All SVG features—such as dashed stroke patterns (`stroke-dasharray`), sticky notes (folded/expanded states), rotated stickers, and arrowhead markers—are faithfully converted.
+2. **Multi-Page Merging (`PyMuPDF`)**:
+   - Each page's PDF stream is inserted in sequence into a unified PyMuPDF document (`fitz.open()`), producing a single multi-page `.pdf` file.
+3. **Graceful Fallback**:
+   - If CairoSVG or `libcairo` is unavailable on a minimal environment, the engine gracefully falls back to PyMuPDF's built-in vector converter without crashing.
+
+---
+
+## 6. Language-Aware CJK Font Fallback Stack
+
+GoodNotes on Apple devices defaults text box font families to Western fonts (such as `Helvetica Neue`, `Courier New`, or `Avenir`). When exporting to SVG and CairoSVG PDF, Western fonts lack CJK glyphs.
+
+The engine implements a **Language-Aware Font Stack** (`_format_font_family_stack`):
+
+- **Script Detection**: Detects Chinese Hanzi (`0x4E00..0x9FFF`), Japanese Hiragana/Katakana (`0x3040..0x30FF`), or Korean Hangul (`0xAC00..0xD7AF`).
+- **Prioritization**:
+  - **Traditional / Simplified Chinese**: Puts `PingFang TC`, `PingFang SC`, `Heiti TC`, `Microsoft JhengHei`, `Microsoft YaHei` first.
+  - **Japanese**: Puts `Hiragino Sans`, `Hiragino Kaku Gothic ProN`, `Yu Gothic`, `Meiryo`, `Noto Sans JP` first.
+  - **Korean**: Puts `Apple SD Gothic Neo`, `Malgun Gothic`, `NanumGothic`, `Noto Sans KR` first.
+  - **Latin / ASCII**: Preserves the original font family (e.g., `Helvetica Neue`) first.
+- Prevents missing glyph tofu boxes (□) across all major platforms.
+
+---
+
 In the next chapter, **[07 - CLI Tools and Python API Guide](07-cli-and-api-guide.md)**, we will demonstrate the usage of each command-line instruction and provide calling examples for the Python library in detail.
 
 ---
 
-[English](#english)
-
 <a id="中文"></a>
 
 # 06 - PDF 底圖與 SVG 向量匯出 (PDF & SVG Integration)
+[English](#english)
 
 本章節說明如何解析 GoodNotes 內嵌的 PDF 範本底圖、132 DPI 與 72 DPI 空間座標轉換矩陣、PyMuPDF (fitz) 整合，以及將所有筆跡、圖形與文字繪製為分層向量 SVG 圖檔的完整細節。
 
@@ -156,23 +185,23 @@ class PageDimensions:
         return cls()
 ```
 
-### 常見紙張尺寸對照 (72 DPI Points)
+### 常見紙張尺寸參考表 (72 DPI Points)
 
-- **A4 直向 (Portrait)**: 595.28 x 841.89 pt
-- **A4 橫向 (Landscape)**: 841.89 x 595.28 pt
-- **Letter 直向 (Portrait)**: 612.00 x 792.00 pt
-- **Standard GoodNotes Template**: 595.00 x 842.00 pt
+- **A4 直向**: 595.28 x 841.89 pt
+- **A4 橫向**: 841.89 x 595.28 pt
+- **Letter 直向**: 612.00 x 792.00 pt
+- **GoodNotes 預設範本**: 595.00 x 842.00 pt
 
 ---
 
-## 2. 空間座標轉換矩陣 (132 DPI to 72 DPI Scale Factor)
+## 2. 空間座標轉換矩陣 (132 DPI 轉 72 DPI Scale Factor)
 
-在格式分析過程中，最為關鍵的一項發現是 **GoodNotes 的內部幾何座標空間 (Coordinate Space)**：
+在格式逆向過程中，最核心的發現之一是 **GoodNotes 內部幾何座標空間**：
 
-- **GoodNotes 內部座標系統**：基於 **132 DPI** 像素網格。
+- **GoodNotes 內部座標系統**：基於 **132 DPI** 的像素網格。
 - **標準 PDF / SVG 畫布座標系統**：基於 **72 DPI** Points（1 Point = 1/72 Inch）。
 
-因此，要將 GoodNotes 的筆跡座標 $(x_{\text{gn}}, y_{\text{gn}})$ 完美的對疊在背景 PDF 上，必須套用縮放比例因子 $S$：
+因此，要將 GoodNotes 筆跡座標 $(x_{\text{gn}}, y_{\text{gn}})$ 完美貼合到底圖 PDF 上，必須套用縮放比例因子 $S$：
 
 $$S = \frac{72.0}{132.0} \approx 0.54545454...$$
 
@@ -239,6 +268,37 @@ def render_pdf_page_to_svg(pdf_bytes: bytes, page_index: int, width: float, heig
   - `open`：繪製天藍色 (`#38BDF8`) 的文字框外框選取邊界（還原 GoodNotes IDE 選取狀態）。
 - **`fill_shapes` (`--no-fill`)**：
   - 關閉向量圖形的半透明填色 (`fill="none"`)，僅繪製外框。
+
+---
+
+## 5. 多頁向量 PDF 輸出整合 (`CairoSVG` + `PyMuPDF`)
+
+GoodNotes 文件可直接編譯打包為高品質多頁 PDF：
+
+1. **向量轉譯 (`CairoSVG`)**：
+   - 每頁先透過完整的 GoodNotes 幾何渲染引擎生成 SVG。
+   - 使用 `cairosvg.svg2pdf(bytestring=svg_bytes)` 直接將 SVG 轉為 PDF 二進位位元組（`pdf_bytes`）。
+   - **完全保留所有向量細節**：包括虛線（`stroke-dasharray`）、便條紙折角與文字、箭頭 marker、貼紙旋轉遮罩等。
+2. **多頁合併 (`PyMuPDF`)**：
+   - 將各頁產生的 PDF 頁面依序插入 PyMuPDF 文件中合併輸出為單一 `.pdf` 檔案。
+3. **容錯回退機制**：
+   - 若極端環境未安裝 `libcairo`，程式會自動平滑降級為 PyMuPDF 內建引擎完成轉換，確保跨平台相容性。
+
+---
+
+## 6. 多語系 CJK 智慧字型回退機制 (Language-Aware Font Stack)
+
+GoodNotes 在 iOS 上通常預設使用西文字體（如 `Helvetica Neue`），當使用者輸入中日韓文字時，若未妥善處理字型鏈，Cairo 轉 PDF 會因西文字型缺乏 CJK 字形而出現方塊缺字（豆腐塊 □）。
+
+本庫實作了**語系感知字型調度**（`_format_font_family_stack`）：
+
+- **字元語系自動偵測**：即時識別中文漢字 (`0x4E00..0x9FFF`)、日文平假名/片假名 (`0x3040..0x30FF`) 或韓文諺文 (`0xAC00..0xD7AF`)。
+- **優先級自動調度**：
+  - **繁體/簡體中文**：優先置入 `PingFang TC`, `PingFang SC`, `Heiti TC`, `微軟正黑體`, `微軟雅黑`。
+  - **日文**：優先置入 `Hiragino Sans`, `Hiragino Kaku Gothic ProN`, `Yu Gothic`, `Meiryo`, `Noto Sans JP`。
+  - **韓文**：優先置入 `Apple SD Gothic Neo`, `Malgun Gothic`, `NanumGothic`, `Noto Sans KR`。
+  - **純英文數字**：優先保留原始指定字型（如 `Helvetica Neue`）。
+- 確保在任何系統環境下均能輸出工整清晰的向量文字。
 
 ---
 

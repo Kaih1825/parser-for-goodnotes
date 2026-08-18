@@ -1,8 +1,7 @@
-[中文](#中文)
-
 <a id="english"></a>
 
 # 04 - Stroke Geometry & Rendering
+[中文](#中文)
 
 This chapter details how to mathematically reconstruct control points and pressure data into smooth, variable-width vector SVG Path Ribbons, as well as how to handle strokes partially cut by the eraser (`v9` Native Mesh).
 
@@ -136,11 +135,10 @@ In the next chapter **[05 - Shapes, Text, and Elements](05-shapes-text-and-eleme
 
 ---
 
-[English](#english)
-
 <a id="中文"></a>
 
 # 04 - 筆跡幾何與向量 Ribbon 重建 (Stroke Geometry & Rendering)
+[English](#english)
 
 本章節詳細說明如何將提取出的控制點與壓感資料，數學化重建為平滑、具備自然寬度變化的向量 SVG Path Ribbon（帶狀路徑），以及處理被橡皮擦局部擦除切開的筆跡（`v9` Native Mesh）。
 

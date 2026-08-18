@@ -1,8 +1,7 @@
-[中文](#中文)
-
 <a id="english"></a>
 
 # 08 - Testing, Building & Publishing
+[中文](#中文)
 
 This section introduces the standard procedures for the **Document Parser for GoodNotes** development environment setup, unit testing, Controlled Corpus Protocol for format analysis, wheel packaging, and publishing to PyPI.
 
@@ -192,11 +191,10 @@ Congratulations, you have completed reading the comprehensive Wiki for the **Doc
 
 ---
 
-[English](#english)
-
 <a id="中文"></a>
 
 # 08 - 開發、測試、打包與發佈 (Testing, Building & Publishing)
+[English](#english)
 
 本章節介紹 **Document Parser for GoodNotes** 的開發環境配置、單元測試、受控格式分析實驗協議 (Controlled Corpus Protocol)、wheel 套件打包以及發佈至 PyPI 的標準流程。
 

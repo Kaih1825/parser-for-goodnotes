@@ -1,6 +1,7 @@
-[中文](#中文)
+<a id="english"></a>
 
 # Contributing to Document Parser for GoodNotes
+[中文](#中文)
 
 Thank you for your interest in contributing! This project is built on careful, evidence-based binary format analysis. Please read this guide before submitting a pull request.
 
@@ -68,9 +69,10 @@ Use the GitHub Issue templates:
 
 ---
 
-[English](#english)
+<a id="中文"></a>
 
 # Document Parser for GoodNotes 貢獻指南
+[English](#english)
 
 感謝你有興趣參與貢獻！本專案建立在謹慎且以證據為基礎的二進位格式分析之上。提交 Pull Request 前請先閱讀本指南。
 

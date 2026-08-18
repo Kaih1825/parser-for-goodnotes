@@ -272,14 +272,8 @@ def parse_sticky_notes(records: Sequence[Message]) -> tuple[StickyNote, ...]:
             if f1 and isinstance(f1[0].value, bytes):
                 u_str = f1[0].value.decode("utf-8", errors="ignore")
                 if _looks_like_uuid(u_str):
-                    is_folded = False
-                    f7_state = rec.by_number(7)
-                    if f7_state and isinstance(f7_state[0].value, bytes):
-                        m7 = try_decode_message(f7_state[0].value)
-                        if m7 and m7.by_number(1) and isinstance(m7.by_number(1)[0].value, bytes):
-                            m7_1 = try_decode_message(m7.by_number(1)[0].value)
-                            if m7_1 and m7_1.by_number(1):
-                                is_folded = True
+                    f40_list = rec.by_number(40)
+                    is_open_meta = any(not isinstance(f.value, bytes) and f.value != 0 for f in f40_list) if f40_list else None
 
                     w, h = 256.0, 256.0
                     f21_size = rec.by_number(21)
@@ -294,7 +288,10 @@ def parse_sticky_notes(records: Sequence[Message]) -> tuple[StickyNote, ...]:
                                     w = fw[0].fixed_float() or 256.0
                                     h = fh[0].fixed_float() or 256.0
 
-                    note_meta[u_str] = {"is_folded": is_folded, "w": w, "h": h}
+                    entry: dict[str, object] = {"w": w, "h": h}
+                    if is_open_meta is not None:
+                        entry["is_open"] = is_open_meta
+                    note_meta[u_str] = entry
 
     sticky_notes: dict[str, StickyNote] = {}
     for rec in records:
@@ -365,18 +362,17 @@ def parse_sticky_notes(records: Sequence[Message]) -> tuple[StickyNote, ...]:
 
                 note_text = _extract_sticky_note_text(msg)
 
-                is_folded = bool(meta.get("is_folded", False))
-                if not is_folded:
-                    for candidate_msg in (msg, rec):
-                        f7_state = candidate_msg.by_number(7)
-                        if f7_state and isinstance(f7_state[0].value, bytes):
-                            m7 = try_decode_message(f7_state[0].value)
-                            if m7 and m7.by_number(1) and isinstance(m7.by_number(1)[0].value, bytes):
-                                m7_1 = try_decode_message(m7.by_number(1)[0].value)
-                                if m7_1 and m7_1.by_number(1):
-                                    is_folded = True
-                                    break
-                is_open = not is_folded
+                # Field 40 in Type 35 message indicates open/expanded state (1 = open, absent/0 = closed/folded)
+                f40_msg = msg.by_number(40)
+                f40_rec = rec.by_number(40)
+                if f40_msg:
+                    is_open = any(not isinstance(x.value, bytes) and x.value != 0 for x in f40_msg)
+                elif f40_rec:
+                    is_open = any(not isinstance(x.value, bytes) and x.value != 0 for x in f40_rec)
+                elif "is_open" in meta:
+                    is_open = bool(meta["is_open"])
+                else:
+                    is_open = False
 
                 sticky_notes[u_str] = StickyNote(
                     uuid=u_str,

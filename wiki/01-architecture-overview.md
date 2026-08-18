@@ -1,8 +1,7 @@
-[中文](#中文)
-
 <a id="english"></a>
 
 # 01 - Architecture Overview
+[中文](#中文)
 
 This chapter introduces the overall system design, internal module breakdown, and data processing pipeline (Data Pipeline) of the **Document Parser for GoodNotes**, as well as the format evolution between GoodNotes 5 and GoodNotes 6.
 
@@ -115,11 +114,10 @@ In the next chapter, **[02 - Archive and Wire Format](02-archive-and-wire-format
 
 ---
 
-[English](#english)
-
 <a id="中文"></a>
 
 # 01 - 系統架構與資料流 (Architecture Overview)
+[English](#english)
 
 本章節介紹 **Document Parser for GoodNotes** 的整體系統設計、內部模組劃分、數據處理管道 (Data Pipeline)，以及 GoodNotes 5 與 GoodNotes 6 檔案格式的演進關聯。
 
