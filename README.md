@@ -17,6 +17,17 @@ An independent, open-source, fully typed Python toolkit for inspecting and parsi
 
 It **deliberately does NOT use heuristic float scanning**.
 
+## Table of Contents
+- [Rendering Comparison](#️-rendering-comparison)
+- [Motivation & Under the Hood](#motivation--under-the-hood)
+- [Features](#features)
+- [Installation & Setup](#installation--setup)
+- [CLI Usage](#cli-usage)
+- [Python Library API](#python-library-api)
+- [Documentation](#documentation)
+
+
+
 ## 🖼️ Rendering Comparison
 
 | Source Archive | GoodNotes Original (`.jpg`) | This Project SVG Export (`.svg`) |
@@ -24,6 +35,24 @@ It **deliberately does NOT use heuristic float scanning**.
 | **Example 1: Handwritten Formulas & Images**<br>([`ex1.goodnotes`](assets/ex1.goodnotes)) | <img src="assets/ex1.jpg" width="400" alt="GoodNotes Original 1"> | <img src="assets/ex1.svg" width="400" alt="Parser SVG 1"> |
 | **Example 2: Brush Styles & Stroke Variations**<br>([`ex2.goodnotes`](assets/ex2.goodnotes)) | <img src="assets/ex2.jpg" width="400" alt="GoodNotes Original 2"> | <img src="assets/ex2.svg" width="400" alt="Parser SVG 2"> |
 | **Example 3: Multi-Layer Images & Chinese Text**<br>([`ex3.goodnotes`](assets/ex3.goodnotes)) | <img src="assets/ex3.jpg" width="400" alt="GoodNotes Original 3"> | <img src="assets/ex3.svg" width="400" alt="Parser SVG 3"> |
+
+## Motivation & Under the Hood
+
+GoodNotes is an amazing note-taking app, but its closed ecosystem has always been a pain point. If you want to export your notebooks while keeping the vector strokes editable, you're pretty much out of luck—you either have to stick with the proprietary `.goodnotes` file format or export to a flattened PDF that loses editability. To solve this, I built an open-source parser that can decode `.goodnotes` files.
+
+I have zero background in reverse engineering, and decoding this format wasn't easy (I haven't seen many successful projects tackling this). So, I built this entirely through "vibe coding" using LLMs—primarily Gemini 3.1 Pro, Gemini 3.6 Flash, and Claude Sonnet 5.
+
+Here is how the parsing works under the hood:
+
+* **ZIP & Protobuf:** After some analysis, it turns out that `.goodnotes` is essentially a ZIP archive. The main stroke data is stored page by page in the `notes/` directory as serialized Protobuf files. Since I didn't have the official `.proto` schemas, the project blindly parses the Protobuf via the underlying Wire Format to construct an Abstract Syntax Tree (AST).
+* **Apple LZ4:** Next, we discovered that some data fields start with `bv41` or `bv4-` and end with `bv4$`. This is a signature for Apple's proprietary Framed LZ4 compression. We successfully decompressed this by maintaining a 64KB sliding history window and using bitwise operations to handle the LZ4 tokens.
+* **Troy Hanson's TPL:** The decompressed plaintext starts with the magic bytes `tpl\0`, revealing it as Troy Hanson's TPL format (a C serialization library). By inferring the format strings, we were able to extract the raw stroke data—which consists of discrete points containing pressure values.
+* **SVG Ribbons:** Finally, to render the strokes with natural variable widths, the parser calculates the normal vectors between adjacent points and applies a sliding average for smoothing. It then pushes the edges outward based on the pressure values, stitching the discrete points into a closed SVG polygon ribbon.
+
+Currently, the project can parse the binary files inside a `.goodnotes` archive to extract strokes, text, and other elements, exporting them directly to `.svg` or `.pdf`. Unlike standard exports from the GoodNotes app itself, this parser completely unlocks the raw data. The ultimate goal is to allow conversions to other open vector formats (like InkML) so users can migrate to other apps and prevent their hard work from being locked in by a single vendor.
+
+For more detailed parsing principles, please refer to the [GitHub Wiki](https://github.com/Kaih1825/document-parser-for-goodnotes/wiki).
+
 
 ## Features
 
@@ -141,7 +170,7 @@ with GoodNotesDocument.open("sample.goodnotes") as doc:
 | Document | Description |
 |---|---|
 | [`cli.md`](cli.md#english) | Full CLI reference |
-| [`wiki/`](wiki/) | Deep-dive technical documentation (architecture, formats, rendering) |
+| [GitHub Wiki](https://github.com/Kaih1825/document-parser-for-goodnotes/wiki) | Deep-dive technical documentation (architecture, formats, rendering) |
 | [`LEGAL-NOTICE.md`](LEGAL-NOTICE.md) | Legal, trademark, privacy, and redistribution notice |
 
 See also the [Contributing Guide](CONTRIBUTING.md).
@@ -175,6 +204,17 @@ See also the [Contributing Guide](CONTRIBUTING.md).
 
 本專案**刻意不使用啟發式浮點數掃描**。
 
+## 目錄
+- [渲染效果對比](#️-渲染效果對比)
+- [開發動機與解析原理](#開發動機與解析原理)
+- [功能](#功能)
+- [安裝與設定](#安裝與設定)
+- [CLI 使用方式](#cli-使用方式)
+- [Python 函式庫 API](#python-函式庫-api)
+- [文件](#文件)
+
+
+
 ## 🖼️ 渲染效果對比
 
 | 原始封存檔 | GoodNotes 原版渲染 (`.jpg`) | 本專案 SVG 匯出 (`.svg`) |
@@ -182,6 +222,24 @@ See also the [Contributing Guide](CONTRIBUTING.md).
 | **範例 1：手寫公式與插圖**<br>([`ex1.goodnotes`](assets/ex1.goodnotes)) | <img src="assets/ex1.jpg" width="400" alt="GoodNotes 原版渲染 1"> | <img src="assets/ex1.svg" width="400" alt="本專案 SVG 匯出 1"> |
 | **範例 2：多款筆刷與色彩筆跡**<br>([`ex2.goodnotes`](assets/ex2.goodnotes)) | <img src="assets/ex2.jpg" width="400" alt="GoodNotes 原版渲染 2"> | <img src="assets/ex2.svg" width="400" alt="本專案 SVG 匯出 2"> |
 | **範例 3：多層圖文疊加與中文手寫**<br>([`ex3.goodnotes`](assets/ex3.goodnotes)) | <img src="assets/ex3.jpg" width="400" alt="GoodNotes 原版渲染 3"> | <img src="assets/ex3.svg" width="400" alt="本專案 SVG 匯出 3"> |
+
+## 開發動機與解析原理
+
+GoodNotes 是一個很棒的筆記軟體，但由於其封閉性，除了匯出成封閉的 `.goodnotes` 專屬檔案，或是會失去編輯能力的 PDF 之外，幾乎沒有其他保留向量筆跡的選擇，因此我開發了一個解析工具來解析 `.goodnotes` 檔案。
+
+因為我對這類工程沒有經驗，且解析此 `.goodnotes` 不是那麼容易（目前沒有看到幾個有成功解析出來的專案），因此我使用 vibe coding (主要是 Gemini 3.1 Pro, Gemini 3.6 Flash 及 Claude Sonnet 5) 來完成這個專案。
+
+以下是解析原理：
+
+* **壓縮與 Protobuf 盲解：** 經過分析，得知 `.goodnotes` 本質上是一個壓縮檔，而主要的筆跡資訊以頁為單位存在 `notes/` 下，各頁面的筆跡資訊存為 Protobuf 序列化檔案。在這個專案中，使用了 Wire Format 的方式來解析，將其構建成抽象語法樹。
+* **Apple LZ4 逆向：** 接著，我們發現了部分欄位以 `bv41` 或 `bv4-` 開頭，並且以 `bv4$` 結尾，代表這是經過 Apple LZ4 壓縮的資料，我們利用維護 64KB 的歷史滑動視窗，靠位元運算處理 LZ4 的 token 來將其成功解壓。
+* **TPL 記憶體映像：** 解壓後的明文以 `tpl\0` 開頭，因此得知他是 Troy Hanson's TPL 格式，並透過格式字串推導出他的筆跡資訊（帶有壓感的離散點）。
+* **向量幾何重建：** 接著，透過計算相鄰兩點間的法向量並進行滑動平均平滑化，再結合壓感值向外推移，就能將離散點縫合成封閉的多邊形，最終輸出為帶有自然粗細變化的 SVG 向量筆跡。
+
+目前，專案可以分析 `.goodnotes` 中的二進制檔案來獲取筆跡、文字等資訊，並輸出成 `.svg` 或 `.pdf` 格式。與直接從 GoodNotes app 匯出不同，本專案因為解析了 `.goodnotes` 格式，因此未來完全可以將解析出的資料，轉換為其他開源格式（如 InkML），讓使用者的心血不再被單一廠商綁架。
+
+詳細的解析原理可以前往 [GitHub Wiki](https://github.com/Kaih1825/document-parser-for-goodnotes/wiki) 區查看。
+
 
 ## 功能
 
@@ -293,7 +351,7 @@ with GoodNotesDocument.open("sample.goodnotes") as doc:
 | 文件 | 說明 |
 |---|---|
 | [`cli.md`](cli.md#中文) | 完整 CLI 參考|
-| [`wiki/`](wiki/) | 深入技術文件（架構、格式、渲染原理） |
+| [GitHub Wiki](https://github.com/Kaih1825/document-parser-for-goodnotes/wiki) | 深入技術文件（架構、格式、渲染原理） |
 | [`LEGAL-NOTICE.md`](LEGAL-NOTICE.md) | 法律、商標、隱私與重新發布注意事項 |
 
 另請參閱 [貢獻指南](CONTRIBUTING.md)。
