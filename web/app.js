@@ -1526,6 +1526,27 @@ function selectAudioSession(sessionIdx, autoPlay = false) {
   setAudioMode(state.audio.mode);
 }
 
+const audioBlobUrlCache = new Map();
+
+function getAudioBlobUrl(base64) {
+  if (!base64) return "";
+  if (audioBlobUrlCache.has(base64)) return audioBlobUrlCache.get(base64);
+  try {
+    const binary = atob(base64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: "audio/mp4" });
+    const url = URL.createObjectURL(blob);
+    audioBlobUrlCache.set(base64, url);
+    return url;
+  } catch (err) {
+    return `data:audio/mp4;base64,${base64}`;
+  }
+}
+
 /**
  * Load audio track for specific session
  */
@@ -1534,7 +1555,7 @@ function loadAudioTrack(recIdx, seekRelTime = 0, autoPlay = false) {
   const rec = state.audio.recordings[recIdx];
 
   if (rec.audio_base64) {
-    state.audio.audioEl.src = `data:audio/mp4;base64,${rec.audio_base64}`;
+    state.audio.audioEl.src = getAudioBlobUrl(rec.audio_base64);
   } else {
     state.audio.audioEl.src = "";
   }
@@ -1542,12 +1563,17 @@ function loadAudioTrack(recIdx, seekRelTime = 0, autoPlay = false) {
   state.audio.activePlayingRecIdx = recIdx;
   state.audio.audioEl.playbackRate = state.audio.speedLevels[state.audio.speedIndex] || 1.0;
 
+  if (seekRelTime > 0) {
+    state.audio.audioEl.currentTime = seekRelTime;
+  }
+
+  if (autoPlay) {
+    state.audio.audioEl.play().catch(() => {});
+  }
+
   state.audio.audioEl.onloadedmetadata = () => {
     if (seekRelTime > 0) {
       state.audio.audioEl.currentTime = seekRelTime;
-    }
-    if (autoPlay) {
-      state.audio.audioEl.play().catch(() => {});
     }
     updateAudioSync();
   };

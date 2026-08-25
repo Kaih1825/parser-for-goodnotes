@@ -1071,6 +1071,33 @@ body {
     width: 36px;
     height: 36px;
   }
+
+  /* Audio Bar Tablet & Mobile RWD */
+  .canvas-audio-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+
+  .cab-left {
+    order: 1;
+    gap: 8px;
+  }
+
+  .cab-right {
+    order: 2;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    margin-left: auto;
+  }
+
+  .cab-center {
+    order: 3;
+    width: 100%;
+    min-width: 100%;
+    margin-top: 4px;
+  }
 }
 
 /* Small Tablets & Large Phones (<= 640px) */
@@ -1130,6 +1157,37 @@ body {
   .btn-secondary-sm {
     padding: 4px 6px;
     font-size: 0.72rem;
+  }
+
+  /* Audio Bar Small Tablet / Phone RWD */
+  .canvas-audio-bar {
+    padding: 8px 10px;
+    gap: 6px;
+    border-radius: var(--radius-sm);
+  }
+
+  .cab-left {
+    gap: 6px;
+  }
+
+  .cab-btn-play {
+    width: 32px;
+    height: 32px;
+  }
+
+  .cab-time-display {
+    font-size: 0.72rem;
+  }
+
+  .cab-select-sm {
+    max-width: 105px;
+    font-size: 0.7rem;
+    padding: 3px 6px;
+  }
+
+  .cab-btn-sm {
+    padding: 3px 6px;
+    font-size: 0.7rem;
   }
 
   /* Stats grid */
@@ -1209,6 +1267,50 @@ body {
 
   .canvas-container {
     padding: 8px;
+  }
+
+  /* Audio Bar Ultra-Compact Phone RWD */
+  .canvas-audio-bar {
+    padding: 6px 8px;
+    gap: 5px;
+  }
+
+  .cab-left {
+    gap: 4px;
+  }
+
+  .cab-btn-play {
+    width: 28px;
+    height: 28px;
+  }
+
+  .cab-btn-play svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .cab-time-display {
+    font-size: 0.68rem;
+    gap: 2px;
+  }
+
+  .cab-right {
+    gap: 4px;
+  }
+
+  .cab-select-sm {
+    max-width: 82px;
+    font-size: 0.68rem;
+    padding: 2px 4px;
+  }
+
+  .cab-btn-sm {
+    padding: 2px 5px;
+    font-size: 0.68rem;
+  }
+
+  #cab-btn-auto-flip span[data-i18n="audioAutoFlip"] {
+    display: none;
   }
 
   .dropzone {

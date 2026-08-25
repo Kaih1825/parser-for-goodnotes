@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
   <title>__DOC_TITLE__ - 音訊筆跡同步播放器</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10,91 +10,111 @@
   <style>
     :root {
       --bg-color: #0f172a;
-      --card-bg: rgba(30, 41, 59, 0.85);
-      --card-border: rgba(255, 255, 255, 0.1);
+      --card-bg: rgba(30, 41, 59, 0.88);
+      --card-border: rgba(255, 255, 255, 0.12);
       --text-main: #f8fafc;
       --text-muted: #94a3b8;
       --accent: #38bdf8;
       --accent-hover: #0ea5e9;
       --highlight: #facc15;
       --stroke-glow: rgba(250, 204, 21, 0.9);
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
     }
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
+      -webkit-tap-highlight-color: transparent;
     }
     body {
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: radial-gradient(circle at top, #1e293b, #0f172a);
       color: var(--text-main);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 24px 16px;
+      padding: 20px 16px;
+      overflow-x: hidden;
     }
     .player-container {
       width: 100%;
       max-width: 960px;
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 14px;
     }
     .header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 16px 24px;
+      padding: 16px 20px;
       background: var(--card-bg);
       backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--card-border);
-      border-radius: 16px;
+      border-radius: var(--radius-lg);
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+      flex-wrap: wrap;
+      gap: 10px;
     }
-    .header h1 {
-      font-size: 1.25rem;
+    .header-info h1 {
+      font-size: 1.15rem;
       font-weight: 600;
       color: var(--text-main);
+      word-break: break-word;
+    }
+    .header-info p {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 3px;
     }
     .badge {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 4px 12px;
+      padding: 4px 10px;
       border-radius: 9999px;
       background: rgba(56, 189, 248, 0.15);
       color: var(--accent);
-      font-size: 0.85rem;
+      font-size: 0.78rem;
       font-weight: 500;
+      white-space: nowrap;
     }
     .controls-panel {
-      padding: 20px 24px;
+      padding: 16px 20px;
       background: var(--card-bg);
       backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--card-border);
-      border-radius: 16px;
+      border-radius: var(--radius-lg);
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 12px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
     }
     .timeline-row {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
+      width: 100%;
     }
     .time-display {
       font-family: monospace;
-      font-size: 0.95rem;
+      font-size: 0.88rem;
       color: var(--text-muted);
-      min-width: 48px;
+      min-width: 44px;
+      text-align: center;
+      flex-shrink: 0;
     }
     .scrubber-container {
       flex: 1;
       position: relative;
       display: flex;
       align-items: center;
+      min-width: 80px;
     }
     .scrubber {
       width: 100%;
@@ -110,8 +130,8 @@
     .scrubber::-webkit-slider-thumb {
       -webkit-appearance: none;
       appearance: none;
-      width: 16px;
-      height: 16px;
+      width: 18px;
+      height: 18px;
       border-radius: 50%;
       background: var(--accent);
       cursor: pointer;
@@ -119,38 +139,54 @@
       transition: transform 0.1s;
     }
     .scrubber::-webkit-slider-thumb:hover {
-      transform: scale(1.25);
+      transform: scale(1.2);
     }
     .buttons-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: 10px;
     }
     .playback-buttons {
       display: flex;
       align-items: center;
       gap: 8px;
+      flex-shrink: 0;
+    }
+    .options-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .option-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
     }
     .btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 8px 16px;
+      padding: 7px 14px;
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid var(--card-border);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       color: var(--text-main);
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       font-weight: 500;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all 0.15s ease;
       user-select: none;
+      white-space: nowrap;
+      touch-action: manipulation;
     }
-    .btn:hover {
-      background: rgba(255, 255, 255, 0.15);
-      border-color: rgba(255, 255, 255, 0.25);
+    .btn:hover, .btn:active {
+      background: rgba(255, 255, 255, 0.16);
+      border-color: rgba(255, 255, 255, 0.3);
     }
     .btn-primary {
       background: var(--accent);
@@ -158,18 +194,19 @@
       border: none;
       font-weight: 600;
     }
-    .btn-primary:hover {
+    .btn-primary:hover, .btn-primary:active {
       background: var(--accent-hover);
     }
     .select-input {
-      padding: 7px 12px;
-      background: rgba(15, 23, 42, 0.8);
+      padding: 6px 10px;
+      background: rgba(15, 23, 42, 0.85);
       border: 1px solid var(--card-border);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       color: var(--text-main);
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       outline: none;
       cursor: pointer;
+      max-width: 160px;
     }
     .select-input:focus {
       border-color: var(--accent);
@@ -178,20 +215,28 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 20px;
+      flex-wrap: wrap;
+      padding: 10px 16px;
       background: var(--card-bg);
       backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--card-border);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+      gap: 8px;
+    }
+    .page-nav-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
     .note-viewer {
       width: 100%;
       background: #ffffff;
-      border-radius: 16px;
+      border-radius: var(--radius-lg);
       overflow: hidden;
       box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-      min-height: 400px;
+      min-height: 250px;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -201,30 +246,33 @@
       width: 100%;
       height: auto;
       display: block;
+      max-width: 100%;
     }
     .pages-stack {
       display: flex;
       flex-direction: column;
-      gap: 24px;
+      gap: 20px;
       width: 100%;
     }
     .page-card {
       background: #ffffff;
-      border-radius: 16px;
+      border-radius: var(--radius-lg);
       overflow: hidden;
       box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
       position: relative;
+      width: 100%;
     }
     .page-card-header {
       position: absolute;
-      top: 12px;
-      left: 12px;
+      top: 10px;
+      left: 10px;
       background: rgba(15, 23, 42, 0.75);
       backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       color: #f8fafc;
-      padding: 4px 10px;
+      padding: 3px 8px;
       border-radius: 6px;
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       font-weight: 600;
       z-index: 10;
       pointer-events: none;
@@ -233,18 +281,20 @@
       width: 100%;
       height: auto;
       display: block;
+      max-width: 100%;
     }
     .hint {
       text-align: center;
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       color: var(--text-muted);
-      margin-top: 8px;
+      margin-top: 4px;
+      line-height: 1.4;
     }
     [data-stroke-id] {
       cursor: pointer;
       transition: opacity 0.15s ease, filter 0.15s ease;
     }
-    [data-stroke-id]:hover {
+    [data-stroke-id]:hover, [data-stroke-id]:active {
       filter: drop-shadow(0 0 6px var(--accent));
       opacity: 1 !important;
     }
@@ -252,18 +302,99 @@
       filter: drop-shadow(0 0 8px var(--stroke-glow)) drop-shadow(0 0 2px var(--highlight));
       stroke: var(--highlight) !important;
     }
+
+    /* Mobile Responsive Adaptation (iOS Safari & Android) */
+    @media (max-width: 768px) {
+      body {
+        padding: 12px 10px;
+      }
+      .player-container {
+        gap: 10px;
+      }
+      .header {
+        padding: 12px 14px;
+      }
+      .controls-panel {
+        padding: 12px 14px;
+        gap: 10px;
+      }
+      .buttons-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+      }
+      .playback-buttons {
+        width: 100%;
+        justify-content: space-between;
+      }
+      .playback-buttons .btn {
+        flex: 1;
+        padding: 8px 6px;
+        font-size: 0.82rem;
+      }
+      .options-group {
+        width: 100%;
+        justify-content: space-between;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .option-item {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 3px;
+      }
+      .select-input {
+        width: 100%;
+        max-width: 100%;
+        padding: 5px 8px;
+        font-size: 0.76rem;
+      }
+      .page-nav-bar {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 10px 12px;
+        gap: 8px;
+      }
+      .page-nav-group {
+        width: 100%;
+        justify-content: space-between;
+      }
+      .page-nav-group .select-input {
+        flex: 1;
+      }
+      .note-viewer {
+        border-radius: var(--radius-md);
+      }
+      .page-card {
+        border-radius: var(--radius-md);
+      }
+    }
+
+    @media (max-width: 480px) {
+      .header-info h1 {
+        font-size: 1.0rem;
+      }
+      .time-display {
+        font-size: 0.78rem;
+        min-width: 38px;
+      }
+      .options-group {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="player-container">
     <div class="header">
-      <div>
+      <div class="header-info">
         <h1>__DOC_TITLE__</h1>
-        <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 2px;">
+        <p>
           錄音段落: __RECORDINGS_COUNT__ | 總頁數: __TOTAL_PAGES__ 頁 | 總時長: __DUR_DISPLAY__
         </p>
       </div>
-      <span class="badge">🎙️ 多頁錄音筆跡同步播放</span>
+      <span class="badge">🎙️ 多頁錄音筆跡同步</span>
     </div>
 
     <div class="controls-panel">
@@ -282,24 +413,24 @@
           <button class="btn" id="forwardBtn">&#x25B6; +5s</button>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-          <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
-            段落:
+        <div class="options-group">
+          <div class="option-item">
+            <span>段落:</span>
             <select class="select-input" id="recordingSelect">
               <option value="-1">全部連續播放 (All)</option>
               __RECORDINGS_OPTIONS__
             </select>
-          </label>
-          <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
-            模式:
+          </div>
+          <div class="option-item">
+            <span>模式:</span>
             <select class="select-input" id="modeSelect">
               <option value="highlight">同步點亮 (預先淡化)</option>
               <option value="reveal">逐漸書寫 (隨錄音出現)</option>
               <option value="normal">完整顯示</option>
             </select>
-          </label>
-          <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
-            倍速:
+          </div>
+          <div class="option-item">
+            <span>倍速:</span>
             <select class="select-input" id="speedSelect">
               <option value="0.75">0.75x</option>
               <option value="1.0" selected>1.0x</option>
@@ -307,13 +438,13 @@
               <option value="1.5">1.5x</option>
               <option value="2.0">2.0x</option>
             </select>
-          </label>
+          </div>
         </div>
       </div>
     </div>
 
     <div class="page-nav-bar">
-      <div style="display: flex; align-items: center; gap: 8px;">
+      <div class="page-nav-group">
         <button class="btn" id="prevPageBtn">◀ 上一頁</button>
         <select class="select-input" id="pageSelect">
           __PAGE_OPTIONS__
@@ -321,15 +452,12 @@
         <button class="btn" id="nextPageBtn">下一頁 ▶</button>
       </div>
 
-      <div style="display: flex; align-items: center; gap: 10px;">
+      <div class="page-nav-group" style="justify-content: flex-end;">
         <button class="btn" id="autoFlipBtn" title="自動翻頁開關">📖 自動翻頁: 開</button>
-        <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
-          檢視模式:
-          <select class="select-input" id="viewModeSelect">
-            <option value="single">單頁翻頁 (Single)</option>
-            <option value="stack">全頁連續捲動 (Continuous)</option>
-          </select>
-        </label>
+        <select class="select-input" id="viewModeSelect">
+          <option value="single">單頁翻頁 (Single)</option>
+          <option value="stack">連續捲動 (Continuous)</option>
+        </select>
       </div>
     </div>
 
@@ -339,10 +467,10 @@
     <!-- Multi-Page Stack Container -->
     <div class="pages-stack" id="stackViewer" style="display: none;"></div>
 
-    <div class="hint">💡 提示：點擊任何頁面上的筆跡可直接跳轉至該筆畫書寫時刻！按空白鍵播放/暫停。</div>
+    <div class="hint">💡 提示：點擊任何頁面上的筆跡可跳轉至該筆畫書寫時刻！支援手機觸控滑動與空白鍵播放。</div>
   </div>
 
-  <audio id="audioElement" preload="auto"></audio>
+  <audio id="audioElement" playsinline webkit-playsinline preload="auto"></audio>
 
   <!-- PDF.js for rendering PDF background templates and stickers in high fidelity -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -381,8 +509,28 @@
     let isStackMode = false;
     let autoFlipEnabled = true;
 
+    // Convert Base64 to Blob URL for 100% reliable iOS Safari playback
+    const audioBlobUrlCache = new Map();
+    function getAudioBlobUrl(b64) {
+      if (!b64) return '';
+      if (audioBlobUrlCache.has(b64)) return audioBlobUrlCache.get(b64);
+      try {
+        const binary = atob(b64);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: 'audio/mp4' });
+        const url = URL.createObjectURL(blob);
+        audioBlobUrlCache.set(b64, url);
+        return url;
+      } catch (err) {
+        return `data:audio/mp4;base64,${b64}`;
+      }
+    }
+
     const pdfDocCache = new Map();
-    const pdfPageImageCache = new Map();
 
     async function resolvePdfPlaceholders(containerElement) {
       if (!window.pdfjsLib) return;
@@ -503,17 +651,23 @@
     function loadRecording(recIdx, seekRelTime = 0, autoPlay = false) {
       currentRecIndex = recIdx;
       const rec = recordings[recIdx];
-      audio.src = `data:audio/mp4;base64,${rec.audio_b64}`;
+      audio.src = getAudioBlobUrl(rec.audio_b64);
       audio.playbackRate = parseFloat(speedSelect.value);
       loadSinglePage(rec.page_index);
+
+      if (seekRelTime > 0) {
+        audio.currentTime = seekRelTime;
+      }
+
+      if (autoPlay) {
+        const p = audio.play();
+        if (p && p.catch) p.catch(() => {});
+        playBtn.textContent = '⏸ 暫停';
+      }
 
       audio.onloadedmetadata = () => {
         if (seekRelTime > 0) {
           audio.currentTime = seekRelTime;
-        }
-        if (autoPlay) {
-          audio.play().catch(() => {});
-          playBtn.textContent = '⏸ 暫停';
         }
       };
     }
@@ -522,27 +676,30 @@
       const strokeElements = rootElement.querySelectorAll('[data-stroke-id]');
       strokeElements.forEach(el => {
         const suuid = el.getAttribute('data-stroke-id');
-        // Find which recording this stroke belongs to
         for (let rIdx = 0; rIdx < recordings.length; rIdx++) {
           const r = recordings[rIdx];
           if (r.stroke_timings[suuid] !== undefined) {
             const timing = r.stroke_timings[suuid];
             const time = timing.t;
             const targetPage = timing.page_index;
-            el.setAttribute('title', `點擊跳至段落 ${rIdx+1} (第 ${targetPage+1} 頁) - ${formatTime(time)} (${time.toFixed(2)}s)`);
-            el.addEventListener('click', (e) => {
+            el.setAttribute('title', `跳至段落 ${rIdx+1} (第 ${targetPage+1} 頁) - ${formatTime(time)}`);
+            
+            const handleTrigger = (e) => {
               e.stopPropagation();
               if (currentRecIndex !== rIdx) {
                 loadRecording(rIdx, time, true);
               } else {
                 audio.currentTime = time;
-                if (audio.paused) audio.play();
+                const p = audio.play();
+                if (p && p.catch) p.catch(() => {});
                 playBtn.textContent = '⏸ 暫停';
               }
               if (!isStackMode) {
                 loadSinglePage(targetPage);
               }
-            });
+            };
+            
+            el.addEventListener('click', handleTrigger);
             break;
           }
         }
@@ -584,8 +741,13 @@
     });
 
     function togglePlay() {
+      if (!audio.src && recordings.length > 0) {
+        loadRecording(0, 0, true);
+        return;
+      }
       if (audio.paused) {
-        audio.play().catch(() => {});
+        const p = audio.play();
+        if (p && p.catch) p.catch(() => {});
         playBtn.textContent = '⏸ 暫停';
       } else {
         audio.pause();
@@ -672,6 +834,14 @@
         }
       }
     }
+
+    audio.addEventListener('play', () => {
+      playBtn.textContent = '⏸ 暫停';
+    });
+
+    audio.addEventListener('pause', () => {
+      playBtn.textContent = '▶ 播放';
+    });
 
     audio.addEventListener('ended', () => {
       if (isContinuous && currentRecIndex + 1 < recordings.length) {
