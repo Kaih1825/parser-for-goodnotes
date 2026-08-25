@@ -291,6 +291,9 @@ const el = {
   canvasContainer: document.getElementById("canvas-container"),
   svgStage: document.getElementById("svg-stage"),
   sampleButtons: document.querySelectorAll(".btn-sample"),
+  appFooter: document.getElementById("app-footer"),
+  footerToggleBtn: document.getElementById("footer-toggle-btn"),
+  footerToggleIcon: document.getElementById("footer-toggle-icon"),
 };
 
 function t(key, ...args) {
@@ -1383,6 +1386,93 @@ function setupEventListeners() {
   if (el.svgStage) {
     el.svgStage.addEventListener("click", handleCanvasStrokeClick);
   }
+
+  // Collapsible Legal Footer
+  initFooterAutoCollapse();
+}
+
+let footerAutoCollapseTimer = null;
+
+function collapseFooter() {
+  if (footerAutoCollapseTimer) {
+    clearTimeout(footerAutoCollapseTimer);
+    footerAutoCollapseTimer = null;
+  }
+  if (el.appFooter) {
+    el.appFooter.classList.add("collapsed");
+  }
+  if (el.footerToggleIcon) {
+    el.footerToggleIcon.textContent = "\u25B2"; // ▲
+  }
+}
+
+function expandFooter(autoCloseTimeout = 4500) {
+  if (footerAutoCollapseTimer) {
+    clearTimeout(footerAutoCollapseTimer);
+    footerAutoCollapseTimer = null;
+  }
+  if (el.appFooter) {
+    el.appFooter.classList.remove("collapsed");
+  }
+  if (el.footerToggleIcon) {
+    el.footerToggleIcon.textContent = "\u25BC"; // ▼
+  }
+  if (autoCloseTimeout > 0) {
+    footerAutoCollapseTimer = setTimeout(() => {
+      collapseFooter();
+    }, autoCloseTimeout);
+  }
+}
+
+function toggleFooter() {
+  if (!el.appFooter) return;
+  if (el.appFooter.classList.contains("collapsed")) {
+    expandFooter(4500);
+  } else {
+    collapseFooter();
+  }
+}
+
+function initFooterAutoCollapse() {
+  if (!el.appFooter) return;
+
+  // Initially expanded on page load, auto-collapse after 4 seconds
+  footerAutoCollapseTimer = setTimeout(() => {
+    collapseFooter();
+  }, 4000);
+
+  if (el.footerToggleBtn) {
+    el.footerToggleBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleFooter();
+    });
+  }
+
+  // Click on collapsed footer bar expands it
+  el.appFooter.addEventListener("click", (e) => {
+    if (e.target.closest("a") || e.target.closest("button")) return;
+    if (el.appFooter.classList.contains("collapsed")) {
+      expandFooter(4500);
+    }
+  });
+
+  // Pause timer if user hovers over expanded footer to read
+  el.appFooter.addEventListener("mouseenter", () => {
+    if (!el.appFooter.classList.contains("collapsed") && footerAutoCollapseTimer) {
+      clearTimeout(footerAutoCollapseTimer);
+      footerAutoCollapseTimer = null;
+    }
+  });
+
+  // Resume auto-collapse when mouse leaves
+  el.appFooter.addEventListener("mouseleave", () => {
+    if (!el.appFooter.classList.contains("collapsed")) {
+      if (footerAutoCollapseTimer) clearTimeout(footerAutoCollapseTimer);
+      footerAutoCollapseTimer = setTimeout(() => {
+        collapseFooter();
+      }, 3500);
+    }
+  });
 }
 
 /**

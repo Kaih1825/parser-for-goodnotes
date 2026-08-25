@@ -546,42 +546,114 @@ body {
 .app-footer {
   background-color: var(--bg-secondary);
   border-top: 1px solid var(--border-color);
-  padding: 8px 24px;
+  padding: 6px 18px;
   font-size: 0.72rem;
   color: var(--text-muted);
   flex-shrink: 0;
   z-index: 10;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
 }
 
-.footer-content {
+.footer-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
 }
 
-.footer-content p {
+.footer-text-wrap {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.footer-text {
   margin: 0;
+  line-height: 1.4;
+  color: var(--text-muted);
 }
 
-.footer-content a {
-  color: var(--text-secondary);
-  text-decoration: underline;
-}
-
-.footer-content a:hover {
-  color: var(--accent-cyan);
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .footer-links {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.footer-links a {
+  color: var(--text-secondary);
+  text-decoration: underline;
+  transition: color 0.15s ease;
+}
+
+.footer-links a:hover {
+  color: var(--accent-cyan);
 }
 
 .footer-links .sep {
   color: var(--border-color);
+}
+
+.footer-toggle-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 3px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.footer-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
+.footer-toggle-icon {
+  display: inline-block;
+  line-height: 1;
+  font-size: 0.65rem;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Collapsed State (Single Line with Ellipsis + GitHub + Toggle Arrow) */
+.app-footer.collapsed {
+  padding: 4px 14px;
+  cursor: pointer;
+}
+
+.app-footer.collapsed:hover {
+  background-color: var(--bg-surface);
+}
+
+.app-footer.collapsed .footer-inner {
+  flex-wrap: nowrap;
+}
+
+.app-footer.collapsed .footer-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-footer.collapsed .footer-link-extra {
+  display: none;
 }
 
 /* Preview Panel */
@@ -1223,13 +1295,19 @@ body {
 
   /* Footer */
   .app-footer {
-    padding: 8px 12px;
+    padding: 6px 12px;
   }
 
-  .footer-content {
+  .app-footer:not(.collapsed) .footer-inner {
     flex-direction: column;
     text-align: center;
     gap: 6px;
+  }
+
+  .app-footer.collapsed .footer-inner {
+    flex-direction: row;
+    text-align: left;
+    gap: 8px;
   }
 }
 

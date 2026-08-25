@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=29">
+  <link rel="stylesheet" href="style.css?v=30">
 </head>
 <body>
   <div class="app-container">
@@ -330,15 +330,22 @@
     </main>
 
     <!-- Footer Legal Notice & Links -->
-    <footer class="app-footer">
-      <div class="footer-content">
-        <p data-i18n="footerText">This project is licensed under the MIT License; "Goodnotes" and related marks are trademarks of Goodnotes Limited, referenced solely for file format compatibility and parsing under nominative fair use without affiliation, endorsement, or sponsorship.</p>
-        <div class="footer-links">
-          <a href="https://github.com/Kaih1825/document-parser-for-goodnotes" target="_blank" rel="noopener">GitHub</a>
-          <span class="sep">•</span>
-          <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/LEGAL-NOTICE.md" target="_blank" rel="noopener" data-i18n="footerLegalNotice">Legal Notice</a>
-          <span class="sep">•</span>
-          <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener" data-i18n="footerContributing">Contributing</a>
+    <footer id="app-footer" class="app-footer">
+      <div class="footer-inner">
+        <div class="footer-text-wrap">
+          <p id="footer-text" class="footer-text" data-i18n="footerText">This project is licensed under the MIT License; "Goodnotes" and related marks are trademarks of Goodnotes Limited, referenced solely for file format compatibility and parsing under nominative fair use without affiliation, endorsement, or sponsorship.</p>
+        </div>
+        <div class="footer-actions">
+          <div class="footer-links">
+            <a href="https://github.com/Kaih1825/document-parser-for-goodnotes" target="_blank" rel="noopener" class="footer-link-main">GitHub</a>
+            <span class="sep footer-link-extra">•</span>
+            <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/LEGAL-NOTICE.md" target="_blank" rel="noopener" class="footer-link-extra" data-i18n="footerLegalNotice">Legal Notice</a>
+            <span class="sep footer-link-extra">•</span>
+            <a href="https://github.com/Kaih1825/document-parser-for-goodnotes/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener" class="footer-link-extra" data-i18n="footerContributing">Contributing</a>
+          </div>
+          <button id="footer-toggle-btn" class="footer-toggle-btn" type="button" aria-label="Toggle legal footer" title="展開 / 收起法律聲明">
+            <span id="footer-toggle-icon" class="footer-toggle-icon">&#x25BC;</span>
+          </button>
         </div>
       </div>
     </footer>
@@ -359,6 +366,6 @@
       }
     });
   </script>
-  <script src="app.js?v=47"></script>
+  <script src="app.js?v=48"></script>
 </body>
 </html>
