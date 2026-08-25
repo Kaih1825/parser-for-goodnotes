@@ -9,12 +9,16 @@ This chapter provides instructions for using the **Document Parser for GoodNotes
 
 ## 1. CLI Tool Suite
 
-After installation, the package provides 6 global command-line tools (which can also be invoked via `python3 -m goodnotes_re.cli`):
+After installation, the package provides 10 global command-line tools (which can also be invoked via `python3 -m goodnotes_re.cli`):
 
 ```
                                 ┌── gn-inspect (Inspect ZIP file directory and SHA256)
                                 ├── gn-dump (Lossless dump to JSON)
-python3 -m goodnotes_re.cli ───┼── gn-diff (Compare differences between two .goodnotes members)
+                                ├── gn-diff (Compare differences between two .goodnotes members)
+                                ├── gn-recordings (List audio sessions and synchronized stroke timelines)
+                                ├── gn-export-audio (Extract audio track from document)
+python3 -m goodnotes_re.cli ───┼── gn-export-video (Export synchronized MP4 video with handwriting animations)
+                                ├── gn-export-html (Export interactive multi-page standalone HTML5 player)
                                 ├── gn-export-json (Export full structure as JSON)
                                 ├── gn-export-svg (Export vector SVG pages)
                                 └── gn-export-pdf (Compile vector pages directly into PDF)
@@ -106,6 +110,54 @@ Renders all pages according to the vector SVG pipeline and compiles them directl
 
 ```sh
 gn-export-pdf samples/Teat.goodnotes -o Teat.pdf
+```
+
+---
+
+### 1.7 `gn-recordings` - Audio Sessions and Stroke Sync Timeline
+
+Inspects all recorded audio sessions and their associated handwriting stroke timelines inside the document.
+
+```sh
+gn-recordings samples/record.goodnotes
+```
+
+---
+
+### 1.8 `gn-export-audio` - Extract Raw Audio Track
+
+Extracts the original AAC audio track (`.m4a`) recorded inside the document.
+
+```sh
+gn-export-audio samples/record.goodnotes -o audio.m4a
+```
+
+---
+
+### 1.9 `gn-export-video` - Synchronized MP4 Handwriting Animation
+
+Renders a synchronized MP4 video combining the spoken audio with animated handwriting stroke appearances, with automatic multi-page transition following the speaker.
+
+```sh
+gn-export-video samples/record.goodnotes -o replay.mp4 --fps 15 -s open -b -a
+```
+
+#### Parameters:
+- `-o, --output`: Output MP4 video path.
+- `--fps`: Frame rate (default: `15`).
+- `--resolution-scale`: Rendering scale factor (default: `1.0`).
+- `-s, --sticky-note-state {open,close,auto}`: Sticky note display mode.
+- `-b, --textbox [open|close]`: Text box border rendering.
+- `-a, --parse-all`: Parse and follow all active pages.
+
+---
+
+### 1.10 `gn-export-html` - Standalone Interactive HTML5 Player
+
+Exports a self-contained, offline HTML5 web player with multi-page navigation, dual view modes (Single Page vs Continuous Stack), synchronized timeline inking, and click-to-seek strokes.
+
+```sh
+gn-export-html samples/record.goodnotes -o player.html -s open -b -a
 ```
 
 ---
@@ -209,6 +261,34 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
 
 ---
 
+### 2.5 Audio Recordings & Timed Inking Playback
+
+```python
+from goodnotes_re import (
+    GoodNotesDocument,
+    write_recording_audio,
+    write_recording_video,
+    write_recording_html,
+)
+
+with GoodNotesDocument.open("samples/record.goodnotes") as doc:
+    # 1. Query all audio sessions and stroke timestamps
+    recordings = doc.recordings()
+    for rec in recordings:
+        print(f"Session {rec.id}: duration={rec.duration:.2f}s, timed strokes={len(rec.stroke_timings)}")
+
+    # 2. Extract audio track
+    audio_path = write_recording_audio(doc, "output/audio.m4a")
+
+    # 3. Export animated MP4 video with multi-page tracking
+    video_path = write_recording_video(doc, "output/replay.mp4", fps=15, parse_all=True)
+
+    # 4. Export standalone interactive HTML5 player
+    html_path = write_recording_html(doc, "output/player.html", parse_all=True)
+```
+
+---
+
 In the next chapter, **[08 - Testing, Building, and Publishing](08-testing-building-publishing#english)**, we will explain how to set up the development environment, execute unit tests, maintain controlled format analysis experiment protocols, and package for publishing to PyPI.
 
 ---
@@ -224,12 +304,16 @@ In the next chapter, **[08 - Testing, Building, and Publishing](08-testing-build
 
 ## 1. CLI 工具套件 (CLI Tool Suite)
 
-套件安裝後會提供 6 個全域命令列工具（亦可透過 `python3 -m goodnotes_re.cli` 調用）：
+套件安裝後會提供 10 個全域命令列工具（亦可透過 `python3 -m goodnotes_re.cli` 調用）：
 
 ```
                                 ┌── gn-inspect (檢視 ZIP 檔案目錄與 SHA256)
                                 ├── gn-dump (無損 dump 成 JSON)
-python3 -m goodnotes_re.cli ───┼── gn-diff (比較兩個 .goodnotes 成員差異)
+                                ├── gn-diff (比較兩個 .goodnotes 成員差異)
+                                ├── gn-recordings (檢視錄音清單與筆跡時間軸)
+                                ├── gn-export-audio (提取文件錄音原始音訊)
+python3 -m goodnotes_re.cli ───┼── gn-export-video (匯出時間筆跡隨語音同步動畫之 MP4 影片)
+                                ├── gn-export-html (匯出多頁獨立離線互動式 HTML5 網頁播放器)
                                 ├── gn-export-json (匯出完整結構為 JSON)
                                 ├── gn-export-svg (匯出向量 SVG 頁面)
                                 └── gn-export-pdf (直接將向量頁面編譯為 PDF)
@@ -321,6 +405,54 @@ gn-export-svg samples/Teat.goodnotes -o output_svgs/ --pdf
 
 ```sh
 gn-export-pdf samples/Teat.goodnotes -o Teat.pdf
+```
+
+---
+
+### 1.7 `gn-recordings` - 檢視錄音階段與筆跡時間軸
+
+檢視文件內包含的所有錄音階段資訊、時長、關聯頁面與筆畫時間戳記。
+
+```sh
+gn-recordings samples/record.goodnotes
+```
+
+---
+
+### 1.8 `gn-export-audio` - 提取原始音訊檔
+
+提取文件內所錄製之原始 AAC 音訊檔案 (`.m4a`)。
+
+```sh
+gn-export-audio samples/record.goodnotes -o audio.m4a
+```
+
+---
+
+### 1.9 `gn-export-video` - 匯出筆畫同步動畫之 MP4 影片
+
+將語音錄音與隨時間動態書寫的筆劃動畫合成匯出為 MP4 影片，具備隨演講進度自動跨頁切換之功能。
+
+```sh
+gn-export-video samples/record.goodnotes -o replay.mp4 --fps 15 -s open -b -a
+```
+
+#### 參數選項：
+- `-o, --output`：輸出 MP4 影片路徑。
+- `--fps`：影片幀率（預設：`15`）。
+- `--resolution-scale`：畫面解析度縮放倍率（預設：`1.0`）。
+- `-s, --sticky-note-state {open,close,auto}`：便條紙展開狀態。
+- `-b, --textbox [open|close]`：文字框外框繪製。
+- `-a, --parse-all`：解析並追蹤所有有效頁面。
+
+---
+
+### 1.10 `gn-export-html` - 匯出獨立互動式 HTML5 播放器
+
+產生單一檔案且不依賴外部伺服器的互動式 HTML5 網頁播放器，支援多頁切換、單頁／垂直捲動雙視圖模式，以及點擊任意筆跡跳轉對應語音段落。
+
+```sh
+gn-export-html samples/record.goodnotes -o player.html -s open -b -a
 ```
 
 ---
@@ -420,6 +552,34 @@ with GoodNotesDocument.open("samples/Teat.goodnotes") as doc:
         parse_all=True,
     )
     print("生成的 PDF 檔案路徑:", pdf_path)
+```
+
+---
+
+### 2.5 錄音分析與時間筆跡播放
+
+```python
+from goodnotes_re import (
+    GoodNotesDocument,
+    write_recording_audio,
+    write_recording_video,
+    write_recording_html,
+)
+
+with GoodNotesDocument.open("samples/record.goodnotes") as doc:
+    # 1. 查詢所有錄音階段與筆劃時間戳記
+    recordings = doc.recordings()
+    for rec in recordings:
+        print(f"錄音 {rec.id}: 時長={rec.duration:.2f} 秒, 關聯筆跡數={len(rec.stroke_timings)}")
+
+    # 2. 提取音訊檔案
+    audio_path = write_recording_audio(doc, "output/audio.m4a")
+
+    # 3. 匯出自動跨頁追蹤的 MP4 筆跡同步影片
+    video_path = write_recording_video(doc, "output/replay.mp4", fps=15, parse_all=True)
+
+    # 4. 匯出獨立離線互動式 HTML5 網頁播放器
+    html_path = write_recording_html(doc, "output/player.html", parse_all=True)
 ```
 
 ---

@@ -116,6 +116,65 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(svg_content.count("Sticky Note (Folded)"), 2)
                 self.assertEqual(svg_content.count("Sticky Note (Expanded)"), 0)
 
+    def test_recordings_cli(self) -> None:
+        rec_file = resolve_sample("record.goodnotes")
+        if rec_file.exists():
+            from goodnotes_re.cli import recordings_main
+            code = recordings_main([str(rec_file)])
+            self.assertEqual(code, 0)
+            code_json = recordings_main([str(rec_file), "--json"])
+            self.assertEqual(code_json, 0)
+
+    def test_export_audio_cli(self) -> None:
+        rec_file = resolve_sample("record.goodnotes")
+        if rec_file.exists():
+            from goodnotes_re.cli import export_audio_main
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                out_audio = Path(tmp_dir) / "audio.m4a"
+                code = export_audio_main([str(rec_file), "-o", str(out_audio)])
+                self.assertEqual(code, 0)
+                self.assertTrue(out_audio.exists())
+                self.assertGreater(out_audio.stat().st_size, 0)
+
+    def test_export_html_cli(self) -> None:
+        rec_file = resolve_sample("record.goodnotes")
+        if rec_file.exists():
+            from goodnotes_re.cli import export_html_main
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                out_html = Path(tmp_dir) / "player.html"
+                code = export_html_main([
+                    str(rec_file),
+                    "-o", str(out_html),
+                    "-s", "open",
+                    "-b",
+                    "-a",
+                    "--no-fill",
+                ])
+                self.assertEqual(code, 0)
+                self.assertTrue(out_html.exists())
+                self.assertGreater(out_html.stat().st_size, 0)
+
+    def test_export_video_cli(self) -> None:
+        rec_file = resolve_sample("record.goodnotes")
+        import shutil
+        if rec_file.exists() and shutil.which("ffmpeg"):
+            from goodnotes_re.cli import export_video_main
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                out_mp4 = Path(tmp_dir) / "out.mp4"
+                code = export_video_main([
+                    str(rec_file),
+                    "-o", str(out_mp4),
+                    "--fps", "5",
+                    "--scale", "1.0",
+                    "-s", "open",
+                    "-b",
+                    "-a",
+                    "--no-fill",
+                ])
+                self.assertEqual(code, 0)
+                self.assertTrue(out_mp4.exists())
+                self.assertGreater(out_mp4.stat().st_size, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

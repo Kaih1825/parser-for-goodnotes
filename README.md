@@ -67,6 +67,7 @@ For more detailed parsing principles, please refer to the [GitHub Wiki](https://
 
 #### ✅ Working / Fully Supported
 - **Fountain Pen, Ballpoint Pen, Brush Pen, Highlighter**: Full support with custom colors and line thicknesses.
+- **Audio Recordings & Timed Inking**: Audio extraction, timeline stroke synchronization, MP4 video replay, and interactive HTML5 player.
 - **Text**: Typed text fragments.
 - **Sticky Notes**: Sticky note contents and formatting.
 - **Images**: Embedded images.
@@ -79,7 +80,6 @@ For more detailed parsing principles, please refer to the [GitHub Wiki](https://
 - **Pencil**: Visible output, but pressure sensitivity is incorrect and tilt sensitivity is missing.
 - **Arrows**: Render output is currently highly unstable.
 - **Stickers / Elements**: Certain vector lines/strokes may fail to export.
-- **Audio Recordings**: Not yet implemented.
 
 
 ## Installation & Setup
@@ -115,6 +115,18 @@ gn-dump sample.goodnotes index.notes.pb
 
 # Diff two .goodnotes archives
 gn-diff before.goodnotes after.goodnotes
+
+# List audio recording sessions and stroke sync timelines
+gn-recordings sample.goodnotes
+
+# Extract audio track from document
+gn-export-audio sample.goodnotes -o audio.m4a
+
+# Export synchronized MP4 video matching audio with handwriting strokes
+gn-export-video sample.goodnotes -o replay.mp4 --fps 15
+
+# Export interactive standalone HTML5 player
+gn-export-html sample.goodnotes -o player.html
 
 # Export entire document, metadata, pages, strokes, and raw wire trees to JSON
 gn-export-json sample.goodnotes -o document.json
@@ -248,12 +260,15 @@ GoodNotes 是一個很棒的筆記軟體，但由於其封閉性，除了匯出�
 - **筆跡與色彩解析**：解析 `bv4$` 後的 protobuf trailer，以擷取精確 RGBA 顏色與螢光筆透明度。
 - **筆跡與幾何元件支援**：解析測試樣本中觀察到的單點、直線、曲線、鋼筆/原子筆工具、螢光筆、橡皮擦切口、圖形及移動/複製元素。
 - **頁面與背景解析**：自動偵測 PDF `/MediaBox` 尺寸（A4、Letter、橫向與直向）、頁面順序、文字片段與便條紙內容。
-- **CLI 工具**：`gn-inspect`、`gn-dump`、`gn-diff`、`gn-export-json`、`gn-export-svg`、`gn-export-pdf`。
+- **錄音與時間筆跡同步**：解析錄音階段（Field 160）、刪除事件（Field 163）、音訊附件（`.m4a`/AAC）及每筆筆畫之精確時間戳記。
+- **影音與互動式播放器匯出**：支援渲染筆畫隨錄音動態點亮之 MP4 影片，以及獨立離線 HTML5 網頁播放器。
+- **CLI 工具**：`gn-inspect`、`gn-dump`、`gn-diff`、`gn-recordings`、`gn-export-audio`、`gn-export-video`、`gn-export-html`、`gn-export-json`、`gn-export-svg`、`gn-export-pdf`。
 
 ### 功能支援狀態
 
 #### ✅ 目前測試可正常輸出
 - **鋼筆、原子筆、畫筆、螢光筆**：可處理不同顏色及粗細。
+- **錄音與時間筆跡**：音訊提取、筆跡時間軸同步、MP4 影片重播、互動式 HTML5 網頁播放器。
 - **文字**：打字文字內容。
 - **便利貼**：便條紙內容。
 - **圖片**：內嵌圖片。
@@ -266,7 +281,6 @@ GoodNotes 是一個很棒的筆記軟體，但由於其封閉性，除了匯出�
 - **鉛筆**：可顯示，但壓感有問題，以及沒有傾斜感知。
 - **箭頭**：目前輸出極度不穩定。
 - **素材（貼紙）**：可能有部分線條無法輸出。
-- **錄音**：還沒實作。
 
 
 ## 安裝與設定
@@ -294,7 +308,7 @@ uv run pytest
 ## CLI 使用方式
 
 ```sh
-# 檢視封存檔目錄清單與 sha256 校驗碼
+# 檢視封存檔目錄清單、sha256 校驗碼與錄音概況
 gn-inspect sample.goodnotes
 
 # 無損印出任何 protobuf 成員至 JSON
@@ -302,6 +316,18 @@ gn-dump sample.goodnotes index.notes.pb
 
 # 比對兩個 .goodnotes 封存檔差異
 gn-diff before.goodnotes after.goodnotes
+
+# 檢視錄音階段清單與筆畫時間戳記時間軸
+gn-recordings sample.goodnotes
+
+# 提取文件內所錄製之原始音訊檔 (.m4a)
+gn-export-audio sample.goodnotes -o audio.m4a
+
+# 匯出時間筆跡隨錄音同步點亮動畫之 MP4 影片
+gn-export-video sample.goodnotes -o replay.mp4 --fps 15
+
+# 匯出獨立離線互動式 HTML5 網頁播放器
+gn-export-html sample.goodnotes -o player.html
 
 # 匯出整份文件、元資料、頁面、筆跡與原始 wire 樹狀圖至 JSON
 gn-export-json sample.goodnotes -o document.json

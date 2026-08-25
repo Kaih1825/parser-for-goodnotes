@@ -262,6 +262,8 @@ def page_to_svg(
     fill_shapes: bool = True,
     sticky_note_state: str | None = None,
     textbox_state: bool | str | None = False,
+    stroke_styles: dict[str, dict[str, object]] | None = None,
+    stroke_data_attributes: bool = False,
 ) -> str:
     """Render a single GoodNotes Page object to an SVG XML string in memory."""
     # GoodNotes internal coordinates are 132 DPI, PDF canvas is 72 DPI
@@ -682,14 +684,27 @@ def page_to_svg(
                     for poly in outline_polys
                 )
 
+        s_style = (stroke_styles.get(stroke.uuid, {}) if stroke_styles and stroke.uuid else {})
+        if s_style.get("hidden", False):
+            continue
+        s_color = str(s_style.get("color", stroke.color_hex))
+        s_alpha = float(s_style.get("opacity", stroke.alpha))
+        s_highlight = bool(s_style.get("highlight", False))
+        data_attr = f' data-stroke-id="{html.escape(stroke.uuid)}"' if (stroke_data_attributes or stroke_styles is not None or stroke.uuid) else ""
+        css_class = ' class="gn-stroke"' if data_attr else ""
+
         dash_pattern = getattr(stroke, "dash_pattern", None)
         if stroke.is_dot and pts:
             # Single point / Dot
             pt = pts[0]
             cx, cy = pt.x * dpi_scale, pt.y * dpi_scale
             r = max(0.12, (stroke.width * pt.pressure * 0.5) * dpi_scale)
+            if s_highlight:
+                elements.append(
+                    f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r * 2.0:.2f}" fill="#fffa65" fill-opacity="0.7" stroke="none"/>'
+                )
             elements.append(
-                f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r:.2f}" fill="{stroke.color_hex}" fill-opacity="{stroke.alpha:.2f}" stroke="none"/>'
+                f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r:.2f}" fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="none"{css_class}{data_attr}/>'
             )
         elif dash_pattern:
             stroke_w = max(0.5, stroke.width * dpi_scale)
@@ -706,8 +721,12 @@ def page_to_svg(
             stroke_pts = tuple((pt.x, pt.y) for pt in pts)
             if len(stroke_pts) >= 2:
                 d_path = _catmull_rom_to_svg_path(stroke_pts, dpi_scale)
+                if s_highlight:
+                    elements.append(
+                        f'<path d="{d_path}" stroke="#fffa65" stroke-opacity="0.75" stroke-width="{stroke_w * 2.2:.2f}" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'
+                    )
                 elements.append(
-                    f'<path d="{d_path}" stroke="{stroke.color_hex}" stroke-opacity="{stroke.alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr} fill="none"/>'
+                    f'<path d="{d_path}" stroke="{s_color}" stroke-opacity="{s_alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr} fill="none"{css_class}{data_attr}/>'
                 )
         else:
             ribbon_d = build_stroke_ribbon(
@@ -720,8 +739,12 @@ def page_to_svg(
                 is_cut_end=stroke.is_cut_end,
             )
             if ribbon_d:
+                if s_highlight:
+                    elements.append(
+                        f'<path d="{ribbon_d}" fill="#fffa65" fill-opacity="0.75" stroke="#fffa65" stroke-width="4.0" stroke-linecap="round" stroke-linejoin="round"/>'
+                    )
                 elements.append(
-                    f'<path d="{ribbon_d}" fill="{stroke.color_hex}" fill-opacity="{stroke.alpha:.2f}" stroke="none"/>'
+                    f'<path d="{ribbon_d}" fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="none"{css_class}{data_attr}/>'
                 )
 
     # Render rich text elements grouped by text box
@@ -1097,3 +1120,1066 @@ def write_pdf(
             export_pdf=False,
         )
         return svgs_to_pdf(svg_paths, output_path)
+
+
+def write_audio(
+    document: GoodNotesDocument,
+    output: str | Path,
+    recording_id: str | None = None,
+    concat: bool = True,
+) -> Path:
+    """Extract audio recording(s) from document.
+
+    If recording_id is None and concat is True, concatenates all active recordings in sequence.
+    """
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+
+    recordings = document.recordings()
+    if not recordings:
+        raise ValueError("Document contains no audio recordings")
+
+    output_path = Path(output)
+
+    if recording_id:
+        target_rec = None
+        for r in recordings:
+            if r.id == recording_id:
+                target_rec = r
+                break
+        if not target_rec:
+            raise ValueError(f"Recording ID '{recording_id}' not found")
+
+        if output_path.is_dir() or str(output).endswith(("/", "\\")):
+            output_path = output_path / f"{target_rec.id}.m4a"
+        return document.export_audio(target_rec, output_path)
+
+    # If output is a directory and not concat, export each recording
+    if (output_path.is_dir() or str(output).endswith(("/", "\\"))) and not concat:
+        output_path.mkdir(parents=True, exist_ok=True)
+        for r in recordings:
+            document.export_audio(r, output_path / f"{r.id}.m4a")
+        return output_path
+
+    # If only 1 recording or concat=False with file output
+    if len(recordings) == 1 or not concat:
+        if output_path.is_dir() or str(output).endswith(("/", "\\")):
+            output_path = output_path / f"{recordings[0].id}.m4a"
+        return document.export_audio(recordings[0], output_path)
+
+    # Concat all recordings via ffmpeg
+    if not shutil.which("ffmpeg"):
+        # Fallback to exporting first recording if ffmpeg not available
+        if output_path.is_dir() or str(output).endswith(("/", "\\")):
+            output_path = output_path / f"{recordings[0].id}.m4a"
+        return document.export_audio(recordings[0], output_path)
+
+    if output_path.is_dir() or str(output).endswith(("/", "\\")):
+        doc_stem = document.path.stem if getattr(document, "path", None) else "document"
+        output_path = output_path / f"{doc_stem}_audio_all.m4a"
+    elif output_path.suffix.lower() not in (".m4a", ".mp4", ".aac"):
+        output_path = output_path.with_suffix(".m4a")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    audio_tmps = []
+    try:
+        for r in recordings:
+            f = tempfile.NamedTemporaryFile(suffix=".m4a", delete=False)
+            f.write(document.read_audio(r))
+            f.close()
+            audio_tmps.append(f.name)
+
+        cmd_concat = ["ffmpeg", "-y"]
+        for a in audio_tmps:
+            cmd_concat.extend(["-i", a])
+        filter_str = "".join(f"[{i}:a]" for i in range(len(audio_tmps))) + f"concat=n={len(audio_tmps)}:v=0:a=1[outa]"
+        cmd_concat.extend(["-filter_complex", filter_str, "-map", "[outa]", "-c:a", "aac", str(output_path)])
+        subprocess.check_call(cmd_concat, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    finally:
+        for a in audio_tmps:
+            if os.path.exists(a):
+                os.unlink(a)
+
+    return output_path
+
+
+def write_recording_video(
+    document: GoodNotesDocument,
+    output: str | Path,
+    recording_id: str | None = None,
+    page_index: int | None = None,
+    fps: int = 15,
+    resolution_scale: float = 2.0,
+    dim_future: bool = True,
+    highlight_duration: float = 1.2,
+    fill_shapes: bool = True,
+    sticky_note_state: str | None = None,
+    textbox_state: bool | str | None = False,
+    parse_all: bool = False,
+) -> Path:
+    """Export synchronized MP4 video matching recorded audio with handwritten strokes.
+
+    If recording_id is None, plays and concatenates all active recording sessions in sequence!
+    """
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+
+    if not shutil.which("ffmpeg"):
+        raise RuntimeError("ffmpeg is required for video export but was not found on PATH")
+
+    all_recordings = document.recordings()
+    if not all_recordings:
+        raise ValueError("Document contains no audio recordings")
+
+    target_recordings: list[Recording] = []
+    if recording_id:
+        found = next((r for r in all_recordings if r.id == recording_id), None)
+        if not found:
+            raise ValueError(f"Recording ID '{recording_id}' not found")
+        target_recordings = [found]
+    else:
+        target_recordings = list(all_recordings)
+
+    # Extract pages
+    try:
+        pages = document.pages(parse_all=parse_all)
+    except TypeError:
+        pages = document.pages()
+
+    if not pages:
+        raise ValueError("Document contains no pages")
+
+    page_map = {p.uuid[:32]: p for p in pages}
+
+    output_path = Path(output)
+    if output_path.is_dir() or str(output).endswith(("/", "\\")):
+        doc_stem = document.path.stem if getattr(document, "path", None) else "document"
+        suffix_name = target_recordings[0].id[:8] if len(target_recordings) == 1 else "all_recordings"
+        output_path = output_path / f"{doc_stem}_{suffix_name}.mp4"
+    elif output_path.suffix.lower() != ".mp4":
+        output_path = output_path.with_suffix(".mp4")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Dump and probe each audio file
+    audio_tmps: list[str] = []
+    durations: list[float] = []
+    for r in target_recordings:
+        f = tempfile.NamedTemporaryFile(suffix=".m4a", delete=False)
+        f.write(document.read_audio(r))
+        f.close()
+        audio_tmps.append(f.name)
+
+        dur = r.duration
+        if shutil.which("ffprobe"):
+            try:
+                cmd_dur = [
+                    "ffprobe", "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    f.name,
+                ]
+                dur_str = subprocess.check_output(cmd_dur).decode().strip()
+                if dur_str:
+                    dur = max(dur, float(dur_str))
+            except Exception:
+                pass
+        durations.append(max(0.5, dur))
+
+    # Build concatenated audio file if multiple recordings
+    combined_audio_tmp: str = ""
+    try:
+        if len(audio_tmps) == 1:
+            combined_audio_tmp = audio_tmps[0]
+        else:
+            concat_f = tempfile.NamedTemporaryFile(suffix=".m4a", delete=False)
+            concat_f.close()
+            combined_audio_tmp = concat_f.name
+
+            cmd_concat = ["ffmpeg", "-y"]
+            for a in audio_tmps:
+                cmd_concat.extend(["-i", a])
+            filter_str = "".join(f"[{i}:a]" for i in range(len(audio_tmps))) + f"concat=n={len(audio_tmps)}:v=0:a=1[outa]"
+            cmd_concat.extend(["-filter_complex", filter_str, "-map", "[outa]", "-c:a", "aac", combined_audio_tmp])
+            subprocess.check_call(cmd_concat, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        has_rsvg = bool(shutil.which("rsvg-convert"))
+
+        ffmpeg_cmd = [
+            "ffmpeg", "-y",
+            "-f", "image2pipe",
+            "-vcodec", "png",
+            "-r", str(fps),
+            "-i", "-",
+            "-i", combined_audio_tmp,
+            "-vf", f"scale=iw*{resolution_scale}:ih*{resolution_scale}:flags=lanczos,pad=ceil(iw/2)*2:ceil(ih/2)*2",
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-shortest",
+            str(output_path),
+        ]
+
+        proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        # Collect stroke UUIDs by recording for inter-recording visibility tracking
+        rec_stroke_sets = [set(t.stroke_uuid for t in r.stroke_timings) for r in target_recordings]
+
+        for rec_idx, r in enumerate(target_recordings):
+            dur = durations[rec_idx]
+            num_frames = max(1, int(math.ceil(dur * fps)))
+            timings = {t.stroke_uuid: t.timestamp for t in r.stroke_timings}
+
+            prior_strokes = set().union(*rec_stroke_sets[:rec_idx]) if rec_idx > 0 else set()
+            future_strokes = set().union(*rec_stroke_sets[rec_idx+1:]) if rec_idx + 1 < len(target_recordings) else set()
+
+            for f_idx in range(num_frames):
+                t = f_idx / fps
+                stroke_styles: dict[str, dict[str, object]] = {}
+
+                # Determine active page at time t
+                if page_index is not None and 0 <= page_index < len(pages):
+                    target_page = pages[page_index]
+                else:
+                    active_puuid = None
+                    for timing in r.stroke_timings:
+                        if timing.timestamp <= t:
+                            active_puuid = timing.page_uuid[:32]
+                        else:
+                            break
+                    if not active_puuid and r.stroke_timings:
+                        active_puuid = r.stroke_timings[0].page_uuid[:32]
+                    elif not active_puuid and r.page_uuids:
+                        active_puuid = r.page_uuids[0][:32]
+
+                    target_page = page_map.get(active_puuid, pages[0]) if active_puuid else pages[0]
+
+                # Prior recordings' strokes are completed and fully visible
+                for s in prior_strokes:
+                    stroke_styles[s] = {"opacity": 1.0, "highlight": False}
+
+                # Future recordings' strokes are dimmed/hidden
+                for s in future_strokes:
+                    stroke_styles[s] = {"opacity": 0.15 if dim_future else 0.0, "hidden": not dim_future}
+
+                # Current recording's strokes
+                for suuid, stime in timings.items():
+                    if t < stime:
+                        stroke_styles[suuid] = {"opacity": 0.15 if dim_future else 0.0, "hidden": not dim_future}
+                    elif stime <= t <= stime + highlight_duration:
+                        stroke_styles[suuid] = {"opacity": 1.0, "highlight": True}
+                    else:
+                        stroke_styles[suuid] = {"opacity": 1.0, "highlight": False}
+
+                svg_text = page_to_svg(
+                    target_page,
+                    document,
+                    fill_shapes=fill_shapes,
+                    sticky_note_state=sticky_note_state,
+                    textbox_state=textbox_state,
+                    stroke_styles=stroke_styles,
+                )
+
+                if has_rsvg:
+                    rsvg_proc = subprocess.Popen(
+                        ["rsvg-convert", "-f", "png"],
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    png_bytes, _ = rsvg_proc.communicate(input=svg_text.encode("utf-8"))
+                else:
+                    try:
+                        import fitz
+                        doc_fitz = fitz.open(stream=svg_text.encode("utf-8"), filetype="svg")
+                        pix = doc_fitz[0].get_pixmap(dpi=int(72 * resolution_scale))
+                        png_bytes = pix.tobytes("png")
+                        doc_fitz.close()
+                    except Exception:
+                        _ensure_cairo_loaded()
+                        import cairosvg
+                        png_bytes = cairosvg.svg2png(bytestring=svg_text.encode("utf-8"), scale=resolution_scale)
+
+                proc.stdin.write(png_bytes)
+
+        if proc.stdin:
+            proc.stdin.close()
+        stderr = proc.stderr.read() if proc.stderr else b""
+        proc.wait()
+        if proc.returncode != 0:
+            raise RuntimeError(f"ffmpeg encoding failed with code {proc.returncode}: {stderr.decode(errors='ignore')}")
+
+    finally:
+        for a in audio_tmps:
+            if os.path.exists(a):
+                os.unlink(a)
+        if combined_audio_tmp and combined_audio_tmp not in audio_tmps and os.path.exists(combined_audio_tmp):
+            os.unlink(combined_audio_tmp)
+
+    return output_path
+
+
+def write_recording_html(
+    document: GoodNotesDocument,
+    output: str | Path,
+    recording_id: str | None = None,
+    page_index: int | None = None,
+    fill_shapes: bool = True,
+    sticky_note_state: str | None = None,
+    textbox_state: bool | str | None = False,
+    parse_all: bool = True,
+) -> Path:
+    """Export standalone interactive HTML5 player for playback with synchronized handwriting highlight."""
+    all_recordings = document.recordings()
+    if not all_recordings:
+        raise ValueError("Document contains no audio recordings")
+
+    target_recordings: list[Recording] = []
+    if recording_id:
+        found = next((r for r in all_recordings if r.id == recording_id), None)
+        if not found:
+            raise ValueError(f"Recording ID '{recording_id}' not found")
+        target_recordings = [found]
+    else:
+        target_recordings = list(all_recordings)
+
+    try:
+        pages = document.pages(parse_all=parse_all)
+    except TypeError:
+        pages = document.pages()
+
+    if not pages:
+        raise ValueError("Document contains no pages")
+
+    page_map = {p.uuid[:32]: idx for idx, p in enumerate(pages)}
+
+    output_path = Path(output)
+    if output_path.is_dir() or str(output).endswith(("/", "\\")):
+        doc_stem = document.path.stem if getattr(document, "path", None) else "document"
+        suffix_name = target_recordings[0].id[:8] if len(target_recordings) == 1 else "all_recordings"
+        output_path = output_path / f"{doc_stem}_{suffix_name}.html"
+    elif output_path.suffix.lower() != ".html":
+        output_path = output_path.with_suffix(".html")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Render SVGs for all pages
+    page_svgs: dict[int, str] = {}
+    for p_idx, p in enumerate(pages):
+        page_svgs[p_idx] = page_to_svg(
+            p,
+            document,
+            fill_shapes=fill_shapes,
+            sticky_note_state=sticky_note_state,
+            textbox_state=textbox_state,
+            stroke_data_attributes=True,
+        )
+
+    # Prepare recordings data structure
+    recordings_data = []
+    for r_idx, r in enumerate(target_recordings):
+        audio_b64 = base64.b64encode(document.read_audio(r)).decode("ascii")
+        p_idx = 0
+        if page_index is not None and 0 <= page_index < len(pages):
+            p_idx = page_index
+        elif r.page_uuids:
+            puuid = r.page_uuids[0][:32]
+            if puuid in page_map:
+                p_idx = page_map[puuid]
+
+        # Each stroke timing has timestamp and resolved page index
+        timings = {}
+        for t in r.stroke_timings:
+            st_pidx = page_map.get(t.page_uuid[:32], p_idx)
+            timings[t.stroke_uuid] = {
+                "t": round(t.timestamp, 4),
+                "page_index": st_pidx,
+            }
+
+        recordings_data.append({
+            "id": r.id,
+            "duration": round(r.duration, 4),
+            "page_index": p_idx,
+            "stroke_timings": timings,
+            "audio_b64": audio_b64,
+        })
+
+    recordings_json = json.dumps(recordings_data)
+    page_svgs_json = json.dumps(page_svgs)
+
+    doc_title = html.escape(document.path.name if getattr(document, "path", None) else "GoodNotes Audio Note")
+    total_dur = sum(r["duration"] for r in recordings_data)
+    dur_min = int(total_dur // 60)
+    dur_sec = int(total_dur % 60)
+    dur_display = f"{dur_min:02d}:{dur_sec:02d}"
+
+    html_template = f"""<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{doc_title} - 音訊筆跡同步播放器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {{
+      --bg-color: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.85);
+      --card-border: rgba(255, 255, 255, 0.1);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-hover: #0ea5e9;
+      --highlight: #facc15;
+      --stroke-glow: rgba(250, 204, 21, 0.9);
+    }}
+    * {{
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }}
+    body {{
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at top, #1e293b, #0f172a);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+    }}
+    .player-container {{
+      width: 100%;
+      max-width: 960px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }}
+    .header {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+    }}
+    .header h1 {{
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text-main);
+    }}
+    .badge {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 500;
+    }}
+    .controls-panel {{
+      padding: 20px 24px;
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+    }}
+    .timeline-row {{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }}
+    .time-display {{
+      font-family: monospace;
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      min-width: 48px;
+    }}
+    .scrubber-container {{
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+    }}
+    .scrubber {{
+      width: 100%;
+      height: 8px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+      outline: none;
+      cursor: pointer;
+      transition: background 0.2s;
+    }}
+    .scrubber::-webkit-slider-thumb {{
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      box-shadow: 0 0 10px var(--accent);
+      transition: transform 0.1s;
+    }}
+    .scrubber::-webkit-slider-thumb:hover {{
+      transform: scale(1.25);
+    }}
+    .buttons-row {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }}
+    .playback-buttons {{
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }}
+    .btn {{
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }}
+    .btn:hover {{
+      background: rgba(255, 255, 255, 0.2);
+    }}
+    .btn-primary {{
+      background: var(--accent);
+      color: #0f172a;
+      font-weight: 600;
+      border: none;
+      padding: 8px 18px;
+    }}
+    .btn-primary:hover {{
+      background: var(--accent-hover);
+      box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
+    }}
+    .select-input {{
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      outline: none;
+    }}
+    .page-nav-bar {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 18px;
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      font-size: 0.9rem;
+    }}
+    .note-viewer {{
+      background: #ffffff;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+      position: relative;
+    }}
+    .note-viewer svg {{
+      width: 100%;
+      height: auto;
+      display: block;
+    }}
+    .pages-stack {{
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }}
+    .page-card {{
+      background: #ffffff;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      position: relative;
+    }}
+    .page-card-header {{
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(8px);
+      color: #f8fafc;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      z-index: 10;
+    }}
+    .gn-stroke {{
+      cursor: pointer;
+      transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1), filter 0.25s ease;
+    }}
+    .gn-stroke:hover {{
+      filter: drop-shadow(0 0 6px var(--stroke-glow));
+    }}
+    .gn-stroke-highlight {{
+      filter: drop-shadow(0 0 8px #facc15) drop-shadow(0 0 16px #facc15) !important;
+      opacity: 1 !important;
+    }}
+    .hint {{
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }}
+  </style>
+</head>
+<body>
+  <div class="player-container">
+    <div class="header">
+      <div>
+        <h1>{doc_title}</h1>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 2px;">
+          錄音段落: {len(recordings_data)} | 總頁數: {len(pages)} 頁 | 總時長: {dur_display}
+        </p>
+      </div>
+      <span class="badge">🎙️ 多頁錄音筆跡同步播放</span>
+    </div>
+
+    <div class="controls-panel">
+      <div class="timeline-row">
+        <span class="time-display" id="currentTime">00:00</span>
+        <div class="scrubber-container">
+          <input type="range" class="scrubber" id="progressBar" min="0" max="{total_dur}" step="0.05" value="0">
+        </div>
+        <span class="time-display" id="totalDuration">{dur_display}</span>
+      </div>
+
+      <div class="buttons-row">
+        <div class="playback-buttons">
+          <button class="btn btn-primary" id="playBtn">▶ 播放</button>
+          <button class="btn" id="rewindBtn">⏪ -5s</button>
+          <button class="btn" id="forwardBtn">⏩ +5s</button>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+            段落:
+            <select class="select-input" id="recordingSelect">
+              <option value="-1">全部連續播放 (All)</option>
+              {"".join(f'<option value="{idx}">段落 {idx+1} ({r["id"][:8]}... {int(r["duration"]//60):02d}:{int(r["duration"]%60):02d})</option>' for idx, r in enumerate(recordings_data))}
+            </select>
+          </label>
+          <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+            模式:
+            <select class="select-input" id="modeSelect">
+              <option value="highlight">同步點亮 (預先淡化)</option>
+              <option value="reveal">逐漸書寫 (隨錄音出現)</option>
+              <option value="normal">完整顯示</option>
+            </select>
+          </label>
+          <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+            倍速:
+            <select class="select-input" id="speedSelect">
+              <option value="0.75">0.75x</option>
+              <option value="1.0" selected>1.0x</option>
+              <option value="1.25">1.25x</option>
+              <option value="1.5">1.5x</option>
+              <option value="2.0">2.0x</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-nav-bar">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button class="btn" id="prevPageBtn">◀ 上一頁</button>
+        <select class="select-input" id="pageSelect">
+          {"".join(f'<option value="{idx}">第 {idx+1} 頁 / 共 {len(pages)} 頁</option>' for idx in range(len(pages)))}
+        </select>
+        <button class="btn" id="nextPageBtn">下一頁 ▶</button>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+          檢視模式:
+          <select class="select-input" id="viewModeSelect">
+            <option value="single">單頁翻頁 (Single)</option>
+            <option value="stack">全頁連續捲動 (Continuous)</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <!-- Single Page Container -->
+    <div class="note-viewer" id="singleViewer"></div>
+
+    <!-- Multi-Page Stack Container -->
+    <div class="pages-stack" id="stackViewer" style="display: none;"></div>
+
+    <div class="hint">💡 提示：點擊任何頁面上的筆跡可直接跳轉至該筆畫書寫時刻！按空白鍵播放/暫停。</div>
+  </div>
+
+  <audio id="audioElement" preload="auto"></audio>
+
+  <script>
+    const recordings = {recordings_json};
+    const pageSvgs = {page_svgs_json};
+    const totalPages = {len(pages)};
+
+    const audio = document.getElementById('audioElement');
+    const playBtn = document.getElementById('playBtn');
+    const progressBar = document.getElementById('progressBar');
+    const currentTimeEl = document.getElementById('currentTime');
+    const totalDurationEl = document.getElementById('totalDuration');
+    const speedSelect = document.getElementById('speedSelect');
+    const modeSelect = document.getElementById('modeSelect');
+    const recordingSelect = document.getElementById('recordingSelect');
+    const rewindBtn = document.getElementById('rewindBtn');
+    const forwardBtn = document.getElementById('forwardBtn');
+    const pageSelect = document.getElementById('pageSelect');
+    const prevPageBtn = document.getElementById('prevPageBtn');
+    const nextPageBtn = document.getElementById('nextPageBtn');
+    const viewModeSelect = document.getElementById('viewModeSelect');
+    const singleViewer = document.getElementById('singleViewer');
+    const stackViewer = document.getElementById('stackViewer');
+
+    let currentRecIndex = 0;
+    let isContinuous = true;
+    let currentPageIndex = 0;
+    let isStackMode = false;
+
+    // Calculate recording offsets
+    let recOffsets = [];
+    let accum = 0;
+    for (let r of recordings) {{
+      recOffsets.push(accum);
+      accum += r.duration;
+    }}
+    const totalDuration = accum;
+
+    function formatTime(sec) {{
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return `${{m.toString().padStart(2, '0')}}:${{s.toString().padStart(2, '0')}}`;
+    }}
+
+    function buildStackViewer() {{
+      let html = '';
+      for (let pIdx = 0; pIdx < totalPages; pIdx++) {{
+        html += `<div class="page-card" id="pageCard_${{pIdx}}" data-page-index="${{pIdx}}">
+          <div class="page-card-header">第 ${{pIdx+1}} 頁</div>
+          ${{pageSvgs[pIdx] || ''}}
+        </div>`;
+      }}
+      stackViewer.innerHTML = html;
+    }}
+
+    function loadSinglePage(pageIdx) {{
+      if (currentPageIndex === pageIdx && singleViewer.innerHTML) return;
+      currentPageIndex = pageIdx;
+      pageSelect.value = pageIdx;
+      singleViewer.innerHTML = pageSvgs[pageIdx] || Object.values(pageSvgs)[0];
+      attachStrokeClickListeners(singleViewer);
+    }}
+
+    function loadRecording(recIdx, seekRelTime = 0, autoPlay = false) {{
+      currentRecIndex = recIdx;
+      const rec = recordings[recIdx];
+      audio.src = `data:audio/mp4;base64,${{rec.audio_b64}}`;
+      audio.playbackRate = parseFloat(speedSelect.value);
+      loadSinglePage(rec.page_index);
+
+      audio.onloadedmetadata = () => {{
+        if (seekRelTime > 0) {{
+          audio.currentTime = seekRelTime;
+        }}
+        if (autoPlay) {{
+          audio.play().catch(() => {{}});
+          playBtn.textContent = '⏸ 暫停';
+        }}
+      }};
+    }}
+
+    function attachStrokeClickListeners(rootElement) {{
+      const strokeElements = rootElement.querySelectorAll('[data-stroke-id]');
+      strokeElements.forEach(el => {{
+        const suuid = el.getAttribute('data-stroke-id');
+        // Find which recording this stroke belongs to
+        for (let rIdx = 0; rIdx < recordings.length; rIdx++) {{
+          const r = recordings[rIdx];
+          if (r.stroke_timings[suuid] !== undefined) {{
+            const timing = r.stroke_timings[suuid];
+            const time = timing.t;
+            const targetPage = timing.page_index;
+            el.setAttribute('title', `點擊跳至段落 ${{rIdx+1}} (第 ${{targetPage+1}} 頁) - ${{formatTime(time)}} (${{time.toFixed(2)}}s)`);
+            el.addEventListener('click', (e) => {{
+              e.stopPropagation();
+              if (currentRecIndex !== rIdx) {{
+                loadRecording(rIdx, time, true);
+              }} else {{
+                audio.currentTime = time;
+                if (audio.paused) audio.play();
+                playBtn.textContent = '⏸ 暫停';
+              }}
+              if (!isStackMode) {{
+                loadSinglePage(targetPage);
+              }}
+            }});
+            break;
+          }}
+        }}
+      }});
+    }}
+
+    prevPageBtn.addEventListener('click', () => {{
+      if (currentPageIndex > 0) {{
+        loadSinglePage(currentPageIndex - 1);
+      }}
+    }});
+
+    nextPageBtn.addEventListener('click', () => {{
+      if (currentPageIndex < totalPages - 1) {{
+        loadSinglePage(currentPageIndex + 1);
+      }}
+    }});
+
+    pageSelect.addEventListener('change', () => {{
+      loadSinglePage(parseInt(pageSelect.value));
+    }});
+
+    viewModeSelect.addEventListener('change', () => {{
+      isStackMode = (viewModeSelect.value === 'stack');
+      if (isStackMode) {{
+        singleViewer.style.display = 'none';
+        stackViewer.style.display = 'flex';
+      }} else {{
+        singleViewer.style.display = 'block';
+        stackViewer.style.display = 'none';
+        loadSinglePage(currentPageIndex);
+      }}
+    }});
+
+    function togglePlay() {{
+      if (audio.paused) {{
+        audio.play().catch(() => {{}});
+        playBtn.textContent = '⏸ 暫停';
+      }} else {{
+        audio.pause();
+        playBtn.textContent = '▶ 播放';
+      }}
+    }}
+
+    playBtn.addEventListener('click', togglePlay);
+
+    document.addEventListener('keydown', (e) => {{
+      if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') {{
+        e.preventDefault();
+        togglePlay();
+      }}
+    }});
+
+    rewindBtn.addEventListener('click', () => {{
+      seekDelta(-5);
+    }});
+
+    forwardBtn.addEventListener('click', () => {{
+      seekDelta(5);
+    }});
+
+    function seekDelta(delta) {{
+      const globalTime = getGlobalTime();
+      setGlobalTime(Math.max(0, Math.min(totalDuration, globalTime + delta)));
+    }}
+
+    speedSelect.addEventListener('change', () => {{
+      audio.playbackRate = parseFloat(speedSelect.value);
+    }});
+
+    recordingSelect.addEventListener('change', () => {{
+      const val = parseInt(recordingSelect.value);
+      if (val === -1) {{
+        isContinuous = true;
+        progressBar.max = totalDuration;
+        totalDurationEl.textContent = formatTime(totalDuration);
+      }} else {{
+        isContinuous = false;
+        loadRecording(val, 0, !audio.paused);
+        progressBar.max = recordings[val].duration;
+        totalDurationEl.textContent = formatTime(recordings[val].duration);
+      }}
+    }});
+
+    let isScrubbing = false;
+    progressBar.addEventListener('input', () => {{
+      isScrubbing = true;
+      const val = parseFloat(progressBar.value);
+      currentTimeEl.textContent = formatTime(val);
+      if (isContinuous) {{
+        updateContinuousVisuals(val);
+      }} else {{
+        updateSingleVisuals(val);
+      }}
+    }});
+
+    progressBar.addEventListener('change', () => {{
+      const val = parseFloat(progressBar.value);
+      if (isContinuous) {{
+        setGlobalTime(val);
+      }} else {{
+        audio.currentTime = val;
+      }}
+      isScrubbing = false;
+    }});
+
+    function getGlobalTime() {{
+      return recOffsets[currentRecIndex] + (audio.currentTime || 0);
+    }}
+
+    function setGlobalTime(globalTime) {{
+      for (let i = recordings.length - 1; i >= 0; i--) {{
+        if (globalTime >= recOffsets[i]) {{
+          const relTime = globalTime - recOffsets[i];
+          if (currentRecIndex !== i) {{
+            loadRecording(i, relTime, !audio.paused);
+          }} else {{
+            audio.currentTime = relTime;
+          }}
+          break;
+        }}
+      }}
+    }}
+
+    audio.addEventListener('ended', () => {{
+      if (isContinuous && currentRecIndex + 1 < recordings.length) {{
+        loadRecording(currentRecIndex + 1, 0, true);
+      }} else {{
+        playBtn.textContent = '▶ 播放';
+      }}
+    }});
+
+    function updateVisualElements(rootElement, activeRecIdx, relTime) {{
+      const mode = modeSelect.value;
+      const strokeElements = rootElement.querySelectorAll('[data-stroke-id]');
+      let latestActivePage = null;
+
+      strokeElements.forEach(el => {{
+        const suuid = el.getAttribute('data-stroke-id');
+        let ownerRecIdx = -1;
+        let sTime = -1;
+        let stPage = 0;
+
+        for (let rIdx = 0; rIdx < recordings.length; rIdx++) {{
+          if (recordings[rIdx].stroke_timings[suuid] !== undefined) {{
+            ownerRecIdx = rIdx;
+            sTime = recordings[rIdx].stroke_timings[suuid].t;
+            stPage = recordings[rIdx].stroke_timings[suuid].page_index;
+            break;
+          }}
+        }}
+
+        if (ownerRecIdx === -1) {{
+          el.style.opacity = '1.0';
+          el.classList.remove('gn-stroke-highlight');
+          return;
+        }}
+
+        if (mode === 'normal') {{
+          el.style.opacity = '1.0';
+          el.classList.remove('gn-stroke-highlight');
+        }} else if (ownerRecIdx < activeRecIdx) {{
+          el.style.opacity = '1.0';
+          el.classList.remove('gn-stroke-highlight');
+        }} else if (ownerRecIdx > activeRecIdx) {{
+          el.style.opacity = mode === 'reveal' ? '0' : '0.15';
+          el.classList.remove('gn-stroke-highlight');
+        }} else {{
+          if (relTime < sTime) {{
+            el.style.opacity = mode === 'reveal' ? '0' : '0.15';
+            el.classList.remove('gn-stroke-highlight');
+          }} else if (relTime <= sTime + 1.2) {{
+            el.style.opacity = '1.0';
+            el.classList.add('gn-stroke-highlight');
+            latestActivePage = stPage;
+          }} else {{
+            el.style.opacity = '1.0';
+            el.classList.remove('gn-stroke-highlight');
+            latestActivePage = stPage;
+          }}
+        }}
+      }});
+
+      // Auto follow active page in single page mode
+      if (!isStackMode && latestActivePage !== null && latestActivePage !== currentPageIndex) {{
+        loadSinglePage(latestActivePage);
+      }}
+    }}
+
+    function updateSingleVisuals(relTime) {{
+      const target = isStackMode ? stackViewer : singleViewer;
+      updateVisualElements(target, currentRecIndex, relTime);
+    }}
+
+    function updateContinuousVisuals(globalTime) {{
+      let activeRecIdx = 0;
+      for (let i = recordings.length - 1; i >= 0; i--) {{
+        if (globalTime >= recOffsets[i]) {{
+          activeRecIdx = i;
+          break;
+        }}
+      }}
+      const relTime = globalTime - recOffsets[activeRecIdx];
+      const target = isStackMode ? stackViewer : singleViewer;
+      updateVisualElements(target, activeRecIdx, relTime);
+    }}
+
+    function animate() {{
+      if (!isScrubbing && !audio.paused) {{
+        if (isContinuous) {{
+          const globalTime = getGlobalTime();
+          progressBar.value = globalTime;
+          currentTimeEl.textContent = formatTime(globalTime);
+          updateContinuousVisuals(globalTime);
+        }} else {{
+          progressBar.value = audio.currentTime;
+          currentTimeEl.textContent = formatTime(audio.currentTime);
+          updateSingleVisuals(audio.currentTime);
+        }}
+      }}
+      requestAnimationFrame(animate);
+    }}
+
+    // Initialize
+    buildStackViewer();
+    attachStrokeClickListeners(stackViewer);
+    loadRecording(0, 0, false);
+    progressBar.max = totalDuration;
+    totalDurationEl.textContent = formatTime(totalDuration);
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
+"""
+    output_path.write_text(html_template, encoding="utf-8")
+    return output_path

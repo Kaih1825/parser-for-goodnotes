@@ -7,6 +7,7 @@ from pathlib import Path
 import zipfile
 
 from .page import Page, parse_page_from_records
+from .recording import Recording, parse_mp4_duration, parse_recordings_from_events
 from .wire import DecodeError, Message, decode_delimited_messages, decode_message, try_decode_message
 from .text import TextFragment, extract_text
 
@@ -479,6 +480,75 @@ class GoodNotesDocument:
 
         return tuple(pages_list)
 
+    def recordings(self, include_deleted: bool = False) -> tuple[Recording, ...]:
+        """Extract audio recordings and synchronized stroke timings from document events."""
+        if "index.events.pb" not in self.member_names():
+            return ()
+        try:
+            records = self.decode_records("index.events.pb")
+        except (DecodeError, ValueError):
+            return ()
+
+        # Build attachment map
+        att_map: dict[str, str] = {}
+        if "index.attachments.pb" in self.member_names():
+            try:
+                for rec in self.decode_records("index.attachments.pb"):
+                    att_id = ""
+                    att_path = ""
+                    for f in rec.fields:
+                        if isinstance(f.value, bytes):
+                            try:
+                                s = f.value.decode("utf-8")
+                                if s.startswith("attachments/"):
+                                    att_path = s
+                                elif len(s) == 36 and "-" in s:
+                                    att_id = s
+                            except UnicodeDecodeError:
+                                pass
+                    if att_id and att_path:
+                        att_map[att_id] = att_path
+            except (DecodeError, ValueError):
+                pass
+
+        # Probe durations from audio attachments directly
+        audio_durations: dict[str, float] = {}
+        for member in self.member_names():
+            if member.startswith("attachments/"):
+                try:
+                    data = self.read(member)
+                    dur = parse_mp4_duration(data)
+                    if dur is not None:
+                        audio_durations[member] = dur
+                        audio_durations[member.replace("attachments/", "")] = dur
+                except Exception:
+                    pass
+
+        return parse_recordings_from_events(
+            records,
+            attachment_map=att_map,
+            audio_durations=audio_durations,
+            include_deleted=include_deleted,
+        )
+
+    def read_audio(self, recording: Recording | str) -> bytes:
+        """Read the raw audio bytes for a recording or attachment member path."""
+        path = recording.audio_attachment_path if isinstance(recording, Recording) else recording
+        if path not in self.member_names():
+            if f"attachments/{path}" in self.member_names():
+                path = f"attachments/{path}"
+            else:
+                raise FileNotFoundError(f"Audio attachment '{path}' not found in document")
+        return self.read(path)
+
+    def export_audio(self, recording: Recording | str, output_path: str | Path) -> Path:
+        """Export audio track of a recording to a file."""
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        data = self.read_audio(recording)
+        out.write_bytes(data)
+        return out
+
     def as_json(self) -> dict[str, object]:
         protobuf: dict[str, object] = {}
         for member in self.member_names():
@@ -491,6 +561,7 @@ class GoodNotesDocument:
             "source": self.path.name,
             "members": [member.__dict__ if hasattr(member, "__dict__") else {"path": member.path, "size": member.size, "sha256": member.sha256, "is_protobuf": member.is_protobuf} for member in self.inventory()],
             "pages": [p.as_dict() for p in self.pages()],
+            "recordings": [r.as_dict() for r in self.recordings()],
             "protobuf": protobuf,
         }
 

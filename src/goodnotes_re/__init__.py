@@ -9,7 +9,18 @@ from .element import PageElement
 from .shape import ShapePath
 from .stroke import Stroke, StrokePoint
 from .page import Page, PageDimensions
-from .export import page_to_svg, svg_to_pdf_bytes, svgs_to_pdf, write_json, write_pdf, write_svg
+from .recording import Recording, RecordingStrokeTiming, parse_recordings_from_events
+from .export import (
+    page_to_svg,
+    svg_to_pdf_bytes,
+    svgs_to_pdf,
+    write_audio,
+    write_json,
+    write_pdf,
+    write_recording_html,
+    write_recording_video,
+    write_svg,
+)
 
 __all__ = [
     "Field",
@@ -18,6 +29,8 @@ __all__ = [
     "Page",
     "PageDimensions",
     "PageElement",
+    "Recording",
+    "RecordingStrokeTiming",
     "ShapePath",
     "Stroke",
     "StrokePoint",
@@ -28,9 +41,13 @@ __all__ = [
     "decode_message",
     "decode_tpl",
     "page_to_svg",
+    "parse_recordings_from_events",
     "svg_to_pdf_bytes",
     "svgs_to_pdf",
+    "write_audio",
     "write_json",
     "write_pdf",
+    "write_recording_html",
+    "write_recording_video",
     "write_svg",
 ]

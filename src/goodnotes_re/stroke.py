@@ -145,7 +145,7 @@ def is_valid_coord(val: float) -> bool:
 
 
 def is_valid_pressure(p: float) -> bool:
-    return 0.01 <= p <= 10.0
+    return 0.001 <= p <= 100.0
 
 
 def _path_jitter_ratio(points: Sequence[StrokePoint]) -> float:
@@ -308,31 +308,11 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
                 groups.append(g)
                 return groups, default_width
 
-    # 3. Candidate point-array format matching (a) 6-float, (b) 3-float, (c) 5-float, (d) 2-float
-    # (a) 6-float -> Take the midpoint of left/right boundary points as stroke center coordinate (resolves spring jitter)
+    # 3. Candidate point-array format matching (a) 3-float, (b) 5-float, (c) 2-float
+    # Limit idx <= 5 to avoid misidentifying trailing outline polygon / mesh lists (values[6..10]) as point arrays
+    # (a) 3-float 3-tuple (x, y, p)
     for idx, v in enumerate(tpl_img.values):
-        if isinstance(v, list) and len(v) >= 12 and isinstance(v[0], (int, float)) and len(v) % 6 == 0:
-            parsed: list[StrokePoint] = []
-            ok = True
-            for k in range(0, len(v), 6):
-                x1, y1 = uint32_to_float32(v[k]), uint32_to_float32(v[k + 1])
-                x2, y2 = uint32_to_float32(v[k + 2]), uint32_to_float32(v[k + 3])
-                p1, p2 = uint32_to_float32(v[k + 4]), uint32_to_float32(v[k + 5])
-                if not (is_valid_coord(x1) and is_valid_coord(y1) and is_valid_coord(x2) and is_valid_coord(y2)):
-                    ok = False; break
-                if not (is_valid_pressure(p1) and is_valid_pressure(p2)):
-                    ok = False; break
-                
-                cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-                cp = (p1 + p2) / 2.0
-                if not parsed or math.hypot(cx - parsed[-1].x, cy - parsed[-1].y) >= 1e-3:
-                    parsed.append(StrokePoint(cx, cy, cp))
-            if ok and len(parsed) >= 1:
-                candidates.append((True, len(parsed), idx, parsed))
-
-    # (b) 3-float 3-tuple (x, y, p)
-    for idx, v in enumerate(tpl_img.values):
-        if isinstance(v, list) and len(v) >= 3 and isinstance(v[0], (int, float)) and len(v) % 3 == 0:
+        if idx <= 5 and isinstance(v, list) and len(v) >= 3 and isinstance(v[0], (int, float)) and len(v) % 3 == 0:
             parsed = []
             ok = True
             for k in range(0, len(v), 3):
@@ -346,7 +326,7 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
 
     # (c) 5-float 5-tuple (x, y, p, w, angle)
     for idx, v in enumerate(tpl_img.values):
-        if isinstance(v, list) and len(v) >= 5 and isinstance(v[0], (int, float)) and len(v) % 5 == 0:
+        if idx <= 5 and isinstance(v, list) and len(v) >= 5 and isinstance(v[0], (int, float)) and len(v) % 5 == 0:
             parsed = []
             ok = True
             for k in range(0, len(v), 5):
