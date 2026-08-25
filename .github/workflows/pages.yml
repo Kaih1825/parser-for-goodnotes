@@ -40,7 +40,12 @@ jobs:
           mkdir -p _site/assets
           cp -r web/* _site/
           cp dist/*.whl _site/
-          cp assets/ex*.goodnotes _site/assets/
+          if [ -d assets ]; then
+            cp assets/*.goodnotes _site/assets/ 2>/dev/null || true
+          fi
+          if [ -d web/assets ]; then
+            cp web/assets/*.goodnotes _site/assets/ 2>/dev/null || true
+          fi
           echo "Site bundle structure:"
           ls -la _site/
           ls -la _site/assets/
