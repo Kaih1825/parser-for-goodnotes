@@ -31,6 +31,9 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+goodnotes_re = ["templates/*.html", "templates/*"]
+
 [project.scripts]
 gn-inspect = "goodnotes_re.cli:inspect_main"
 gn-dump = "goodnotes_re.cli:dump_main"

@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>__DOC_TITLE__ - 音訊筆跡同步播放器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.85);
+      --card-border: rgba(255, 255, 255, 0.1);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-hover: #0ea5e9;
+      --highlight: #facc15;
+      --stroke-glow: rgba(250, 204, 21, 0.9);
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at top, #1e293b, #0f172a);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+    }
+    .player-container {
+      width: 100%;
+      max-width: 960px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+    }
+    .header h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .controls-panel {
+      padding: 20px 24px;
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+    }
+    .timeline-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .time-display {
+      font-family: monospace;
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      min-width: 48px;
+    }
+    .scrubber-container {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .scrubber {
+      width: 100%;
+      height: 8px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+      outline: none;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .scrubber::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      box-shadow: 0 0 10px var(--accent);
+      transition: transform 0.1s;
+    }
+    .scrubber::-webkit-slider-thumb:hover {
+      transform: scale(1.25);
+    }
+    .buttons-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .playback-buttons {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      color: var(--text-main);
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #0f172a;
+      border: none;
+      font-weight: 600;
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+    .select-input {
+      padding: 7px 12px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      color: var(--text-main);
+      font-size: 0.85rem;
+      outline: none;
+      cursor: pointer;
+    }
+    .select-input:focus {
+      border-color: var(--accent);
+    }
+    .page-nav-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    }
+    .note-viewer {
+      width: 100%;
+      background: #ffffff;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+      min-height: 400px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+    }
+    .note-viewer svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .pages-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      width: 100%;
+    }
+    .page-card {
+      background: #ffffff;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+      position: relative;
+    }
+    .page-card-header {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(8px);
+      color: #f8fafc;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      z-index: 10;
+      pointer-events: none;
+    }
+    .page-card svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .hint {
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+    [data-stroke-id] {
+      cursor: pointer;
+      transition: opacity 0.15s ease, filter 0.15s ease;
+    }
+    [data-stroke-id]:hover {
+      filter: drop-shadow(0 0 6px var(--accent));
+      opacity: 1 !important;
+    }
+    .gn-stroke-highlight {
+      filter: drop-shadow(0 0 8px var(--stroke-glow)) drop-shadow(0 0 2px var(--highlight));
+      stroke: var(--highlight) !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="player-container">
+    <div class="header">
+      <div>
+        <h1>__DOC_TITLE__</h1>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 2px;">
+          錄音段落: __RECORDINGS_COUNT__ | 總頁數: __TOTAL_PAGES__ 頁 | 總時長: __DUR_DISPLAY__
+        </p>
+      </div>
+      <span class="badge">🎙️ 多頁錄音筆跡同步播放</span>
+    </div>
+
+    <div class="controls-panel">
+      <div class="timeline-row">
+        <span class="time-display" id="currentTime">00:00</span>
+        <div class="scrubber-container">
+          <input type="range" class="scrubber" id="progressBar" min="0" max="__TOTAL_DURATION__" step="0.05" value="0">
+        </div>
+        <span class="time-display" id="totalDuration">__DUR_DISPLAY__</span>
+      </div>
+
+      <div class="buttons-row">
+        <div class="playback-buttons">
+          <button class="btn btn-primary" id="playBtn">&#x25B6; 播放</button>
+          <button class="btn" id="rewindBtn">&#x25C0; -5s</button>
+          <button class="btn" id="forwardBtn">&#x25B6; +5s</button>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+            段落:
+            <select class="select-input" id="recordingSelect">
+              <option value="-1">全部連續播放 (All)</option>
+              __RECORDINGS_OPTIONS__
+            </select>
+          </label>
+          <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+            模式:
+            <select class="select-input" id="modeSelect">
+              <option value="highlight">同步點亮 (預先淡化)</option>
+              <option value="reveal">逐漸書寫 (隨錄音出現)</option>
+              <option value="normal">完整顯示</option>
+            </select>
+          </label>
+          <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+            倍速:
+            <select class="select-input" id="speedSelect">
+              <option value="0.75">0.75x</option>
+              <option value="1.0" selected>1.0x</option>
+              <option value="1.25">1.25x</option>
+              <option value="1.5">1.5x</option>
+              <option value="2.0">2.0x</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-nav-bar">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button class="btn" id="prevPageBtn">◀ 上一頁</button>
+        <select class="select-input" id="pageSelect">
+          __PAGE_OPTIONS__
+        </select>
+        <button class="btn" id="nextPageBtn">下一頁 ▶</button>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <button class="btn" id="autoFlipBtn" title="自動翻頁開關">📖 自動翻頁: 開</button>
+        <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+          檢視模式:
+          <select class="select-input" id="viewModeSelect">
+            <option value="single">單頁翻頁 (Single)</option>
+            <option value="stack">全頁連續捲動 (Continuous)</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <!-- Single Page Container -->
+    <div class="note-viewer" id="singleViewer"></div>
+
+    <!-- Multi-Page Stack Container -->
+    <div class="pages-stack" id="stackViewer" style="display: none;"></div>
+
+    <div class="hint">💡 提示：點擊任何頁面上的筆跡可直接跳轉至該筆畫書寫時刻！按空白鍵播放/暫停。</div>
+  </div>
+
+  <audio id="audioElement" preload="auto"></audio>
+
+  <!-- PDF.js for rendering PDF background templates and stickers in high fidelity -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    }
+  </script>
+
+  <script>
+    const recordings = __RECORDINGS_JSON__;
+    const pageSvgs = __PAGE_SVGS_JSON__;
+    const totalPages = __TOTAL_PAGES__;
+
+    const audio = document.getElementById('audioElement');
+    const playBtn = document.getElementById('playBtn');
+    const progressBar = document.getElementById('progressBar');
+    const currentTimeEl = document.getElementById('currentTime');
+    const totalDurationEl = document.getElementById('totalDuration');
+    const speedSelect = document.getElementById('speedSelect');
+    const modeSelect = document.getElementById('modeSelect');
+    const recordingSelect = document.getElementById('recordingSelect');
+    const rewindBtn = document.getElementById('rewindBtn');
+    const forwardBtn = document.getElementById('forwardBtn');
+    const pageSelect = document.getElementById('pageSelect');
+    const prevPageBtn = document.getElementById('prevPageBtn');
+    const nextPageBtn = document.getElementById('nextPageBtn');
+    const viewModeSelect = document.getElementById('viewModeSelect');
+    const autoFlipBtn = document.getElementById('autoFlipBtn');
+    const singleViewer = document.getElementById('singleViewer');
+    const stackViewer = document.getElementById('stackViewer');
+
+    let currentRecIndex = 0;
+    let isContinuous = true;
+    let currentPageIndex = 0;
+    let isStackMode = false;
+    let autoFlipEnabled = true;
+
+    const pdfDocCache = new Map();
+    const pdfPageImageCache = new Map();
+
+    async function resolvePdfPlaceholders(containerElement) {
+      if (!window.pdfjsLib) return;
+      const placeholders = Array.from(containerElement.querySelectorAll('.gn-pdf-placeholder'));
+      if (placeholders.length === 0) return;
+
+      for (const node of placeholders) {
+        try {
+          const b64 = node.getAttribute('data-pdf-b64');
+          const pageIdx = parseInt(node.getAttribute('data-pdf-page') || '0', 10);
+          const width = parseFloat(node.getAttribute('data-width') || '100');
+          const height = parseFloat(node.getAttribute('data-height') || '100');
+
+          if (!b64) continue;
+
+          let pdfDoc = pdfDocCache.get(b64);
+          if (!pdfDoc) {
+            const binaryString = atob(b64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+            pdfDocCache.set(b64, pdfDoc);
+          }
+
+          const pdfPageNum = Math.min(Math.max(1, pageIdx + 1), pdfDoc.numPages);
+          const pdfPage = await pdfDoc.getPage(pdfPageNum);
+          const viewport = pdfPage.getViewport({ scale: 1.0 });
+
+          // 1. Primary: Native Vector SVG rendering
+          if (pdfjsLib.SVGGraphics) {
+            try {
+              const opList = await pdfPage.getOperatorList();
+              const svgGfx = new pdfjsLib.SVGGraphics(pdfPage.commonObjs, pdfPage.objs);
+              const svgElem = await svgGfx.getSVG(opList, viewport);
+
+              svgElem.setAttribute('x', '0');
+              svgElem.setAttribute('y', '0');
+              svgElem.setAttribute('width', width.toFixed(2));
+              svgElem.setAttribute('height', height.toFixed(2));
+              svgElem.setAttribute('preserveAspectRatio', 'none');
+
+              node.parentNode.replaceChild(svgElem, node);
+              continue;
+            } catch (svgErr) {
+              console.warn('[PDF.js] Vector SVGGraphics fallback to Canvas:', svgErr);
+            }
+          }
+
+          // 2. Fallback: High-resolution raster render
+          const scale = 2.0;
+          const renderViewport = pdfPage.getViewport({ scale });
+          const canvas = document.createElement('canvas');
+          canvas.width = renderViewport.width;
+          canvas.height = renderViewport.height;
+          const ctx = canvas.getContext('2d');
+
+          await pdfPage.render({
+            canvasContext: ctx,
+            viewport: renderViewport,
+          }).promise;
+
+          const pngDataUrl = canvas.toDataURL('image/png');
+          const imgElem = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+          imgElem.setAttribute('href', pngDataUrl);
+          imgElem.setAttribute('x', '0');
+          imgElem.setAttribute('y', '0');
+          imgElem.setAttribute('width', width.toFixed(2));
+          imgElem.setAttribute('height', height.toFixed(2));
+          imgElem.setAttribute('preserveAspectRatio', 'none');
+
+          node.parentNode.replaceChild(imgElem, node);
+        } catch (err) {
+          console.warn('[PDF.js] Failed to render PDF placeholder:', err);
+        }
+      }
+    }
+
+    // Calculate recording offsets
+    let recOffsets = [];
+    let accum = 0;
+    for (let r of recordings) {
+      recOffsets.push(accum);
+      accum += r.duration;
+    }
+    const totalDuration = accum;
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+
+    async function buildStackViewer() {
+      let html = '';
+      for (let pIdx = 0; pIdx < totalPages; pIdx++) {
+        html += `<div class="page-card" id="pageCard_${pIdx}" data-page-index="${pIdx}">
+          <div class="page-card-header">第 ${pIdx+1} 頁</div>
+          ${pageSvgs[pIdx] || ''}
+        </div>`;
+      }
+      stackViewer.innerHTML = html;
+      attachStrokeClickListeners(stackViewer);
+      await resolvePdfPlaceholders(stackViewer);
+    }
+
+    async function loadSinglePage(pageIdx) {
+      if (currentPageIndex === pageIdx && singleViewer.innerHTML) return;
+      currentPageIndex = pageIdx;
+      pageSelect.value = pageIdx;
+      singleViewer.innerHTML = pageSvgs[pageIdx] || Object.values(pageSvgs)[0];
+      attachStrokeClickListeners(singleViewer);
+      await resolvePdfPlaceholders(singleViewer);
+    }
+
+    function loadRecording(recIdx, seekRelTime = 0, autoPlay = false) {
+      currentRecIndex = recIdx;
+      const rec = recordings[recIdx];
+      audio.src = `data:audio/mp4;base64,${rec.audio_b64}`;
+      audio.playbackRate = parseFloat(speedSelect.value);
+      loadSinglePage(rec.page_index);
+
+      audio.onloadedmetadata = () => {
+        if (seekRelTime > 0) {
+          audio.currentTime = seekRelTime;
+        }
+        if (autoPlay) {
+          audio.play().catch(() => {});
+          playBtn.textContent = '⏸ 暫停';
+        }
+      };
+    }
+
+    function attachStrokeClickListeners(rootElement) {
+      const strokeElements = rootElement.querySelectorAll('[data-stroke-id]');
+      strokeElements.forEach(el => {
+        const suuid = el.getAttribute('data-stroke-id');
+        // Find which recording this stroke belongs to
+        for (let rIdx = 0; rIdx < recordings.length; rIdx++) {
+          const r = recordings[rIdx];
+          if (r.stroke_timings[suuid] !== undefined) {
+            const timing = r.stroke_timings[suuid];
+            const time = timing.t;
+            const targetPage = timing.page_index;
+            el.setAttribute('title', `點擊跳至段落 ${rIdx+1} (第 ${targetPage+1} 頁) - ${formatTime(time)} (${time.toFixed(2)}s)`);
+            el.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (currentRecIndex !== rIdx) {
+                loadRecording(rIdx, time, true);
+              } else {
+                audio.currentTime = time;
+                if (audio.paused) audio.play();
+                playBtn.textContent = '⏸ 暫停';
+              }
+              if (!isStackMode) {
+                loadSinglePage(targetPage);
+              }
+            });
+            break;
+          }
+        }
+      });
+    }
+
+    prevPageBtn.addEventListener('click', () => {
+      if (currentPageIndex > 0) {
+        loadSinglePage(currentPageIndex - 1);
+      }
+    });
+
+    nextPageBtn.addEventListener('click', () => {
+      if (currentPageIndex < totalPages - 1) {
+        loadSinglePage(currentPageIndex + 1);
+      }
+    });
+
+    pageSelect.addEventListener('change', () => {
+      loadSinglePage(parseInt(pageSelect.value));
+    });
+
+    autoFlipBtn.addEventListener('click', () => {
+      autoFlipEnabled = !autoFlipEnabled;
+      autoFlipBtn.textContent = autoFlipEnabled ? '📖 自動翻頁: 開' : '📖 自動翻頁: 關';
+      autoFlipBtn.style.opacity = autoFlipEnabled ? '1' : '0.6';
+    });
+
+    viewModeSelect.addEventListener('change', () => {
+      isStackMode = (viewModeSelect.value === 'stack');
+      if (isStackMode) {
+        singleViewer.style.display = 'none';
+        stackViewer.style.display = 'flex';
+      } else {
+        singleViewer.style.display = 'block';
+        stackViewer.style.display = 'none';
+        loadSinglePage(currentPageIndex);
+      }
+    });
+
+    function togglePlay() {
+      if (audio.paused) {
+        audio.play().catch(() => {});
+        playBtn.textContent = '⏸ 暫停';
+      } else {
+        audio.pause();
+        playBtn.textContent = '▶ 播放';
+      }
+    }
+
+    playBtn.addEventListener('click', togglePlay);
+
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') {
+        e.preventDefault();
+        togglePlay();
+      }
+    });
+
+    rewindBtn.addEventListener('click', () => {
+      seekDelta(-5);
+    });
+
+    forwardBtn.addEventListener('click', () => {
+      seekDelta(5);
+    });
+
+    function seekDelta(delta) {
+      const globalTime = getGlobalTime();
+      setGlobalTime(Math.max(0, Math.min(totalDuration, globalTime + delta)));
+    }
+
+    speedSelect.addEventListener('change', () => {
+      audio.playbackRate = parseFloat(speedSelect.value);
+    });
+
+    recordingSelect.addEventListener('change', () => {
+      const val = parseInt(recordingSelect.value);
+      if (val === -1) {
+        isContinuous = true;
+        progressBar.max = totalDuration;
+        totalDurationEl.textContent = formatTime(totalDuration);
+      } else {
+        isContinuous = false;
+        loadRecording(val, 0, !audio.paused);
+        progressBar.max = recordings[val].duration;
+        totalDurationEl.textContent = formatTime(recordings[val].duration);
+      }
+    });
+
+    let isScrubbing = false;
+    progressBar.addEventListener('input', () => {
+      isScrubbing = true;
+      const val = parseFloat(progressBar.value);
+      currentTimeEl.textContent = formatTime(val);
+      if (isContinuous) {
+        updateContinuousVisuals(val);
+      } else {
+        updateSingleVisuals(val);
+      }
+    });
+
+    progressBar.addEventListener('change', () => {
+      const val = parseFloat(progressBar.value);
+      if (isContinuous) {
+        setGlobalTime(val);
+      } else {
+        audio.currentTime = val;
+      }
+      isScrubbing = false;
+    });
+
+    function getGlobalTime() {
+      return recOffsets[currentRecIndex] + (audio.currentTime || 0);
+    }
+
+    function setGlobalTime(globalTime) {
+      for (let i = recordings.length - 1; i >= 0; i--) {
+        if (globalTime >= recOffsets[i]) {
+          const relTime = globalTime - recOffsets[i];
+          if (currentRecIndex !== i) {
+            loadRecording(i, relTime, !audio.paused);
+          } else {
+            audio.currentTime = relTime;
+          }
+          break;
+        }
+      }
+    }
+
+    audio.addEventListener('ended', () => {
+      if (isContinuous && currentRecIndex + 1 < recordings.length) {
+        loadRecording(currentRecIndex + 1, 0, true);
+      } else {
+        playBtn.textContent = '▶ 播放';
+      }
+    });
+
+    function updateVisualElements(rootElement, activeRecIdx, relTime) {
+      const mode = modeSelect.value;
+      const strokeElements = rootElement.querySelectorAll('[data-stroke-id]');
+
+      strokeElements.forEach(el => {
+        const suuid = el.getAttribute('data-stroke-id');
+        let ownerRecIdx = -1;
+        let sTime = -1;
+
+        for (let rIdx = 0; rIdx < recordings.length; rIdx++) {
+          if (recordings[rIdx].stroke_timings[suuid] !== undefined) {
+            ownerRecIdx = rIdx;
+            sTime = recordings[rIdx].stroke_timings[suuid].t;
+            break;
+          }
+        }
+
+        if (ownerRecIdx === -1) {
+          el.style.opacity = '1.0';
+          el.classList.remove('gn-stroke-highlight');
+          return;
+        }
+
+        if (mode === 'normal') {
+          el.style.opacity = '1.0';
+          el.classList.remove('gn-stroke-highlight');
+        } else if (ownerRecIdx < activeRecIdx) {
+          el.style.opacity = '1.0';
+          el.classList.remove('gn-stroke-highlight');
+        } else if (ownerRecIdx > activeRecIdx) {
+          el.style.opacity = mode === 'reveal' ? '0' : '0.15';
+          el.classList.remove('gn-stroke-highlight');
+        } else {
+          if (relTime < sTime) {
+            el.style.opacity = mode === 'reveal' ? '0' : '0.15';
+            el.classList.remove('gn-stroke-highlight');
+          } else if (relTime <= sTime + 1.2) {
+            el.style.opacity = '1.0';
+            el.classList.add('gn-stroke-highlight');
+          } else {
+            el.style.opacity = '1.0';
+            el.classList.remove('gn-stroke-highlight');
+          }
+        }
+      });
+
+      // Auto page flip across pages in single page mode (only when playing or scrubbing)
+      if (!isStackMode && autoFlipEnabled && (!audio.paused || isScrubbing)) {
+        const rec = recordings[activeRecIdx];
+        if (rec && rec.stroke_timings) {
+          let targetPage = null;
+          for (let suuid in rec.stroke_timings) {
+            const st = rec.stroke_timings[suuid];
+            if (st.t <= relTime + 0.05 && st.page_index >= 0) {
+              targetPage = st.page_index;
+            }
+          }
+          if (targetPage !== null && targetPage !== currentPageIndex && targetPage < totalPages) {
+            loadSinglePage(targetPage);
+          }
+        }
+      }
+    }
+
+    function updateSingleVisuals(relTime) {
+      const target = isStackMode ? stackViewer : singleViewer;
+      updateVisualElements(target, currentRecIndex, relTime);
+    }
+
+    function updateContinuousVisuals(globalTime) {
+      let activeRecIdx = 0;
+      for (let i = recordings.length - 1; i >= 0; i--) {
+        if (globalTime >= recOffsets[i]) {
+          activeRecIdx = i;
+          break;
+        }
+      }
+      const relTime = globalTime - recOffsets[activeRecIdx];
+      const target = isStackMode ? stackViewer : singleViewer;
+      updateVisualElements(target, activeRecIdx, relTime);
+    }
+
+    function animate() {
+      if (!isScrubbing && !audio.paused) {
+        if (isContinuous) {
+          const globalTime = getGlobalTime();
+          progressBar.value = globalTime;
+          currentTimeEl.textContent = formatTime(globalTime);
+          updateContinuousVisuals(globalTime);
+        } else {
+          progressBar.value = audio.currentTime;
+          currentTimeEl.textContent = formatTime(audio.currentTime);
+          updateSingleVisuals(audio.currentTime);
+        }
+      }
+      requestAnimationFrame(animate);
+    }
+
+    // Initialize
+    buildStackViewer();
+    attachStrokeClickListeners(stackViewer);
+    loadRecording(0, 0, false);
+    progressBar.max = totalDuration;
+    totalDurationEl.textContent = formatTime(totalDuration);
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

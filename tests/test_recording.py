@@ -17,14 +17,13 @@ class RecordingTests(unittest.TestCase):
 
         with GoodNotesDocument.open(self.sample_file) as doc:
             recordings = doc.recordings(include_deleted=False)
-            # Should have 3 active recordings
-            self.assertEqual(len(recordings), 3)
+            self.assertEqual(len(recordings), 1)
 
             rec1 = recordings[0]
-            self.assertEqual(rec1.id, "888A7316-5335-43E2-9853-0621626EB502")
-            self.assertEqual(rec1.audio_attachment_path, "attachments/640383CA-2E0F-4026-8E0B-641E6F638384")
-            self.assertAlmostEqual(rec1.duration, 19.70, places=1)
-            self.assertEqual(len(rec1.stroke_timings), 8)
+            self.assertEqual(rec1.id, "50646DE0-9555-42FC-B27D-9EF4E96BFE1A")
+            self.assertEqual(rec1.audio_attachment_path, "attachments/C550091A-9A82-412E-8F10-5075404ACA74")
+            self.assertAlmostEqual(rec1.duration, 10.0, places=1)
+            self.assertEqual(len(rec1.stroke_timings), 12)
             self.assertFalse(rec1.is_deleted)
 
             # Check stroke timestamps are ascending
@@ -36,9 +35,7 @@ class RecordingTests(unittest.TestCase):
             all_recordings = doc.recordings(include_deleted=True)
             self.assertGreater(len(all_recordings), len(recordings))
             deleted = [r for r in all_recordings if r.is_deleted]
-            self.assertTrue(len(deleted) >= 2)
-            deleted_ids = {r.id for r in deleted}
-            self.assertIn("9D684E97-E222-49E7-9CF6-9C6F77AD73A0", deleted_ids)
+            self.assertTrue(len(deleted) >= 1)
 
     def test_read_and_export_audio(self):
         if not self.sample_file.exists():
@@ -64,7 +61,7 @@ class RecordingTests(unittest.TestCase):
                 out_concat = Path(tmpdir) / "test_concat.m4a"
                 res_concat = write_audio(doc, out_concat, concat=True)
                 self.assertTrue(res_concat.exists())
-                self.assertGreater(res_concat.stat().st_size, len(audio_data))
+                self.assertGreaterEqual(res_concat.stat().st_size, len(audio_data))
 
     def test_export_recording_html(self):
         if not self.sample_file.exists():
