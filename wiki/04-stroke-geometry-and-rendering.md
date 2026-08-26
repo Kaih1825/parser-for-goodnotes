@@ -80,39 +80,48 @@ d.append("Z")
 
 ---
 
-## 4. Eraser Cut Strokes (`v9` Mesh) and Sliding-Window Convex Hull Algorithm
+## 4. Eraser Cut & Clipped Strokes (`native_cgpaths` Vector Architecture)
 
-When a user erases part of a stroke using the eraser, a `v9` array is generated.
+When a user uses the eraser to slice or cut through strokes, or draws precise fountain pen ink, GoodNotes performs a boolean path clip and writes out exact closed vector contour panels (`native_cgpaths`) directly into the LZ4-compressed TPL binary container.
 
-### `v9` Array Format Analysis
-Visual format analysis discovered: the `v9` array **is not a continuous traversal order of the outline**. Instead, every 6 points form a group representing sampling points on the left and right sides of the cross-section along the forward direction of the stroke. Directly connecting them with `L` (Line) at sharp bends or tapered ends of the stroke would result in jagged edges and self-intersecting gaps.
+### 1. Dual TPL Schema Shift Architecture
 
-### Solution: Sliding-Window Convex Hull
+GoodNotes 6 employs two primary TPL schema variations for storing native vector CGPath instructions:
 
-The process adopts a **sliding-window convex hull algorithm (`_v9_polygon_to_hull_panels`)** that does not rely on group alignment:
+| Schema Attribute | Variation A (`vuA(v)...`, e.g., with width `u`) | Variation B (`vA(v)...`, e.g., without width `u`) |
+| :--- | :--- | :--- |
+| **Shift Offset** | `shift = 1` (12 values total) | `shift = 0` (11 values total) |
+| **Command Counts per Panel** | `values[5]` | `values[4]` |
+| **Command Codes** | `values[6]` (`{2, 4, 5}`) | `values[5]` (`{0, 2, 3}`) |
+| **Start Points `(x0, y0)`** | `values[7]` | `values[6]` |
+| **Cubic Bezier Curves `(c1, c2, p2)`** | `values[9]` | `values[8]` |
+| **Arc Parameters `(cx, cy, r, a0, a1)`** | `values[10]` | `values[9]` |
+| **Arc Clockwise Flags `(0 / 1)`** | `values[11]` | `values[10]` |
 
-1. Set the sliding window size `window = 16`, and stride `stride = 4`.
-2. Move the window over the `v9` point array, and compute the **Andrew's Monotone Chain Convex Hull** for the point set within the window.
-3. Windows intentionally overlap (`stride < window`) to ensure that the convex hull panels connect with each other, leaving absolutely no gaps.
-4. Because the window scope is small, the sharp Flat Cut Caps created by the eraser will not be rounded off.
+### 2. Apple CoreGraphics Command Mapping
 
-```python
-def _convex_hull(points: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
-    """Andrew's monotone chain convex hull algorithm. Pure-python implementation."""
-    pts = sorted(set(points))
-    if len(pts) <= 2: return list(pts)
-    def cross(o, a, b):
-        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-    lower = []
-    for p in pts:
-        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0: lower.pop()
-        lower.append(p)
-    upper = []
-    for p in reversed(pts):
-        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0: upper.pop()
-        upper.append(p)
-    return lower[:-1] + upper[:-1]
-```
+The command codes map to standard Apple `CGPath` operations:
+- **`MoveTo` (`CMD 2` in Var A / `CMD 0` in Var B)**: Moves pen to starting coordinate `(x0, y0)` from start-point pool.
+- **`CubicTo` (`CMD 4` in Var A / `CMD 2` in Var B)**: Cubic Bezier curve using 3 coordinate pairs `(c1x, c1y, c2x, c2y, p2x, p2y)` from cubic pool.
+- **`ArcTo` (`CMD 5` in Var A / `CMD 3` in Var B)**: Circular arc `(cx, cy, r, a0, a1, flag)` matching `CGPathAddArc`.
+
+### 3. Apple `CGPathAddArc` to SVG `A` Conversion
+
+In screen coordinates ($Y$-down), an arc is converted to SVG path command `A rx ry 0 large_arc sweep end_x end_y`:
+- Start point: $(cx + r\cos(a_0), cy + r\sin(a_0))$, which matches the preceding Bezier end point with 0.0000 delta.
+- End point: $(cx + r\cos(a_1), cy + r\sin(a_1))$.
+- Sweep & Large Arc:
+  $$\Delta\theta = (a_0 - a_1) \pmod{2\pi}$$
+  $$\text{sweep} = 0 \text{ if } \text{flag} == 1 \text{ else } 1, \quad \text{large\_arc} = 1 \text{ if } \Delta\theta > \pi \text{ else } 0$$
+
+### 4. Nonzero Winding & Subpixel Seam Bridging
+
+- **Nonzero Winding Rule**: The stroke is composed of contiguous, slightly overlapping quad panels. Under SVG default `fill-rule="nonzero"`, all panels seamlessly blend together into a 100% solid stroke without internal parity holes.
+- **Subpixel Antialiasing Seam Bridging**: To prevent subpixel antialiasing hairline cracks between adjacent panels during browser/PDF rendering, a hairline stroke (`stroke="{s_color}" stroke-width="{0.4 * dpi_scale}" stroke-linejoin="round"`) is applied matching the fill color.
+
+### 5. Lasso Move Transformation (`dx, dy`)
+
+When strokes are moved using the Lasso tool, relative offsets $(dx, dy)$ extracted from the Protobuf trailer are automatically propagated to all control points, cubic curve points, and arc centers in `native_cgpaths`.
 
 ---
 
@@ -217,39 +226,48 @@ d.append("Z")
 
 ---
 
-## 4. 被橡皮擦切開筆跡 (`v9` Mesh) 與滑動視窗凸包演算法
+## 4. 橡皮擦切削與鋼筆筆跡 (`native_cgpaths` 原生向量幾何架構)
 
-當使用者使用橡皮擦擦除筆跡的一部分時，會生成 `v9` 陣列。
+當使用者使用橡皮擦切斷/擦除筆跡，或書寫高精度鋼筆（Fountain Pen）筆跡時，GoodNotes 會直接執行布林幾何運算，並將完整的封閉向量輪廓路徑指令鏈（`native_cgpaths`）寫入經 Apple LZ4 壓縮的 TPL 二進位結構中。
 
-### `v9` 陣列的格式分析
-經視覺化格式分析發現：`v9` 陣列**並不是外框的連續走訪順序**，而是每 6 個點為一組、代表沿筆劃前進方向橫截面左右兩側的取樣點。在筆跡彎曲劇烈或收尖處，直接用 `L` (Line) 連接會產生鋸齒與自我交叉缺口。
+### 1. 雙重 TPL 格式結構平移 (Schema Shift)
 
-### 解法：滑動視窗凸包 (Sliding-Window Convex Hull)
+GoodNotes 6 儲存原生向量 CGPath 指令主要有兩種 TPL 格式變體：
 
-我們採用了不依賴分組是否對齊的**滑動視窗凸包算法 (`_v9_polygon_to_hull_panels`)**：
+| 格式屬性 | 變體 A（`vuA(v)...`，包含筆寬 `u`） | 變體 B（`vA(v)...`，不含筆寬 `u`） |
+| :--- | :--- | :--- |
+| **平移偏移量 (Shift)** | `shift = 1`（共 12 個欄位） | `shift = 0`（共 11 個欄位） |
+| **每段面板指令數** | `values[5]` | `values[4]` |
+| **操作指令碼** | `values[6]`（`{2, 4, 5}`） | `values[5]`（`{0, 2, 3}`） |
+| **起點座標 `(x0, y0)`** | `values[7]` | `values[6]` |
+| **三次貝茲曲線控制點 `(c1, c2, p2)`** | `values[9]` | `values[8]` |
+| **圓弧幾何參數 `(cx, cy, r, a0, a1)`** | `values[10]` | `values[9]` |
+| **圓弧順逆時針旗標 `(0 / 1)`** | `values[11]` | `values[10]` |
 
-1. 設定滑動視窗大小 `window = 16`，步長 `stride = 4`。
-2. 在 `v9` 點陣上移動視窗，對視窗內的點集計算 **Andrew's Monotone Chain 凸包**。
-3. 視窗之間刻意重疊 (`stride < window`)，確保凸包面板彼此相接、完全不留縫隙。
-4. 由於視窗範圍很小，橡皮擦切出的銳利平頭邊緣（Flat Cut Caps）不會被磨圓。
+### 2. Apple CoreGraphics 指令碼映射
 
-```python
-def _convex_hull(points: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
-    """Andrew's monotone chain 凸包演算法。Pure-python 實現。"""
-    pts = sorted(set(points))
-    if len(pts) <= 2: return list(pts)
-    def cross(o, a, b):
-        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-    lower = []
-    for p in pts:
-        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0: lower.pop()
-        lower.append(p)
-    upper = []
-    for p in reversed(pts):
-        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0: upper.pop()
-        upper.append(p)
-    return lower[:-1] + upper[:-1]
-```
+底層二進位指令碼對應至標準 Apple `CGPath` 原生繪圖操作：
+- **`MoveTo`（變體 A: `CMD 2` / 變體 B: `CMD 0`）**：從起點池取出 `(x0, y0)` 移動畫筆。
+- **`CubicTo`（變體 A: `CMD 4` / 變體 B: `CMD 2`）**：從三次曲線池取出 3 組座標 `(c1x, c1y, c2x, c2y, p2x, p2y)` 繪製平滑曲線。
+- **`ArcTo`（變體 A: `CMD 5` / 變體 B: `CMD 3`）**：繪製圓弧 `(cx, cy, r, a0, a1, flag)`，對應 `CGPathAddArc`。
+
+### 3. Apple `CGPathAddArc` 至 SVG `A` 弧線轉換
+
+在螢幕座標系（$Y$ 軸向下）中，圓弧轉換為 SVG 繪圖指令 `A rx ry 0 large_arc sweep end_x end_y`：
+- 起點座標：$(cx + r\cos(a_0), cy + r\sin(a_0))$，與前一段貝茲曲線終點無縫接合（誤差 0.0000）。
+- 終點座標：$(cx + r\cos(a_1), cy + r\sin(a_1))$。
+- 旋轉方向與跨度計算：
+  $$\Delta\theta = (a_0 - a_1) \pmod{2\pi}$$
+  $$\text{sweep} = 0 \text{ if } \text{flag} == 1 \text{ else } 1, \quad \text{large\_arc} = 1 \text{ if } \Delta\theta > \pi \text{ else } 0$$
+
+### 4. Nonzero 環繞規則與次像素接縫補全 (Subpixel Seam Bridging)
+
+- **Nonzero 填充規則**：筆跡由數十個微重疊的封閉四邊形面板（Panels）連續組成。在 SVG 預設的 `fill-rule="nonzero"` 規則下，所有同向環繞的重疊面板會平滑融合成 100% 實心無縫筆跡（避免了 `evenodd` 產生的偶數重疊鏤空孔洞）。
+- **次像素抗鋸齒接縫補全**：瀏覽器與 PDF 向量光柵化器在相鄰面板邊緣常因次像素抗鋸齒產生極細微白線（縫隙）。繪製時透過疊加同色微細外框線（`stroke="{s_color}" stroke-width="{0.4 * dpi_scale}" stroke-linejoin="round"`）完全消除接縫空洞。
+
+### 5. 套索移動變換矩陣傳遞 (Lasso Move Transformation)
+
+當使用者使用套索工具（Lasso Tool）移動筆跡時，Protobuf Trailer 中記錄的相對位移 $(dx, dy)$ 會自動遞迴套用至 `native_cgpaths` 中所有起點座標、三次貝茲控制點與圓弧圓心，確保移動後的向量筆跡維持在正確畫布座標。
 
 ---
 

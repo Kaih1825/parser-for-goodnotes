@@ -1005,6 +1005,41 @@ def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = N
             [[(x + dx, y + dy) for x, y in quad] for quad in quads]
             for quads in segment_polygon_groups
         ]
+        if native_cgpaths:
+            shifted_cgpaths = []
+            for seg in native_cgpaths:
+                shifted_seg = []
+                for op, args in seg:
+                    if op == "M":
+                        shifted_seg.append(("M", (args[0] + dx, args[1] + dy)))
+                    elif op == "C":
+                        shifted_seg.append((
+                            "C",
+                            (
+                                args[0] + dx,
+                                args[1] + dy,
+                                args[2] + dx,
+                                args[3] + dy,
+                                args[4] + dx,
+                                args[5] + dy,
+                            ),
+                        ))
+                    elif op == "A":
+                        shifted_seg.append((
+                            "A",
+                            (
+                                args[0] + dx,
+                                args[1] + dy,
+                                args[2],
+                                args[3],
+                                args[4],
+                                args[5],
+                            ),
+                        ))
+                    else:
+                        shifted_seg.append((op, args))
+                shifted_cgpaths.append(tuple(shifted_seg))
+            native_cgpaths = tuple(shifted_cgpaths)
     # Highlighter detection based on alpha
     is_highlighter = alpha < 0.95
 

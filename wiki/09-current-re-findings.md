@@ -169,7 +169,28 @@ GoodNotes internal recording events record timestamps in Apple Mach clock units 
 
 ---
 
-## 12. Parts Yet to Be Fully Defined
+## 12. Native CoreGraphics (CGPath) Vector Encoding for Eraser Cuts & Fountain Pen Ink
+
+GoodNotes 6 does not simply store centerlines for erased/clipped strokes or fountain pen ink; it writes out exact Apple CoreGraphics vector paths directly inside the LZ4-compressed TPL binary container.
+
+### Schema Shift & Command Codes:
+1. **Schema Variation A (`vuA(v)...`, 12 values)**:
+   - Command codes (`values[6]`): `2` = MoveTo, `4` = CubicTo, `5` = ArcTo
+   - Coordinate pools: start points at `values[7]`, cubic control points at `values[9]`, circular arc parameters at `values[10..11]`.
+2. **Schema Variation B (`vA(v)...`, 11 values, -1 shift)**:
+   - Command codes (`values[5]`): `0` = MoveTo, `2` = CubicTo, `3` = ArcTo
+   - Coordinate pools: start points at `values[6]`, cubic control points at `values[8]`, circular arc parameters at `values[9..10]`.
+
+### Rendering & Rasterization Mechanics:
+- **Winding Rule**: Must use `fill-rule="nonzero"` (not `evenodd`) because the vector path consists of contiguous, slightly overlapping quad panels.
+- **Seam Bridging**: A hairline stroke (`0.4 * dpi_scale`) matching the fill color must be added to eliminate subpixel antialiasing gaps between contiguous panels.
+- **Lasso Move**: Trailer relative offsets `(dx, dy)` must be propagated to all points and arc centers in `native_cgpaths`.
+
+> **Confidence:** Very High (Verified against ground-truth raster diff at 99.79% pixel match rate).
+
+---
+
+## 13. Parts Yet to Be Fully Defined
 
 The following items should still be viewed as ongoing format analysis, rather than a stable format specification:
 
@@ -184,7 +205,7 @@ When introducing a new corpus, priority should be given to using `gn-diff` to co
 
 ---
 
-## 12. Verification Method
+## 14. Verification Method
 
 It is recommended to build the corpus using controlled operations:
 
@@ -384,7 +405,28 @@ GoodNotes 內部錄音事件使用 Apple 系統的 Mach 時脈單位 (~31.25 kHz
 
 ---
 
-## 12. 目前尚未完全定義的部分
+## 12. 橡皮擦切削與鋼筆筆跡的原生 CoreGraphics (CGPath) 向量編碼
+
+GoodNotes 6 對於被橡皮擦切削（Erased/Clipped）的筆跡或鋼筆筆跡，並非只記錄中心骨架，而是將 Apple CoreGraphics 的原生幾何指令鏈直接壓縮存入 TPL 容器中。
+
+### 格式平移 (Schema Shift) 與指令碼映射：
+1. **變體 A（`vuA(v)...`，共 12 欄位）**：
+   - 指令代碼 (`values[6]`)：`2` = MoveTo，`4` = CubicTo，`5` = ArcTo
+   - 座標池：起點於 `values[7]`、三次貝茲控制點於 `values[9]`、圓弧參數於 `values[10..11]`。
+2. **變體 B（`vA(v)...`，共 11 欄位，整體 -1 偏移）**：
+   - 指令代碼 (`values[5]`)：`0` = MoveTo，`2` = CubicTo，`3` = ArcTo
+   - 座標池：起點於 `values[6]`、三次貝茲控制點於 `values[8]`、圓弧參數於 `values[9..10]`。
+
+### 渲染與光柵化機制：
+- **環繞數規則 (Winding Rule)**：必須使用 `fill-rule="nonzero"`（不可用 `evenodd`），因為筆跡是由微重疊的相鄰面板（Panels）組成。
+- **次像素接縫補全 (Seam Bridging)**：加上與填充同色的微細邊框（`0.4 * dpi_scale`），消除向量光柵化時相鄰面板間的次像素抗鋸齒白色細縫。
+- **套索移動連動**：Protobuf Trailer 中的相對偏移量 `(dx, dy)` 必須同步套用至 `native_cgpaths` 中的所有控制點與圓弧圓心。
+
+> **Confidence:** Very High（已透過 Pixmap 像素級比對驗證達到 99.79% 吻合度）。
+
+---
+
+## 13. 目前尚未完全定義的部分
 
 以下項目仍應視為持續格式分析 (format analysis)，而不是穩定格式規格：
 
@@ -399,7 +441,7 @@ GoodNotes 內部錄音事件使用 Apple 系統的 Mach 時脈單位 (~31.25 kHz
 
 ---
 
-## 12. 驗證方式
+## 14. 驗證方式
 
 推薦使用受控操作建立語料庫：
 

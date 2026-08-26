@@ -125,6 +125,9 @@ GoodNotes uses different TPL descriptors across various versions and pen tools (
    - 3-tuple: $(x, y, p)$ - Control point coordinates and dynamic pressure.
    - 5-tuple: $(x, y, p, w, \text{angle})$ - Brush vector point array.
 
+4. **`vuA(v)A(u)A(u)A(v)A(v)...` / `vA(v)A(u)A(u)A(v)A(v)...` (Native Apple CGPath Vector Format)**:
+   - Contains direct Apple CoreGraphics command streams (`MoveTo`, `CubicTo`, `ArcTo`), start points (`values[6+shift]`), cubic control vertices (`values[8+shift]`), and circular arc parameters (`values[9+shift]`, `values[10+shift]`) representing exact boolean-erased stroke panels. Detailed in [04-stroke-geometry-and-rendering.md](04-stroke-geometry-and-rendering.md#4-eraser-cut--clipped-strokes-native_cgpaths-vector-architecture).
+
 ---
 
 ## 5. Protobuf Trailer Parsing After `bv4$` (RGBA Color and Lasso Move)
@@ -305,6 +308,9 @@ def decode_apple_lz4(data: bytes) -> tuple[bytes, int]:
    - 6 元組：$(x_1, y_1, x_2, y_2, p_1, p_2)$ - 每段兩點與各自壓感。
    - 3 元組：$(x, y, p)$ - 控制點座標與動態壓感。
    - 5 元組：$(x, y, p, w, \text{angle})$ - 畫筆向量點陣。
+
+4. **`vuA(v)A(u)A(u)A(v)A(v)...` / `vA(v)A(u)A(u)A(v)A(v)...` (原生 Apple CGPath 向量面片格式)**：
+   - 包含 Apple CoreGraphics 原生指令流（`MoveTo`、`CubicTo`、`ArcTo`）、起點池（`values[6+shift]`）、三次貝茲控制點池（`values[8+shift]`）與圓弧幾何參數（`values[9+shift]`、`values[10+shift]`），精確記錄橡皮擦布林裁剪後的閉合向量面片。詳見 [04-stroke-geometry-and-rendering.md](04-stroke-geometry-and-rendering.md#4-橡皮擦切割與裁切筆跡-native_cgpaths-向量架構)。
 
 ---
 
