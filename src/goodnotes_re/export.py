@@ -695,7 +695,47 @@ def page_to_svg(
         css_class = ' class="gn-stroke"' if data_attr else ""
 
         dash_pattern = getattr(stroke, "dash_pattern", None)
-        if stroke.is_dot and pts:
+        if getattr(stroke, "native_cgpaths", ()):
+            native_cgpaths = stroke.native_cgpaths
+            dx = parent_note.x if parent_note else 0.0
+            dy = parent_note.y if parent_note else 0.0
+
+            all_path_cmds = []
+            for seg_cmds in native_cgpaths:
+                cmds = []
+                for op, args in seg_cmds:
+                    if op == "M":
+                        x, y = args[0] + dx, args[1] + dy
+                        cmds.append(f"M {x * dpi_scale:.2f} {y * dpi_scale:.2f}")
+                    elif op == "C":
+                        c1x, c1y = args[0] + dx, args[1] + dy
+                        c2x, c2y = args[2] + dx, args[3] + dy
+                        p2x, p2y = args[4] + dx, args[5] + dy
+                        cmds.append(f"C {c1x * dpi_scale:.2f} {c1y * dpi_scale:.2f}, {c2x * dpi_scale:.2f} {c2y * dpi_scale:.2f}, {p2x * dpi_scale:.2f} {p2y * dpi_scale:.2f}")
+                    elif op == "A":
+                        cx, cy, r, a0, a1, flag = args
+                        cx_t = cx + dx
+                        cy_t = cy + dy
+                        d_theta = (a0 - a1) % (2.0 * math.pi)
+                        sweep = 0 if int(flag) == 1 else 1
+                        large_arc = 1 if d_theta > math.pi else 0
+                        end_x = cx_t + r * math.cos(a1)
+                        end_y = cy_t + r * math.sin(a1)
+                        r_scaled = r * dpi_scale
+                        cmds.append(f"A {r_scaled:.2f} {r_scaled:.2f} 0 {large_arc} {sweep} {end_x * dpi_scale:.2f} {end_y * dpi_scale:.2f}")
+                cmds.append("Z")
+                all_path_cmds.append(" ".join(cmds))
+
+            d_str = " ".join(all_path_cmds)
+            seam_w = max(0.2, 0.4 * dpi_scale)
+            if s_highlight:
+                elements.append(
+                    f'<path d="{d_str}" fill="#fffa65" fill-opacity="0.75" stroke="#fffa65" stroke-width="4.0" stroke-linecap="round" stroke-linejoin="round"/>'
+                )
+            elements.append(
+                f'<path d="{d_str}" fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="{s_color}" stroke-opacity="{s_alpha:.2f}" stroke-width="{seam_w:.2f}" stroke-linejoin="round" stroke-linecap="round"{css_class}{data_attr}/>'
+            )
+        elif stroke.is_dot and pts:
             # Single point / Dot
             pt = pts[0]
             cx, cy = pt.x * dpi_scale, pt.y * dpi_scale
@@ -729,50 +769,6 @@ def page_to_svg(
                 elements.append(
                     f'<path d="{d_path}" stroke="{s_color}" stroke-opacity="{s_alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr} fill="none"{css_class}{data_attr}/>'
                 )
-        elif getattr(stroke, "native_cgpaths", ()):
-            native_cgpaths = stroke.native_cgpaths
-            dx = parent_note.x if parent_note else 0.0
-            dy = parent_note.y if parent_note else 0.0
-
-            all_path_cmds = []
-            for seg_cmds in native_cgpaths:
-                cmds = []
-                for op, args in seg_cmds:
-                    if op == "M":
-                        x, y = args[0] + dx, args[1] + dy
-                        cmds.append(f"M {x * dpi_scale:.2f} {y * dpi_scale:.2f}")
-                    elif op == "C":
-                        c1x, c1y = args[0] + dx, args[1] + dy
-                        c2x, c2y = args[2] + dx, args[3] + dy
-                        p2x, p2y = args[4] + dx, args[5] + dy
-                        cmds.append(f"C {c1x * dpi_scale:.2f} {c1y * dpi_scale:.2f}, {c2x * dpi_scale:.2f} {c2y * dpi_scale:.2f}, {p2x * dpi_scale:.2f} {p2y * dpi_scale:.2f}")
-                    elif op == "A":
-                        cx, cy, r, a0, a1, flag = args
-                        cx = cx + dx
-                        cy = cy + dy
-                        flag_int = int(flag)
-                        if flag_int == 1:
-                            d_theta = (a0 - a1) % (2 * math.pi)
-                            sweep = 0
-                        else:
-                            d_theta = (a1 - a0) % (2 * math.pi)
-                            sweep = 1
-                        large_arc = 1 if d_theta > math.pi else 0
-                        end_x = cx + r * math.cos(a1)
-                        end_y = cy + r * math.sin(a1)
-                        r_scaled = r * dpi_scale
-                        cmds.append(f"A {r_scaled:.2f} {r_scaled:.2f} 0 {large_arc} {sweep} {end_x * dpi_scale:.2f} {end_y * dpi_scale:.2f}")
-                cmds.append("Z")
-                all_path_cmds.append(" ".join(cmds))
-
-            d_str = " ".join(all_path_cmds)
-            if s_highlight:
-                elements.append(
-                    f'<path d="{d_str}" fill="#fffa65" fill-opacity="0.75" stroke="#fffa65" stroke-width="4.0" stroke-linecap="round" stroke-linejoin="round"/>'
-                )
-            elements.append(
-                f'<path d="{d_str}" fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="none"{css_class}{data_attr}/>'
-            )
         elif outline_polys:
             poly_elems = []
             for poly in outline_polys:

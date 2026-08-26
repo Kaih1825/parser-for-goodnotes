@@ -473,17 +473,21 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
         # Filter strokes with 2 or more points to eliminate 1-point metadata noise
         multi_point = [c for c in candidates if c[1] >= 2]
         pool = multi_point if multi_point else candidates
-        
+
+        # Filter candidates by jitter reject threshold
+        plausible = [c for c in pool if _path_jitter_ratio(c[3]) <= _JITTER_REJECT_THRESHOLD]
+        target_pool = plausible if plausible else pool
+
         # Priority order for sorting:
-        # 1. -int(has_p): Prefer dynamic pressure sensitivity (restores dynamic thickness for shape2)
-        # 2. _path_jitter_ratio: Smoothness
-        # 3. -length: Point count length
-        scored = [(-int(has_p), _path_jitter_ratio(pts), -length, idx, pts) for has_p, length, idx, pts in pool]
+        # 1. -int(has_p): Prefer dynamic pressure sensitivity (restores dynamic thickness)
+        # 2. -length: Full stroke point sequence length (longest point count)
+        # 3. _path_jitter_ratio: Smoothness
+        # 4. idx: array index
+        scored = [(-int(has_p), -length, _path_jitter_ratio(pts), idx, pts) for has_p, length, idx, pts in target_pool]
         scored.sort()
-        
-        plausible = [c for c in scored if c[1] <= 0.85]
-        best_pts = (plausible[0] if plausible else scored[0])[4]
-        
+
+        best_pts = scored[0][4]
+
         normal_pts = [p for p in best_pts if not (p.x < 10.0 and p.y < 10.0)]
         target_pts = normal_pts if len(normal_pts) >= 1 else best_pts
 
@@ -886,27 +890,43 @@ def extract_native_cgpath_segments_from_tpl(
     tpl_img: TplImage,
 ) -> tuple[tuple[tuple[str, tuple[float, ...]], ...], ...]:
     """Extract native Apple CGPath segment definitions (M, C, A commands) from tpl values."""
-    if (
-        len(tpl_img.values) <= 9
-        or not isinstance(tpl_img.values[9], list)
-        or len(tpl_img.values[9]) < 6
-        or len(tpl_img.values) <= 7
-        or not isinstance(tpl_img.values[7], list)
-        or len(tpl_img.values[7]) < 2
-        or not isinstance(tpl_img.values[5], list)
-        or not isinstance(tpl_img.values[6], list)
+    fmt = tpl_img.format
+    if "vuA(v)A(u)A(u)A(v)A(v)" in fmt and len(tpl_img.values) >= 12:
+        shift = 1
+    elif "vA(v)A(u)A(u)A(v)A(v)" in fmt and len(tpl_img.values) >= 11:
+        shift = 0
+    else:
+        return ()
+
+    v_counts = tpl_img.values[4 + shift]
+    v_cmds = tpl_img.values[5 + shift]
+    v_start_raw = tpl_img.values[6 + shift]
+    v_cubic_raw = tpl_img.values[8 + shift]
+    v_arc_raw = tpl_img.values[9 + shift] if len(tpl_img.values) > 9 + shift else []
+    v_flags = tpl_img.values[10 + shift] if len(tpl_img.values) > 10 + shift else []
+
+    if not (
+        isinstance(v_counts, list)
+        and isinstance(v_cmds, list)
+        and isinstance(v_start_raw, list)
+        and isinstance(v_cubic_raw, list)
     ):
         return ()
-    v5 = tpl_img.values[5]
-    v6 = tpl_img.values[6]
-    v7 = [uint32_to_float32(x) for x in tpl_img.values[7]]
-    v9 = [uint32_to_float32(x) for x in tpl_img.values[9]]
-    v10 = [uint32_to_float32(x) for x in tpl_img.values[10]] if len(tpl_img.values) > 10 and isinstance(tpl_img.values[10], list) else []
-    v11 = tpl_img.values[11] if len(tpl_img.values) > 11 and isinstance(tpl_img.values[11], list) else []
+    if len(v_counts) == 0 or len(v_cmds) == 0 or len(v_start_raw) < 2 or len(v_cubic_raw) < 6:
+        return ()
+
+    v7 = [uint32_to_float32(x) for x in v_start_raw]
+    v9 = [uint32_to_float32(x) for x in v_cubic_raw]
+    v10 = [uint32_to_float32(x) for x in v_arc_raw] if isinstance(v_arc_raw, list) else []
+    v11 = v_flags if isinstance(v_flags, list) else []
 
     v7_pts = [(v7[i], v7[i + 1]) for i in range(0, len(v7) - 1, 2)]
     v9_pts = [(v9[i], v9[i + 1]) for i in range(0, len(v9) - 1, 2)]
     v10_arcs = [(v10[i], v10[i + 1], v10[i + 2], v10[i + 3], v10[i + 4]) for i in range(0, len(v10) - 4, 5)]
+
+    cmd_move = 2 if shift == 1 else 0
+    cmd_cubic = 4 if shift == 1 else 2
+    cmd_arc = 5 if shift == 1 else 3
 
     v6_idx = 0
     v7_idx = 0
@@ -915,25 +935,25 @@ def extract_native_cgpath_segments_from_tpl(
     v11_idx = 0
 
     segments = []
-    for count in v5:
-        seg_v6 = v6[v6_idx : v6_idx + count]
+    for count in v_counts:
+        seg_v6 = v_cmds[v6_idx : v6_idx + count]
         v6_idx += count
 
         seg_cmds = []
         for cmd in seg_v6:
-            if cmd == 2:
+            if cmd == cmd_move:
                 if v7_idx < len(v7_pts):
                     p0 = v7_pts[v7_idx]
                     v7_idx += 1
                     seg_cmds.append(("M", (p0[0], p0[1])))
-            elif cmd == 4:
+            elif cmd == cmd_cubic:
                 if v9_idx + 2 < len(v9_pts):
                     c1 = v9_pts[v9_idx]
                     c2 = v9_pts[v9_idx + 1]
                     p2 = v9_pts[v9_idx + 2]
                     v9_idx += 3
                     seg_cmds.append(("C", (c1[0], c1[1], c2[0], c2[1], p2[0], p2[1])))
-            elif cmd == 5:
+            elif cmd == cmd_arc:
                 if v10_idx < len(v10_arcs):
                     cx, cy, r, a0, a1 = v10_arcs[v10_idx]
                     flag = v11[v11_idx] if v11_idx < len(v11) else 1
@@ -1015,7 +1035,7 @@ def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = N
                 color_hex=color_hex,
                 alpha=alpha,
                 width=default_width,
-                is_dot=len(first_pts) == 1,
+                is_dot=False,
                 is_highlighter=is_highlighter,
                 tpl_format=tpl_img.format,
                 parent_uuid=parent_uuid,

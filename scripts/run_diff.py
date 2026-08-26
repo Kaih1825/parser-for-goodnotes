@@ -11,7 +11,7 @@ from goodnotes_re.export import page_to_svg
 real_img = Image.open('/Users/kai/Desktop/DevSpace/Goodnotes/output_svgs/real-1.jpg').convert('L')
 w_real, h_real = real_img.size
 
-svg_path = '/Users/kai/Desktop/DevSpace/Goodnotes/output_svgs/page_1_notes_13EF030C-1FEC-459C-8F34-923E6FBEC266.svg'
+svg_path = '/Users/kai/Desktop/DevSpace/Goodnotes/output_svgs/page_2_notes_772788D6-C0D0-4A7D-982E-4607E6DCC1D4.svg'
 doc_svg = fitz.open(svg_path)
 rect = doc_svg[0].rect
 mat = fitz.Matrix(w_real / rect.width, h_real / rect.height)
