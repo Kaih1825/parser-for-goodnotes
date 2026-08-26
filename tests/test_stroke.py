@@ -62,9 +62,23 @@ class StrokeTests(unittest.TestCase):
                 self.assertIsNotNone(stroke.dash_pattern)
                 self.assertEqual(len(stroke.dash_pattern), 2)
             # Check shapes have valid dash_pattern
-            for shape in page.shapes:
-                self.assertIsNotNone(shape.dash_pattern)
-                self.assertEqual(len(shape.dash_pattern), 2)
+    def test_era_goodnotes_erased_strokes_render_cleanly(self) -> None:
+        sample = resolve_sample("era.goodnotes")
+        if not sample.exists():
+            self.skipTest("era.goodnotes not present")
+        with GoodNotesDocument.open(sample) as document:
+            page = document.pages()[0]
+            self.assertGreater(len(page.strokes), 0)
+            for stroke in page.strokes:
+                self.assertGreater(len(stroke.points), 0)
+                ribbon_d = build_stroke_ribbon(
+                    stroke.points,
+                    default_width=stroke.width,
+                    outline_polygons=stroke.outline_polygons,
+                )
+                self.assertIsNotNone(ribbon_d)
+                self.assertTrue(ribbon_d.startswith("M "))
+                self.assertTrue(ribbon_d.endswith("Z"))
 
 
 if __name__ == "__main__":

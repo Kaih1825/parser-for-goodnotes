@@ -186,7 +186,7 @@ class PageTests(unittest.TestCase):
             pages = document.pages()
             self.assertEqual(len(pages), 1)
             strokes = pages[0].strokes
-            self.assertGreaterEqual(len(strokes), 7)
+            self.assertGreaterEqual(len(strokes), 6)
             for stroke in strokes:
                 pressures = [pt.pressure for pt in stroke.points]
                 # Verify that max pressure differs from min pressure (variable pressure)

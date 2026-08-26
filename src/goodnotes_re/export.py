@@ -663,12 +663,13 @@ def page_to_svg(
     shape_uuids = {shape.uuid for shape in page.shapes if shape.uuid}
     from .stroke import StrokePoint
 
-    for stroke in page.strokes:
+    for stroke_idx, stroke in enumerate(page.strokes):
         if stroke.uuid in shape_uuids:
             continue
 
         pts = stroke.points
         outline_polys = stroke.outline_polygons
+        parent_note = None
 
         if stroke.parent_uuid and stroke.parent_uuid in sticky_note_map:
             parent_note = sticky_note_map[stroke.parent_uuid]
@@ -728,24 +729,80 @@ def page_to_svg(
                 elements.append(
                     f'<path d="{d_path}" stroke="{s_color}" stroke-opacity="{s_alpha:.2f}" stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr} fill="none"{css_class}{data_attr}/>'
                 )
-        else:
-            ribbon_d = build_stroke_ribbon(
-                pts,
-                stroke.width,
-                dpi_scale,
-                tpl_format=stroke.tpl_format,
-                outline_polygons=outline_polys,
-                is_cut_start=stroke.is_cut_start,
-                is_cut_end=stroke.is_cut_end,
-            )
-            if ribbon_d:
-                if s_highlight:
-                    elements.append(
-                        f'<path d="{ribbon_d}" fill="#fffa65" fill-opacity="0.75" stroke="#fffa65" stroke-width="4.0" stroke-linecap="round" stroke-linejoin="round"/>'
-                    )
+        elif getattr(stroke, "native_cgpaths", ()):
+            native_cgpaths = stroke.native_cgpaths
+            dx = parent_note.x if parent_note else 0.0
+            dy = parent_note.y if parent_note else 0.0
+
+            all_path_cmds = []
+            for seg_cmds in native_cgpaths:
+                cmds = []
+                for op, args in seg_cmds:
+                    if op == "M":
+                        x, y = args[0] + dx, args[1] + dy
+                        cmds.append(f"M {x * dpi_scale:.2f} {y * dpi_scale:.2f}")
+                    elif op == "C":
+                        c1x, c1y = args[0] + dx, args[1] + dy
+                        c2x, c2y = args[2] + dx, args[3] + dy
+                        p2x, p2y = args[4] + dx, args[5] + dy
+                        cmds.append(f"C {c1x * dpi_scale:.2f} {c1y * dpi_scale:.2f}, {c2x * dpi_scale:.2f} {c2y * dpi_scale:.2f}, {p2x * dpi_scale:.2f} {p2y * dpi_scale:.2f}")
+                    elif op == "A":
+                        cx, cy, r, a0, a1, flag = args
+                        cx = cx + dx
+                        cy = cy + dy
+                        flag_int = int(flag)
+                        if flag_int == 1:
+                            d_theta = (a0 - a1) % (2 * math.pi)
+                            sweep = 0
+                        else:
+                            d_theta = (a1 - a0) % (2 * math.pi)
+                            sweep = 1
+                        large_arc = 1 if d_theta > math.pi else 0
+                        end_x = cx + r * math.cos(a1)
+                        end_y = cy + r * math.sin(a1)
+                        r_scaled = r * dpi_scale
+                        cmds.append(f"A {r_scaled:.2f} {r_scaled:.2f} 0 {large_arc} {sweep} {end_x * dpi_scale:.2f} {end_y * dpi_scale:.2f}")
+                cmds.append("Z")
+                all_path_cmds.append(" ".join(cmds))
+
+            d_str = " ".join(all_path_cmds)
+            if s_highlight:
                 elements.append(
-                    f'<path d="{ribbon_d}" fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="none"{css_class}{data_attr}/>'
+                    f'<path d="{d_str}" fill="#fffa65" fill-opacity="0.75" stroke="#fffa65" stroke-width="4.0" stroke-linecap="round" stroke-linejoin="round"/>'
                 )
+            elements.append(
+                f'<path d="{d_str}" fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="none"{css_class}{data_attr}/>'
+            )
+        elif outline_polys:
+            poly_elems = []
+            for poly in outline_polys:
+                if len(poly) < 3:
+                    continue
+                pts_str = " ".join(f"{x * dpi_scale:.2f},{y * dpi_scale:.2f}" for x, y in poly)
+                poly_elems.append(f'<polygon points="{pts_str}"/>')
+            if poly_elems:
+                elements.append(
+                    f'<g fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="{s_color}" stroke-opacity="{s_alpha:.2f}" stroke-width="{0.5 * dpi_scale:.2f}" stroke-linejoin="round"{css_class}{data_attr}>{"".join(poly_elems)}</g>'
+                )
+        else:
+                ribbon_d = build_stroke_ribbon(
+                    pts,
+                    stroke.width,
+                    dpi_scale,
+                    tpl_format=stroke.tpl_format,
+                    is_cut_start=stroke.is_cut_start,
+                    is_cut_end=stroke.is_cut_end,
+                    start_cut_vec=stroke.start_cut_vec,
+                    end_cut_vec=stroke.end_cut_vec,
+                )
+                if ribbon_d:
+                    if s_highlight:
+                        elements.append(
+                            f'<path d="{ribbon_d}" fill="#fffa65" fill-opacity="0.75" stroke="#fffa65" stroke-width="4.0" stroke-linecap="round" stroke-linejoin="round"/>'
+                        )
+                    elements.append(
+                        f'<path d="{ribbon_d}" fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="none"{css_class}{data_attr}/>'
+                    )
 
     # Render rich text elements grouped by text box
     text_boxes: dict[tuple[float, float, str], list[TextElement]] = {}

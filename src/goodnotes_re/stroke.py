@@ -37,8 +37,12 @@ class Stroke:
     outline_polygons: tuple[tuple[tuple[float, float], ...], ...] = ()
     is_cut_start: bool = False
     is_cut_end: bool = False
+    start_cut_vec: tuple[float, float] | None = None
+    end_cut_vec: tuple[float, float] | None = None
     parent_uuid: str | None = None
     dash_pattern: tuple[float, ...] | None = None
+    eraser_cuts: tuple[tuple[float, ...], ...] = ()
+    native_cgpaths: tuple[tuple[tuple[str, tuple[float, ...]], ...], ...] = ()
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -209,6 +213,97 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
     default_radius = default_width / 2.0
     candidates: list[tuple[bool, int, int, list[StrokePoint]]] = []
 
+    # 0. Erased / Segmented Strokes: values[4] is a flat list of 6-tuples (x1, y1, x2, y2, r1, r2)
+    # Only active for erased strokes (where values[9] mesh exists)
+    is_erased_stroke = len(tpl_img.values) > 9 and isinstance(tpl_img.values[9], list) and len(tpl_img.values[9]) > 0
+    if is_erased_stroke and len(tpl_img.values) > 4 and isinstance(tpl_img.values[4], list) and len(tpl_img.values[4]) >= 6:
+        v4 = tpl_img.values[4]
+        if isinstance(v4[0], (int, float)) and len(v4) % 6 == 0 and "A(S(" not in fmt:
+            floats4 = [uint32_to_float32(u) if isinstance(u, int) else u for u in v4]
+            if len(floats4) >= 4 and all(is_valid_coord(fl) and abs(fl) >= 10.0 for fl in floats4[:4]):
+                segs = []
+                for i in range(0, len(floats4), 6):
+                    if i + 6 <= len(floats4):
+                        segs.append(floats4[i : i + 6])
+                if segs:
+                    valid_r = [s[4] for s in segs if s[4] > 1.0]
+                    nominal_r = sorted(valid_r)[len(valid_r) // 2] if valid_r else 8.87
+                    max_allowed_r = nominal_r * 1.10
+
+                    clean_segs = []
+                    for s in segs:
+                        r1 = min(max_allowed_r, s[4])
+                        r2 = min(max_allowed_r, s[5])
+                        clean_segs.append([s[0], s[1], s[2], s[3], r1, r2])
+                    segs = clean_segs
+
+                    sub_segs = []
+                    cut_jumps = []
+                    curr_s = [segs[0]]
+                    last_jump = None
+                    eraser_cuts: list[tuple[float, ...]] = []
+                    for idx in range(len(segs) - 1):
+                        s_curr, s_next = segs[idx], segs[idx + 1]
+                        seg_len = math.hypot(s_curr[2] - s_curr[0], s_curr[3] - s_curr[1])
+                        gap = math.hypot(s_next[0] - s_curr[2], s_next[1] - s_curr[3])
+                        ratio = gap / max(1e-3, seg_len)
+                        is_cut = (gap > 30.0) or (gap > 18.0 and ratio > 2.2) or (gap > 12.0 and ratio > 3.5)
+                        if is_cut:
+                            sub_segs.append(curr_s)
+                            jump = (s_next[0] - s_curr[2], s_next[1] - s_curr[3])
+                            cut_jumps.append((last_jump, jump))
+                            last_jump = jump
+                            curr_s = [s_next]
+
+                            x1, y1 = s_curr[2], s_curr[3]
+                            x2, y2 = s_next[0], s_next[1]
+                            r_c = max(s_curr[5], s_next[4])
+                            if gap <= 60.0:
+                                cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+                                r_erase = max(gap / 2.0, r_c * 0.95)
+                                eraser_cuts.append((0.0, cx, cy, r_erase))
+                                eraser_cuts.append((1.0, x1, y1, x2, y2, r_erase * 2.0))
+                        else:
+                            curr_s.append(s_next)
+                    if curr_s:
+                        sub_segs.append(curr_s)
+                        cut_jumps.append((last_jump, None))
+
+                    valid_groups = []
+                    valid_jumps = []
+                    for s_idx, s_list in enumerate(sub_segs):
+                        tot_len = sum(math.hypot(s[2] - s[0], s[3] - s[1]) for s in s_list)
+                        start_j, end_j = cut_jumps[s_idx]
+                        if tot_len < 1.0 and start_j is not None and end_j is not None:
+                            continue
+
+                        # Smooth any sudden pinch at cut endpoints
+                        if start_j is not None and len(s_list) >= 2:
+                            if s_list[0][4] < s_list[1][4] * 0.7:
+                                s_list[0][4] = s_list[1][4]
+                        if end_j is not None and len(s_list) >= 2:
+                            if s_list[-1][5] < s_list[-2][5] * 0.7:
+                                s_list[-1][5] = s_list[-2][5]
+
+                        pts_raw = [(s_list[0][0], s_list[0][1], s_list[0][4])]
+                        for s in s_list:
+                            pts_raw.append((s[2], s[3], s[5]))
+
+                        clean_pts = [StrokePoint(pts_raw[0][0], pts_raw[0][1], pts_raw[0][2])]
+                        for p in pts_raw[1:]:
+                            if math.hypot(p[0] - clean_pts[-1].x, p[1] - clean_pts[-1].y) >= 1.2:
+                                clean_pts.append(StrokePoint(p[0], p[1], p[2]))
+                        if len(pts_raw) > 1 and math.hypot(pts_raw[-1][0] - clean_pts[-1].x, pts_raw[-1][1] - clean_pts[-1].y) > 0.2:
+                            clean_pts.append(StrokePoint(pts_raw[-1][0], pts_raw[-1][1], pts_raw[-1][2]))
+                        if len(clean_pts) < 2:
+                            clean_pts = [StrokePoint(pts_raw[0][0], pts_raw[0][1], pts_raw[0][2]), StrokePoint(pts_raw[-1][0], pts_raw[-1][1], pts_raw[-1][2])] if len(pts_raw) >= 2 else clean_pts
+                        if len(clean_pts) >= 2:
+                            valid_groups.append(clean_pts)
+                            valid_jumps.append(cut_jumps[s_idx])
+
+                    if valid_groups:
+                        return valid_groups, default_width, valid_jumps, eraser_cuts
+
     # 1. Schema 1: vuA(v)A(S(uu))A(S(uuuu))vA(f) (4-tuple (x1, y1, x2, y2))
     # Strictly match Schema 1 tag to prevent intercepting other formats by mistake.
     #
@@ -266,7 +361,7 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
             # Ensure extracted point groups contain at least 2 points before returning, otherwise fall back to candidates parsing
             valid_groups = [gr for gr in groups if len(gr) >= 2]
             if valid_groups:
-                return valid_groups, default_width
+                return valid_groups, default_width, [(None, None)] * len(valid_groups), []
 
         if len(tpl_img.values) > 3 and isinstance(tpl_img.values[3], list) and len(tpl_img.values[3]) > 0:
             g = []
@@ -278,7 +373,7 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
                             g.append(StrokePoint(x, y, default_radius))
             if len(g) >= 2:
                 groups.append(g)
-                return groups, default_width
+                return groups, default_width, [(None, None)] * len(groups), []
 
     # 2. Schema 2: vuA(v)A(S(uuuuu))A(S(uuuuuuuuuuu))... (11-tuple)
     if "A(S(uuuuuuuuuuu" in fmt:
@@ -306,7 +401,7 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
                             g.append(StrokePoint(x2, y2, p2))
             if len(g) >= 2:
                 groups.append(g)
-                return groups, default_width
+                return groups, default_width, [(None, None)] * len(groups), []
 
     # 3. Candidate point-array format matching (a) 3-float, (b) 5-float, (c) 2-float
     # Limit idx <= 5 to avoid misidentifying trailing outline polygon / mesh lists (values[6..10]) as point arrays
@@ -393,9 +488,9 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
         target_pts = normal_pts if len(normal_pts) >= 1 else best_pts
 
         groups.append(target_pts)
-        return groups, default_width
+        return groups, default_width, [(None, None)] * len(groups), []
 
-    return groups, default_width
+    return groups, default_width, [(None, None)] * len(groups), []
 
 
 def _convex_hull(points: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
@@ -496,7 +591,12 @@ def dump_v9_to_svg_html(v9_floats: list[float], output_path="v9_debug.html"):
     print(f"\n[分析完成] 逆向視覺化檔案已儲存至: {output_path}")
 
 def extract_outline_polygons_from_tpl(tpl_img: TplImage) -> list[list[tuple[float, float]]]:
-    """Extract native outline mesh polygons (v9) as continuous perimeters."""
+    """Extract native outline mesh polygons (v9) as individual closed cross-section panels."""
+    # If values[4] contains 6-tuple segments, stroke points are directly and cleanly reconstructed
+    if len(tpl_img.values) > 4 and isinstance(tpl_img.values[4], list) and len(tpl_img.values[4]) >= 6:
+        if isinstance(tpl_img.values[4][0], (int, float)):
+            return []
+
     v9 = None
     if len(tpl_img.values) > 9 and isinstance(tpl_img.values[9], list):
         v = tpl_img.values[9]
@@ -510,23 +610,32 @@ def extract_outline_polygons_from_tpl(tpl_img: TplImage) -> list[list[tuple[floa
         return []
 
     pts = [(v9[i], v9[i + 1]) for i in range(0, len(v9), 2)]
-    polys: list[list[tuple[float, float]]] = []
+    if len(pts) < 3:
+        return []
+
+    panels: list[list[tuple[float, float]]] = []
     curr = [pts[0]]
-    
-    # Restore original v9 extraction logic: rely on 20.0 as safe breakpoint between blocks
+
+    # Detect panel boundaries based on cross-section panel lengths and jump distances
     for i in range(1, len(pts)):
         d = math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])
-        if d > 20.0:
+        if (len(curr) in (6, 12, 15) and d > 1.8) or d > 2.2:
             if len(curr) >= 3:
-                polys.append(curr)
+                panels.append(curr)
             curr = [pts[i]]
         else:
             curr.append(pts[i])
-            
-    if len(curr) >= 3:
-        polys.append(curr)
 
-    return polys
+    if len(curr) >= 3:
+        panels.append(curr)
+
+    return panels
+
+
+def extract_segment_polygons_from_tpl(tpl_img: TplImage) -> list[list[list[tuple[float, float]]]]:
+    """Segment polygons disabled in favor of smooth continuous ribbon."""
+    return []
+
 
 def split_stroke_points(pts: list[StrokePoint], threshold: float | None = None) -> list[list[StrokePoint]]:
     """
@@ -540,7 +649,7 @@ def split_stroke_points(pts: list[StrokePoint], threshold: float | None = None) 
         return [pts]
 
     dists = [
-        math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y)
+        math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y) if hasattr(pts[i], 'x') else math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1])
         for i in range(1, len(pts))
     ]
 
@@ -561,6 +670,7 @@ def split_stroke_points(pts: list[StrokePoint], threshold: float | None = None) 
 
     return strokes
 
+
 def build_stroke_ribbon(
     points: Sequence[StrokePoint],
     default_width: float = 1.0,
@@ -570,17 +680,13 @@ def build_stroke_ribbon(
     outline_polygons: Sequence[Sequence[tuple[float, float]]] = (),
     is_cut_start: bool = False,
     is_cut_end: bool = False,
+    start_cut_vec: tuple[float, float] | None = None,
+    end_cut_vec: tuple[float, float] | None = None,
+    ext_dist: float = 4.0,
 ) -> str | None:
     """Generate SVG path d attribute for a variable-width stroke ribbon or native outline mesh."""
 
     # 1. Handle GoodNotes native v9 mesh (erased strokes, keeping original sharp flat edges)
-    #
-    # v9 array is not outline traversal order; connecting points sequentially with L lines causes
-    # self-intersections at curves/tapers, leading to jagged gaps when filled. Reconstructed
-    # using sliding window convex hulls (_v9_polygon_to_hull_panels): points in each window
-    # form a convex hull with intentional overlap between windows, forming independent subpaths.
-    # No need to determine left/right sides, remaining stable for curves/tapers/uneven density,
-    # while small windows prevent rounding off sharp erased edges.
     if outline_polygons:
         def _proj(pt: tuple[float, float]) -> tuple[float, float]:
             x = pt[0] * scale
@@ -591,25 +697,12 @@ def build_stroke_ribbon(
         for poly in outline_polygons:
             if len(poly) < 3:
                 continue
-
-            panels = _v9_polygon_to_hull_panels(poly)
-            if panels:
-                for hull in panels:
-                    projected = [_proj(p) for p in hull]
-                    cmds = [
-                        f"{'M' if idx == 0 else 'L'} {x:.2f} {y:.2f}"
-                        for idx, (x, y) in enumerate(projected)
-                    ]
-                    cmds.append("Z")
-                    path_parts.append(" ".join(cmds))
-            else:
-                # Fallback: when point count is too small, revert to simple connection
-                cmds = []
-                for idx, pt in enumerate(poly):
-                    x, y = _proj(pt)
-                    cmds.append(f"{'M' if idx == 0 else 'L'} {x:.2f} {y:.2f}")
-                cmds.append("Z")
-                path_parts.append(" ".join(cmds))
+            cmds = [
+                f"{'M' if idx == 0 else 'L'} {x:.2f} {y:.2f}"
+                for idx, (x, y) in enumerate(_proj(p) for p in poly)
+            ]
+            cmds.append("Z")
+            path_parts.append(" ".join(cmds))
 
         if path_parts:
             return " ".join(path_parts)
@@ -637,31 +730,39 @@ def build_stroke_ribbon(
         cy = (flip_y_height - (p.y * scale)) if flip_y_height is not None else (p.y * scale)
         return f"M {cx - r:.2f},{cy:.2f} A {r:.2f},{r:.2f} 0 1,1 {cx + r:.2f},{cy:.2f} A {r:.2f},{r:.2f} 0 1,1 {cx - r:.2f},{cy:.2f}"
 
+    # Extend cut endpoints slightly along tangent to reach true eraser boundary
+    pts_to_render = list(filtered_points)
+    n_pts = len(pts_to_render)
+    tot_len = sum(math.hypot(pts_to_render[k].x - pts_to_render[k - 1].x, pts_to_render[k].y - pts_to_render[k - 1].y) for k in range(1, n_pts)) if n_pts >= 2 else 0.0
+    effective_ext = ext_dist if tot_len >= 8.0 else 0.0
+
+    if is_cut_start and effective_ext > 0 and len(pts_to_render) >= 2:
+        p0, p1 = pts_to_render[0], pts_to_render[1]
+        tdx, tdy = p0.x - p1.x, p0.y - p1.y
+        tdist = math.hypot(tdx, tdy)
+        if tdist > 1e-4:
+            e = min(effective_ext, tdist * 0.35)
+            pts_to_render[0] = StrokePoint(p0.x + (tdx / tdist) * e, p0.y + (tdy / tdist) * e, p0.pressure)
+    if is_cut_end and effective_ext > 0 and len(pts_to_render) >= 2:
+        p0, p1 = pts_to_render[-1], pts_to_render[-2]
+        tdx, tdy = p0.x - p1.x, p0.y - p1.y
+        tdist = math.hypot(tdx, tdy)
+        if tdist > 1e-4:
+            e = min(effective_ext, tdist * 0.35)
+            pts_to_render[-1] = StrokePoint(p0.x + (tdx / tdist) * e, p0.y + (tdy / tdist) * e, p0.pressure)
+
     if flip_y_height is not None:
-        raw_pts = [(p.x * scale, flip_y_height - (p.y * scale), max(0.05, p.pressure * scale)) for p in filtered_points]
+        raw_pts = [(p.x * scale, flip_y_height - (p.y * scale), max(0.05, p.pressure * scale * 0.99)) for p in pts_to_render]
     else:
-        raw_pts = [(p.x * scale, p.y * scale, max(0.05, p.pressure * scale)) for p in filtered_points]
+        raw_pts = [(p.x * scale, p.y * scale, max(0.05, p.pressure * scale * 0.99)) for p in pts_to_render]
 
     n = len(raw_pts)
     if n == 1:
         x, y, r = raw_pts[0]
         return f"M {x - r:.2f},{y:.2f} A {r:.2f},{r:.2f} 0 1,1 {x + r:.2f},{y:.2f} A {r:.2f},{r:.2f} 0 1,1 {x - r:.2f},{y:.2f}"
 
-    # Coordinate smoothing (preserve both endpoints to prevent short strokes from shrinking)
-    if n >= 3:
-        smoothed = []
-        for i in range(n):
-            if i == 0 or i == n - 1:
-                smoothed.append(raw_pts[i])
-            else:
-                lo = max(0, i - 1)
-                hi = min(n, i + 2)
-                window = raw_pts[lo:hi]
-                sx = sum(pt[0] for pt in window) / len(window)
-                sy = sum(pt[1] for pt in window) / len(window)
-                sr = sum(pt[2] for pt in window) / len(window)
-                smoothed.append((sx, sy, sr))
-        raw_pts = smoothed
+    # Direct spline vertices (already interpolated in GoodNotes engine)
+    pass
 
     # Calculate normal vectors
     normals: list[tuple[float, float]] = []
@@ -680,9 +781,12 @@ def build_stroke_ribbon(
             nx, ny = -dy / dist, dx / dist
         normals.append((nx, ny))
 
-    # Normal vector moving average smoothing (critical fix: must re-normalize length)
+    # Normal vector moving average smoothing (preserve strict endpoint normals for cut boundaries)
     smoothed_normals: list[tuple[float, float]] = []
     for i in range(n):
+        if (i == 0 and is_cut_start) or (i == n - 1 and is_cut_end):
+            smoothed_normals.append(normals[i])
+            continue
         lo = max(0, i - 1)
         hi = min(n, i + 2)
         window = normals[lo:hi]
@@ -714,12 +818,16 @@ def build_stroke_ribbon(
         if n_len == 2:
             cmds.append(f"L {pts_list[1][0]:.2f} {pts_list[1][1]:.2f}")
             return cmds
-        for i in range(1, n_len - 1):
-            cx, cy = pts_list[i]
-            nx2, ny2 = pts_list[i + 1]
-            mx, my = (cx + nx2) / 2.0, (cy + ny2) / 2.0
-            cmds.append(f"Q {cx:.2f} {cy:.2f} {mx:.2f} {my:.2f}")
-        cmds.append(f"L {pts_list[-1][0]:.2f} {pts_list[-1][1]:.2f}")
+        for i in range(n_len - 1):
+            p0 = pts_list[max(0, i - 1)]
+            p1 = pts_list[i]
+            p2 = pts_list[i + 1]
+            p3 = pts_list[min(n_len - 1, i + 2)]
+            c1x = p1[0] + (p2[0] - p0[0]) / 6.0
+            c1y = p1[1] + (p2[1] - p0[1]) / 6.0
+            c2x = p2[0] - (p3[0] - p1[0]) / 6.0
+            c2y = p2[1] - (p3[1] - p1[1]) / 6.0
+            cmds.append(f"C {c1x:.2f} {c1y:.2f}, {c2x:.2f} {c2y:.2f}, {p2[0]:.2f} {p2[1]:.2f}")
         return cmds
 
     r0 = max(0.1, raw_pts[0][2])
@@ -774,6 +882,67 @@ def extract_dash_pattern_from_tpl(tpl_img: TplImage) -> tuple[float, ...] | None
     return None
 
 
+def extract_native_cgpath_segments_from_tpl(
+    tpl_img: TplImage,
+) -> tuple[tuple[tuple[str, tuple[float, ...]], ...], ...]:
+    """Extract native Apple CGPath segment definitions (M, C, A commands) from tpl values."""
+    if len(tpl_img.values) <= 9 or not isinstance(tpl_img.values[9], list) or len(tpl_img.values[9]) < 6:
+        return ()
+    if (
+        len(tpl_img.values) <= 7
+        or not isinstance(tpl_img.values[7], list)
+        or not isinstance(tpl_img.values[5], list)
+        or not isinstance(tpl_img.values[6], list)
+    ):
+        return ()
+    v5 = tpl_img.values[5]
+    v6 = tpl_img.values[6]
+    v7 = [uint32_to_float32(x) for x in tpl_img.values[7]]
+    v9 = [uint32_to_float32(x) for x in tpl_img.values[9]]
+    v10 = [uint32_to_float32(x) for x in tpl_img.values[10]] if len(tpl_img.values) > 10 and isinstance(tpl_img.values[10], list) else []
+    v11 = tpl_img.values[11] if len(tpl_img.values) > 11 and isinstance(tpl_img.values[11], list) else []
+
+    v7_pts = [(v7[i], v7[i + 1]) for i in range(0, len(v7), 2)]
+    v9_pts = [(v9[i], v9[i + 1]) for i in range(0, len(v9), 2)]
+    v10_arcs = [(v10[i], v10[i + 1], v10[i + 2], v10[i + 3], v10[i + 4]) for i in range(0, len(v10), 5)]
+
+    v6_idx = 0
+    v7_idx = 0
+    v9_idx = 0
+    v10_idx = 0
+    v11_idx = 0
+
+    segments = []
+    for count in v5:
+        seg_v6 = v6[v6_idx : v6_idx + count]
+        v6_idx += count
+
+        seg_cmds = []
+        for cmd in seg_v6:
+            if cmd == 2:
+                if v7_idx < len(v7_pts):
+                    p0 = v7_pts[v7_idx]
+                    v7_idx += 1
+                    seg_cmds.append(("M", (p0[0], p0[1])))
+            elif cmd == 4:
+                if v9_idx + 2 < len(v9_pts):
+                    c1 = v9_pts[v9_idx]
+                    c2 = v9_pts[v9_idx + 1]
+                    p2 = v9_pts[v9_idx + 2]
+                    v9_idx += 3
+                    seg_cmds.append(("C", (c1[0], c1[1], c2[0], c2[1], p2[0], p2[1])))
+            elif cmd == 5:
+                if v10_idx < len(v10_arcs):
+                    cx, cy, r, a0, a1 = v10_arcs[v10_idx]
+                    flag = v11[v11_idx] if v11_idx < len(v11) else 1
+                    v10_idx += 1
+                    v11_idx += 1
+                    seg_cmds.append(("A", (cx, cy, r, a0, a1, float(flag))))
+        if seg_cmds:
+            segments.append(tuple(seg_cmds))
+    return tuple(segments)
+
+
 def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = None) -> list[Stroke]:
     """Parse GoodNotes binary field data to extract Strokes."""
     pos = field_data.find(b"bv41")
@@ -789,9 +958,11 @@ def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = N
 
     try:
         tpl_img = decode_tpl(lz4_data)
-        point_groups, default_width = extract_points_from_tpl(tpl_img)
+        point_groups, default_width, cut_jumps, eraser_cuts = extract_points_from_tpl(tpl_img)
         native_polygons = extract_outline_polygons_from_tpl(tpl_img)
+        segment_polygon_groups = extract_segment_polygons_from_tpl(tpl_img)
         tpl_dash = extract_dash_pattern_from_tpl(tpl_img)
+        native_cgpaths = extract_native_cgpath_segments_from_tpl(tpl_img)
     except Exception:
         return []
 
@@ -808,25 +979,59 @@ def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = N
         native_polygons = tuple(
             tuple((x + dx, y + dy) for x, y in polygon) for polygon in native_polygons
         )
+        segment_polygon_groups = [
+            [[(x + dx, y + dy) for x, y in quad] for quad in quads]
+            for quads in segment_polygon_groups
+        ]
     # Highlighter detection based on alpha
     is_highlighter = alpha < 0.95
 
     chains = []
-    # Apply safe disconnect splitting to all extracted point groups
-    for group in point_groups:
-        # Restore safe distance threshold of 300.0 to prevent abnormal coordinate jumps
-        # while ensuring normal fast strokes and small eraser cuts are not accidentally split.
-        chains.extend(split_stroke_points(group, threshold=300.0))
+    chain_polys: list[tuple[tuple[tuple[float, float], ...], ...]] = []
+    chain_cut_jumps: list[tuple[tuple[float, float] | None, tuple[float, float] | None]] = []
+    have_segment_polys = len(segment_polygon_groups) == len(point_groups)
+
+    for group_idx, group in enumerate(point_groups):
+        sub_chains = split_stroke_points(group, threshold=300.0)
+        chains.extend(sub_chains)
+        c_jump = cut_jumps[group_idx] if group_idx < len(cut_jumps) else (None, None)
+        chain_cut_jumps.append(c_jump)
+        chain_cut_jumps.extend([(None, None)] * (len(sub_chains) - 1))
+        if have_segment_polys and sub_chains:
+            group_quads = tuple(tuple(pt for pt in quad) for quad in segment_polygon_groups[group_idx])
+            chain_polys.append(group_quads)
+            chain_polys.extend([()] * (len(sub_chains) - 1))
+        else:
+            chain_polys.extend([()] * len(sub_chains))
+
+    if native_cgpaths:
+        first_pts = point_groups[0] if point_groups else []
+        return [
+            Stroke(
+                uuid=uuid,
+                points=tuple(first_pts),
+                color_hex=color_hex,
+                alpha=alpha,
+                width=default_width,
+                is_dot=len(first_pts) == 1,
+                is_highlighter=is_highlighter,
+                tpl_format=tpl_img.format,
+                parent_uuid=parent_uuid,
+                dash_pattern=tpl_dash,
+                eraser_cuts=tuple(eraser_cuts),
+                native_cgpaths=native_cgpaths,
+            )
+        ]
 
     strokes = []
     num_chains = len(chains)
     for chain_i, chain in enumerate(chains):
         is_dot = len(chain) == 1
-        # If a single GoodNotes entry is split, it usually implies erasure.
-        # Intermediate cut points should be rendered as flat caps.
-        is_cut_start = (chain_i > 0)
-        is_cut_end = (chain_i < num_chains - 1)
+        start_cut, end_cut = chain_cut_jumps[chain_i] if chain_i < len(chain_cut_jumps) else (None, None)
+        is_cut_start = start_cut is not None
+        is_cut_end = end_cut is not None
         dash_pattern = tpl_dash
+        chain_outline_polygons = chain_polys[chain_i] if chain_i < len(chain_polys) and chain_polys[chain_i] else tuple(native_polygons)
 
         strokes.append(
             Stroke(
@@ -838,11 +1043,14 @@ def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = N
                 is_dot=is_dot,
                 is_highlighter=is_highlighter,
                 tpl_format=tpl_img.format,
-                outline_polygons=tuple(native_polygons),
+                outline_polygons=chain_outline_polygons,
                 is_cut_start=is_cut_start,
                 is_cut_end=is_cut_end,
+                start_cut_vec=start_cut,
+                end_cut_vec=end_cut,
                 parent_uuid=parent_uuid,
                 dash_pattern=dash_pattern,
+                eraser_cuts=tuple(eraser_cuts),
             )
         )
 

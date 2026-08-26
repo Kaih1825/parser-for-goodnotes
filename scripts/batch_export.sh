@@ -38,7 +38,8 @@ files=(
     # "font.goodnotes"
     # "CA.goodnotes"
     # "p6.goodnotes"
-    "record.goodnotes"
+    # "record.goodnotes"
+    "era.goodnotes"
 )
 
 mkdir -p output_svgs

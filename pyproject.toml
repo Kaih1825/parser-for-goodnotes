@@ -13,6 +13,7 @@ authors = [{name = "Document Parser for GoodNotes contributors"}]
 classifiers = ["Programming Language :: Python :: 3", "Typing :: Typed"]
 dependencies = [
     "cairosvg>=2.8.2",
+    "numpy>=2.0.2",
     "PyMuPDF>=1.23.0",
 ]
 
