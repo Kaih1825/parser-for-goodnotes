@@ -886,11 +886,13 @@ def extract_native_cgpath_segments_from_tpl(
     tpl_img: TplImage,
 ) -> tuple[tuple[tuple[str, tuple[float, ...]], ...], ...]:
     """Extract native Apple CGPath segment definitions (M, C, A commands) from tpl values."""
-    if len(tpl_img.values) <= 9 or not isinstance(tpl_img.values[9], list) or len(tpl_img.values[9]) < 6:
-        return ()
     if (
-        len(tpl_img.values) <= 7
+        len(tpl_img.values) <= 9
+        or not isinstance(tpl_img.values[9], list)
+        or len(tpl_img.values[9]) < 6
+        or len(tpl_img.values) <= 7
         or not isinstance(tpl_img.values[7], list)
+        or len(tpl_img.values[7]) < 2
         or not isinstance(tpl_img.values[5], list)
         or not isinstance(tpl_img.values[6], list)
     ):
@@ -902,9 +904,9 @@ def extract_native_cgpath_segments_from_tpl(
     v10 = [uint32_to_float32(x) for x in tpl_img.values[10]] if len(tpl_img.values) > 10 and isinstance(tpl_img.values[10], list) else []
     v11 = tpl_img.values[11] if len(tpl_img.values) > 11 and isinstance(tpl_img.values[11], list) else []
 
-    v7_pts = [(v7[i], v7[i + 1]) for i in range(0, len(v7), 2)]
-    v9_pts = [(v9[i], v9[i + 1]) for i in range(0, len(v9), 2)]
-    v10_arcs = [(v10[i], v10[i + 1], v10[i + 2], v10[i + 3], v10[i + 4]) for i in range(0, len(v10), 5)]
+    v7_pts = [(v7[i], v7[i + 1]) for i in range(0, len(v7) - 1, 2)]
+    v9_pts = [(v9[i], v9[i + 1]) for i in range(0, len(v9) - 1, 2)]
+    v10_arcs = [(v10[i], v10[i + 1], v10[i + 2], v10[i + 3], v10[i + 4]) for i in range(0, len(v10) - 4, 5)]
 
     v6_idx = 0
     v7_idx = 0
