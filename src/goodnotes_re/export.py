@@ -216,15 +216,12 @@ def _render_pencil_stipple_paths(
 
     dot_sw = (0.65 + 0.095 * min(width, 10.0)) * dpi_scale
     # Emit separate <path> chunks every ~45 units of arc length so overlapping passes
-    # alpha-composite on top of each other, and interleave core dots across 3 layers so
-    # dense cores darken smoothly without visible chunk-boundary seams.
-    core_op = 0.32 * alpha
-    halo_op = 0.14 * alpha
-    chunks: list[tuple[list[list[str]], list[str]]] = []
-    cur_cores: list[list[str]] = [[], [], []]
-    cur_halo: list[str] = []
+    # alpha-composite on top of each other, and bucket dots into 4 pressure/opacity
+    # tiers (interleaving core tiers) so force (frc) drives realistic light-to-dark shading.
+    tier_ops = (0.12 * alpha, 0.28 * alpha, 0.52 * alpha, 0.80 * alpha)
+    chunks: list[list[list[str]]] = []
+    cur_buckets: list[list[str]] = [[], [], [], []]
     arc_accum = 0.0
-    dot_idx = 0
 
     dot_accum = 0.0
     width_factor = max(1.0, width * 0.65)
@@ -238,12 +235,13 @@ def _render_pencil_stipple_paths(
         az_m = 0.5 * (az0 + az1)
         alt_m = 0.5 * (alt0 + alt1)
         frc_m = 0.5 * (frc0 + frc1)
+        frc_norm = min(1.5, max(0.02, frc_m))
         tilt = max(0.0, 1.20 - alt_m)
-        r_min = (width * 0.78) * (0.55 + 0.45 * min(1.5, max(0.15, frc_m)))
+        r_min = (width * 0.78) * (0.45 + 0.55 * max(0.15, frc_norm))
         r_maj = r_min + width * 3.0 * (tilt ** 1.15)
         ca, sa = math.cos(az_m), math.sin(az_m)
 
-        dens = max(3.2, 2.2 * width_factor * (1.0 + 0.45 * (r_maj / max(1.0, r_min))) * (0.65 + 0.90 * min(1.5, frc_m)))
+        dens = max(0.6, 2.2 * width_factor * (1.0 + 0.45 * (r_maj / max(1.0, r_min))) * (0.22 + 1.15 * frc_norm))
         dot_accum += seg_len * dens
         n_dots = int(dot_accum)
         dot_accum -= n_dots
@@ -251,6 +249,7 @@ def _render_pencil_stipple_paths(
         # Higher tilt spreads grain more uniformly across r_maj; upright concentrates a legible core
         core_prob = max(0.25, 0.72 - 0.55 * min(1.0, tilt))
         core_spread = 0.48 + 0.35 * min(1.0, tilt)
+        tilt_atten = 1.0 / (1.0 + 0.25 * tilt)
 
         for _ in range(n_dots):
             t = rng.random()
@@ -270,41 +269,36 @@ def _render_pencil_stipple_paths(
             px = (cx + lx * ca - ly * sa) * dpi_scale
             py = (cy + lx * sa + ly * ca) * dpi_scale
             cmd = f"M{px:.1f},{py:.1f}h0.01"
-            if is_core:
-                cur_cores[dot_idx % 3].append(cmd)
-                dot_idx += 1
+            if not is_core:
+                b_idx = 1 if (frc_norm > 0.95 and rng.random() < 0.4) else 0
             else:
-                cur_halo.append(cmd)
+                darkness = (frc_norm * 0.72 + rng.random() * 0.28) * tilt_atten
+                b_idx = 0 if darkness < 0.30 else (1 if darkness < 0.55 else (2 if darkness < 0.80 else 3))
+            cur_buckets[b_idx].append(cmd)
 
         arc_accum += seg_len
-        if arc_accum >= 45.0 and (any(cur_cores) or cur_halo):
-            chunks.append((cur_cores, cur_halo))
-            cur_cores = [[], [], []]
-            cur_halo = []
+        if arc_accum >= 45.0 and any(cur_buckets):
+            chunks.append(cur_buckets)
+            cur_buckets = [[], [], [], []]
             arc_accum = 0.0
 
-    if any(cur_cores) or cur_halo:
-        chunks.append((cur_cores, cur_halo))
+    if any(cur_buckets):
+        chunks.append(cur_buckets)
 
     out: list[str] = []
     if highlight:
-        all_cmds = "".join("".join("".join(cl) for cl in c) + "".join(h) for c, h in chunks)
+        all_cmds = "".join("".join(b) for cb in chunks for b in cb)
         if all_cmds:
             out.append(
                 f'<path d="{all_cmds}" fill="none" stroke="#fffa65" stroke-opacity="0.75" '
                 f'stroke-width="{dot_sw + 3.0:.2f}" stroke-linecap="round"/>'
             )
 
-    for c_layers, h_cmds in chunks:
-        if h_cmds:
-            out.append(
-                f'<path d="{"".join(h_cmds)}" fill="none" stroke="{color}" stroke-opacity="{halo_op:.3f}" '
-                f'stroke-width="{dot_sw:.2f}" stroke-linecap="round"{css_class}{data_attr}/>'
-            )
-        for c_cmds in c_layers:
-            if c_cmds:
+    for cb in chunks:
+        for b_idx, cmds in enumerate(cb):
+            if cmds:
                 out.append(
-                    f'<path d="{"".join(c_cmds)}" fill="none" stroke="{color}" stroke-opacity="{core_op:.3f}" '
+                    f'<path d="{"".join(cmds)}" fill="none" stroke="{color}" stroke-opacity="{tier_ops[b_idx]:.3f}" '
                     f'stroke-width="{dot_sw:.2f}" stroke-linecap="round"{css_class}{data_attr}/>'
                 )
     return out
