@@ -214,11 +214,11 @@ def _render_pencil_stipple_paths(
     seed_val = (int(s0[5]) ^ int(round(s0[0] * 100.0)) ^ (int(round(s0[1] * 100.0)) << 16)) & 0xFFFFFFFF
     rng = random.Random(seed_val)
 
-    dot_sw = (0.65 + 0.095 * min(width, 10.0)) * dpi_scale
+    dot_sw = (0.45 + 0.068 * min(width, 10.0)) * dpi_scale
     # Emit separate <path> chunks every ~45 units of arc length so overlapping passes
     # alpha-composite on top of each other, and bucket dots into 4 pressure/opacity
-    # tiers (interleaving core tiers) so force (frc) drives realistic light-to-dark shading.
-    tier_ops = (0.26 * alpha, 0.45 * alpha, 0.66 * alpha, 0.88 * alpha)
+    # tiers so force (frc) drives crisp light-to-dark shading.
+    tier_ops = (0.22 * alpha, 0.44 * alpha, 0.72 * alpha, 0.96 * alpha)
     chunks: list[list[list[str]]] = []
     cur_buckets: list[list[str]] = [[], [], [], []]
     arc_accum = 0.0
@@ -237,43 +237,43 @@ def _render_pencil_stipple_paths(
         frc_m = 0.5 * (frc0 + frc1)
         frc_norm = min(1.5, max(0.02, frc_m))
         tilt = max(0.0, 1.32 - alt_m)
-        r_min = (width * 0.82) * (0.82 + 0.22 * min(1.2, frc_norm))
-        r_maj = r_min + width * 4.5 * (tilt ** 1.1)
+        r_min = (width * 0.78) * (0.85 + 0.18 * min(1.2, frc_norm))
+        r_maj = r_min + width * 4.2 * (tilt ** 1.1)
         ca, sa = math.cos(az_m), math.sin(az_m)
 
-        dens = max(1.6, 2.4 * width_factor * (1.0 + 0.65 * (r_maj / max(1.0, r_min))) * (0.55 + 0.85 * frc_norm))
+        dens = max(1.6, 2.8 * width_factor * (1.0 + 0.65 * (r_maj / max(1.0, r_min))) * (0.38 + 1.05 * frc_norm))
         dot_accum += seg_len * dens
         n_dots = int(dot_accum)
         dot_accum -= n_dots
 
-        # Higher tilt spreads grain more uniformly across r_maj; upright concentrates a legible core
-        core_prob = max(0.28, 0.74 - 0.50 * min(1.0, tilt))
-        core_spread = 0.58 + 0.35 * min(1.0, tilt)
-        tilt_atten = 1.0 / (1.0 + 0.12 * tilt)
+        # Higher tilt spreads grain more uniformly across r_maj while keeping crisp edges
+        core_prob = max(0.55, 0.85 - 0.28 * min(1.0, tilt))
+        core_spread = 0.68 + 0.20 * min(1.0, tilt)
+        tilt_atten = 1.0 / (1.0 + 0.10 * tilt)
 
         for _ in range(n_dots):
             t = rng.random()
             cx = x0 + (x1 - x0) * t
             cy = y0 + (y1 - y0) * t
-            u1 = ((rng.random() + rng.random()) * 0.5 - 0.5) * 2.1
-            u2 = ((rng.random() + rng.random()) * 0.5 - 0.5) * 2.1
+            u1 = (rng.random() - rng.random()) * 0.98
+            u2 = (rng.random() - rng.random()) * 0.98
 
             is_core = rng.random() < core_prob
             if is_core:
                 lx = u1 * core_spread * r_maj
                 ly = u2 * core_spread * r_min
             else:
-                lx = u1 * r_maj
-                ly = u2 * r_min
+                lx = u1 * 0.95 * r_maj
+                ly = u2 * 0.95 * r_min
 
             px = (cx + lx * ca - ly * sa) * dpi_scale
             py = (cy + lx * sa + ly * ca) * dpi_scale
             cmd = f"M{px:.1f},{py:.1f}h0.01"
             if not is_core:
-                b_idx = 1 if (frc_norm > 0.95 and rng.random() < 0.4) else 0
+                b_idx = 1 if (frc_norm > 0.75 and rng.random() < 0.45) else 0
             else:
-                darkness = (frc_norm * 0.72 + rng.random() * 0.28) * tilt_atten
-                b_idx = 0 if darkness < 0.30 else (1 if darkness < 0.55 else (2 if darkness < 0.80 else 3))
+                darkness = (frc_norm * 0.78 + rng.random() * 0.22) * tilt_atten
+                b_idx = 0 if darkness < 0.25 else (1 if darkness < 0.48 else (2 if darkness < 0.70 else 3))
             cur_buckets[b_idx].append(cmd)
 
         arc_accum += seg_len
