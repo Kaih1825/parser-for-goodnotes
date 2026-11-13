@@ -649,9 +649,9 @@ def page_to_svg(
             if note.author:
                 tx = nx + 12.0 * dpi_scale
                 ty = ny + nh - 12.0 * dpi_scale
-                font_stack = _format_font_family_stack("sans-serif")
+                author_font = "SF Mono, Menlo, Monaco, Consolas, PingFang TC, Heiti TC, Noto Sans Mono CJK TC, monospace"
                 elements.append(
-                    f'<text x="{tx:.2f}" y="{ty:.2f}" font-family="{html.escape(font_stack)}" font-size="10" fill="#555555" font-weight="500">{html.escape(note.author)}</text>'
+                    f'<text x="{tx:.2f}" y="{ty:.2f}" font-family="{author_font}" font-size="10" fill="#555555" font-weight="500">{html.escape(note.author)}</text>'
                 )
         else:
             # Render folded note icon indicator at (nx, ny) with natural opacity overlay
@@ -1045,14 +1045,20 @@ def page_to_svg(
             if getattr(stroke, "is_tape", False):
                 dx_sh = 0.8 * dpi_scale
                 dy_sh = 1.4 * dpi_scale
+                tape_id = html.escape(stroke.uuid or f"tape-{stroke_idx}")
+                tape_body_cls = "gn-tape-body gn-stroke" if css_class else "gn-tape-body"
                 elements.append(
-                    f'<g transform="translate({dx_sh:.2f}, {dy_sh:.2f})">'
+                    f'<g class="gn-tape" data-tape-id="{tape_id}" data-tape-open="false">'
+                    f'<g class="gn-tape-shadow" transform="translate({dx_sh:.2f}, {dy_sh:.2f})">'
                     f'<path d="{d_str}" fill="#000000" fill-opacity="0.18" stroke="none"/>'
                     f'</g>'
+                    f'<path class="{tape_body_cls}" d="{d_str}" fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="{s_color}" stroke-opacity="{s_alpha:.2f}" stroke-width="{seam_w:.2f}" stroke-linejoin="round" stroke-linecap="round"{data_attr}/>'
+                    f'</g>'
                 )
-            elements.append(
-                f'<path d="{d_str}" fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="{s_color}" stroke-opacity="{s_alpha:.2f}" stroke-width="{seam_w:.2f}" stroke-linejoin="round" stroke-linecap="round"{css_class}{data_attr}/>'
-            )
+            else:
+                elements.append(
+                    f'<path d="{d_str}" fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="{s_color}" stroke-opacity="{s_alpha:.2f}" stroke-width="{seam_w:.2f}" stroke-linejoin="round" stroke-linecap="round"{css_class}{data_attr}/>'
+                )
         elif stroke.is_dot and pts:
             # Single point / Dot
             pt = pts[0]

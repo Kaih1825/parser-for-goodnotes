@@ -251,6 +251,9 @@ class PageTests(unittest.TestCase):
             svg = page_to_svg(page, document=document)
             self.assertIn("h0.01", svg)
             self.assertNotIn("pencil-core-", svg)
+            self.assertIn('class="gn-tape"', svg)
+            self.assertIn('data-tape-open="false"', svg)
+            self.assertIn("monospace", svg)
 
 
 if __name__ == "__main__":

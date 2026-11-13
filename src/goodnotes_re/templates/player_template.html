@@ -303,6 +303,23 @@
       filter: drop-shadow(0 0 8px var(--stroke-glow)) drop-shadow(0 0 2px var(--highlight));
       stroke: var(--highlight) !important;
     }
+    .gn-tape {
+      cursor: pointer;
+    }
+    .gn-tape .gn-tape-shadow,
+    .gn-tape .gn-tape-body {
+      transition: opacity 0.18s ease, fill-opacity 0.18s ease, stroke-opacity 0.18s ease, filter 0.15s ease;
+    }
+    .gn-tape:hover .gn-tape-body {
+      filter: brightness(0.96);
+    }
+    .gn-tape[data-tape-open="true"] .gn-tape-shadow {
+      opacity: 0;
+    }
+    .gn-tape[data-tape-open="true"] .gn-tape-body {
+      fill-opacity: 0.25 !important;
+      stroke-opacity: 0.25 !important;
+    }
 
     /* Mobile Responsive Adaptation (iOS Safari & Android) */
     @media (max-width: 768px) {
@@ -673,7 +690,33 @@
       };
     }
 
+    const openedTapes = new Set();
+
+    function syncTapeStates(rootElement) {
+      rootElement.querySelectorAll('.gn-tape[data-tape-id]').forEach(tapeEl => {
+        const tid = tapeEl.getAttribute('data-tape-id');
+        tapeEl.setAttribute('data-tape-open', openedTapes.has(tid) ? 'true' : 'false');
+      });
+    }
+
     function attachStrokeClickListeners(rootElement) {
+      syncTapeStates(rootElement);
+      rootElement.querySelectorAll('.gn-tape[data-tape-id]').forEach(tapeEl => {
+        const tid = tapeEl.getAttribute('data-tape-id');
+        tapeEl.setAttribute('title', '點擊切換膠帶（蓋住 / 揭開）');
+        tapeEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (openedTapes.has(tid)) {
+            openedTapes.delete(tid);
+          } else {
+            openedTapes.add(tid);
+          }
+          document.querySelectorAll(`.gn-tape[data-tape-id="${CSS.escape(tid)}"]`).forEach(el => {
+            el.setAttribute('data-tape-open', openedTapes.has(tid) ? 'true' : 'false');
+          });
+        });
+      });
+
       const strokeElements = rootElement.querySelectorAll('[data-stroke-id]');
       strokeElements.forEach(el => {
         const suuid = el.getAttribute('data-stroke-id');
