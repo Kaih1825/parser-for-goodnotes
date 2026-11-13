@@ -205,110 +205,219 @@ def _render_pencil_stipple_paths(
     data_attr: str,
     highlight: bool = False,
 ) -> list[str]:
-    """Render a pencil stroke as deterministic vector stipple dots across opacity buckets."""
+    """Synthesize a realistic charcoal/graphite pencil stroke using a hybrid
+    soft concentric core wash (for upright/semi-upright strokes) plus multi-tier
+    paper-tooth stipple grains (for feathered edges and tilted broadside shading).
+
+    Each sample is (x, y, azimuth, altitude, force, seed) in 132-DPI GoodNotes
+    page coordinates.
+    """
     if len(samples) < 2:
         return []
 
-    # Deterministic per-stroke RNG seeded from sample seed and initial coordinates
-    s0 = samples[0]
-    seed_val = (int(s0[5]) ^ int(round(s0[0] * 100.0)) ^ (int(round(s0[1] * 100.0)) << 16)) & 0xFFFFFFFF
-    rng = random.Random(seed_val)
+    # Layer A: Soft concentric smoky graphite wash for upright & semi-upright strokes
+    # (width_mult, alpha_mult)
+    wash_tiers = (
+        (1.50, 0.033),
+        (1.02, 0.056),
+        (0.62, 0.086),
+        (0.33, 0.122),
+    )
+    # Layer B: Paper-tooth stipple grains (4 opacity/size tiers x 3 interleaved paths)
+    # (grain_w_mult, grain_w_min, grain_w_max, alpha_mult)
+    grain_tiers = (
+        (0.21, 0.44, 0.88, 0.048),
+        (0.24, 0.50, 0.98, 0.095),
+        (0.27, 0.56, 1.08, 0.160),
+        (0.31, 0.62, 1.20, 0.245),
+    )
 
-    dot_sw = (0.52 + 0.075 * min(width, 10.0)) * dpi_scale
-    # Emit separate <path> chunks every ~45 units of arc length so overlapping passes
-    # alpha-composite on top of each other, and bucket dots into 4 pressure/opacity
-    # tiers with 2D paper-tooth modulation for soft, natural graphite shading.
-    tier_ops = (0.18 * alpha, 0.34 * alpha, 0.54 * alpha, 0.76 * alpha)
-    chunks: list[list[list[str]]] = []
-    cur_buckets: list[list[str]] = [[], [], [], []]
+    out_paths: list[str] = []
+    if highlight:
+        hl_pts = " ".join(f"{sx * dpi_scale:.2f},{sy * dpi_scale:.2f}" for sx, sy, *_ in samples)
+        if hl_pts:
+            out_paths.append(
+                f'<polyline points="{hl_pts}" fill="none" stroke="#fffa65" '
+                f'stroke-opacity="0.75" stroke-width="{max(2.0, width * dpi_scale * 2.2):.2f}" '
+                f'stroke-linecap="round" stroke-linejoin="round"/>'
+            )
+
+    def make_buckets() -> dict[str, list[list[list[str]]]]:
+        return {
+            "wash": [[[] for _ in range(len(wash_tiers))] for _ in range(8)],
+            "grain": [[[] for _ in range(3)] for _ in range(len(grain_tiers))],
+        }
+
+    buckets = make_buckets()
     arc_accum = 0.0
-
     dot_accum = 0.0
-    width_factor = max(1.0, width * 0.62)
+
+    def flush_chunk(b_dict: dict[str, list[list[list[str]]]], avg_w: float) -> None:
+        for op_idx in range(8):
+            op_scale = (op_idx + 1) / 8.0
+            for t_idx, (w_mult, a_mult) in enumerate(wash_tiers):
+                cmds = b_dict["wash"][op_idx][t_idx]
+                if not cmds:
+                    continue
+                d_str = "".join(cmds)
+                sw = max(0.26, avg_w * w_mult) * dpi_scale
+                b_alpha = min(0.60, alpha * a_mult * op_scale)
+                out_paths.append(
+                    f'<path d="{d_str}" fill="none" stroke="{color}" '
+                    f'stroke-opacity="{b_alpha:.3f}" stroke-width="{sw:.2f}" '
+                    f'stroke-linecap="round" stroke-linejoin="round"{css_class}{data_attr}/>'
+                )
+        for t_idx, (gw_mult, gw_min, gw_max, a_mult) in enumerate(grain_tiers):
+            gw = max(gw_min, min(gw_max, avg_w * gw_mult * dpi_scale))
+            b_alpha = min(0.85, alpha * a_mult)
+            for p_idx in range(3):
+                cmds = b_dict["grain"][t_idx][p_idx]
+                if not cmds:
+                    continue
+                d_str = "".join(cmds)
+                out_paths.append(
+                    f'<path d="{d_str}" fill="none" stroke="{color}" '
+                    f'stroke-opacity="{b_alpha:.3f}" stroke-width="{gw:.2f}" '
+                    f'stroke-linecap="round" stroke-linejoin="round"{css_class}{data_attr}/>'
+                )
+
+    last_wash_op = -1
+    prev_ux, prev_uy = 0.0, 0.0
     for i in range(len(samples) - 1):
-        x0, y0, az0, alt0, frc0, _ = samples[i]
+        x0, y0, az0, alt0, frc0, seed0 = samples[i]
         x1, y1, az1, alt1, frc1, _ = samples[i + 1]
-        seg_len = math.hypot(x1 - x0, y1 - y0)
+        dx = x1 - x0
+        dy = y1 - y0
+        seg_len = math.hypot(dx, dy)
         if seg_len < 1e-4:
             continue
 
-        az_m = 0.5 * (az0 + az1)
-        alt_m = 0.5 * (alt0 + alt1)
-        frc_m = 0.5 * (frc0 + frc1)
-        frc_norm = min(1.25, max(0.05, frc_m))
-        tilt = max(0.0, 1.12 - alt_m)
-        r_min = (width * 0.72) * (0.85 + 0.15 * frc_norm)
-        r_maj = r_min + width * 4.4 * (tilt ** 1.15)
-        ca, sa = math.cos(az_m), math.sin(az_m)
+        ux = dx / seg_len
+        uy = dy / seg_len
 
-        dens = max(1.6, 2.3 * width_factor * (1.0 + 0.55 * (r_maj / max(1.0, r_min))) * (0.50 + 0.68 * frc_norm))
-        dot_accum += seg_len * dens
-        n_dots = int(dot_accum)
+        if i > 0:
+            cos_turn = ux * prev_ux + uy * prev_uy
+        else:
+            cos_turn = 1.0
+        prev_ux, prev_uy = ux, uy
+        straightness = max(0.0, min(1.0, (cos_turn - 0.50) / 0.45)) * min(1.0, seg_len / 0.55)
+
+        az = 0.5 * (az0 + az1)
+        alt = 0.5 * (alt0 + alt1)
+        frc = max(0.01, 0.5 * (frc0 + frc1))
+
+        tilt_norm = max(0.0, min(1.0, (1.30 - alt) / 0.90))
+        frc_norm = min(1.0, max(0.02, frc) / 0.85)
+
+        ca = math.cos(az)
+        sa = math.sin(az)
+
+        r_maj = width * (0.90 + 1.90 * (tilt_norm ** 1.35))
+        r_min = width * (0.76 + 0.24 * (frc_norm ** 0.55)) * (1.0 - 0.26 * tilt_norm)
+
+        r_perp = math.hypot(r_maj * (-ux * sa + uy * ca), r_min * (ux * ca + uy * sa))
+        raw_dir_gain = min(2.50, (r_maj / max(0.70, r_perp)) ** 0.72)
+        dir_gain = 1.0 + straightness * (raw_dir_gain - 1.0)
+
+        raw_dwell = min(1.48, max(0.75, (1.32 / max(0.45, seg_len)) ** 0.56))
+        dwell_gain = 1.0 + straightness * (tilt_norm ** 1.05) * (raw_dwell - 1.0)
+
+        corner_atten = (0.42 + 0.58 * straightness) if (tilt_norm > 0.15) else (0.66 + 0.34 * straightness)
+
+        upright_factor = max(0.0, 1.0 - 1.15 * (tilt_norm ** 1.25))
+        w_wash_gain = min(1.25, max(0.80, (width / 4.68) ** 0.30))
+        wash_strength = min(1.0, (0.14 + 0.86 * (frc_norm ** 0.74)) * upright_factor * w_wash_gain)
+        if wash_strength > 0.05:
+            op_idx = min(7, max(0, int(wash_strength * 8.0)))
+            sx0, sy0 = x0 * dpi_scale, y0 * dpi_scale
+            sx1, sy1 = x1 * dpi_scale, y1 * dpi_scale
+            if op_idx == last_wash_op and buckets["wash"][op_idx][0]:
+                seg_cmd = f"L{sx1:.2f},{sy1:.2f}"
+            else:
+                seg_cmd = f"M{sx0:.2f},{sy0:.2f}L{sx1:.2f},{sy1:.2f}"
+            for t_idx in range(len(wash_tiers)):
+                buckets["wash"][op_idx][t_idx].append(seg_cmd)
+            last_wash_op = op_idx
+        else:
+            last_wash_op = -1
+
+        base_cov = (0.17 + 0.83 * (frc_norm ** 0.76)) * (0.58 + 0.40 * tilt_norm)
+        p_cov = min(0.96, base_cov * dir_gain * dwell_gain * corner_atten)
+
+        footprint_area = seg_len * 2.0 * r_perp
+        w_scale = max(0.65, (width / 4.68) ** 0.55)
+        dot_accum += footprint_area * (3.70 / w_scale) * p_cov
+        n_dots = min(130, int(dot_accum))
         dot_accum -= n_dots
 
-        # Higher tilt spreads grain across r_maj; upright keeps a soft, feathered core
-        core_prob = max(0.32, 0.72 - 0.45 * min(1.0, tilt))
-        core_spread = 0.52 + 0.32 * min(1.0, tilt)
-        tilt_atten = 1.0 / (1.0 + 0.14 * tilt)
+        u_pow = 1.28 - 0.52 * (tilt_norm ** 0.85)
+        v_pow = 1.28 - 0.26 * (tilt_norm ** 0.85)
 
-        for _ in range(n_dots):
-            t = rng.random()
-            cx = x0 + (x1 - x0) * t
-            cy = y0 + (y1 - y0) * t
-            u1 = ((rng.random() + rng.random() + rng.random()) / 3.0 - 0.5) * 2.2
-            u2 = ((rng.random() + rng.random() + rng.random()) / 3.0 - 0.5) * 2.2
+        base_state = (int(seed0) ^ (i * 0x9E3779B9)) & 0xFFFFFFFF
+        for k in range(n_dots):
+            s = (base_state + k * 0x85EBCA6B) & 0xFFFFFFFF
+            s = ((s ^ (s >> 16)) * 0x7FEB352D) & 0xFFFFFFFF
+            s = ((s ^ (s >> 15)) * 0x846CA68B) & 0xFFFFFFFF
+            s = (s ^ (s >> 16)) & 0xFFFFFFFF
 
-            is_core = rng.random() < core_prob
-            if is_core:
-                lx = u1 * core_spread * r_maj
-                ly = u2 * core_spread * r_min
-            else:
-                lx = u1 * r_maj
-                ly = u2 * r_min
+            t = ((s & 0x3FF) + 0.5) / 1024.0
+            r1 = (((s >> 10) & 0x3FF) + 0.5) / 1024.0
+            r2 = (((s >> 20) & 0x3FF) + 0.5) / 1024.0
 
-            gx = cx + lx * ca - ly * sa
-            gy = cy + lx * sa + ly * ca
-            # Deterministic 2D paper-tooth modulation in page coordinates
-            tooth = 0.5 + 0.25 * math.sin(gx * 2.3 + math.cos(gy * 1.9)) + 0.25 * math.cos(gy * 3.1 - math.sin(gx * 2.7))
-            if tooth + frc_norm * 0.45 < 0.32:
+            u_sign = 1.0 if (r1 >= 0.5) else -1.0
+            u_mag = abs(2.0 * r1 - 1.0)
+            u = u_sign * (u_mag ** u_pow) * r_maj
+
+            v_sign = 1.0 if (r2 >= 0.5) else -1.0
+            v_mag = abs(2.0 * r2 - 1.0)
+            v = v_sign * (v_mag ** v_pow) * r_min
+
+            rel_r2 = (u / max(0.1, r_maj)) ** 2 + (v / max(0.1, r_min)) ** 2
+            if rel_r2 > 1.05:
+                continue
+
+            ox = u * ca - v * sa
+            oy = u * sa + v * ca
+
+            gx = x0 + t * dx + ox
+            gy = y0 + t * dy + oy
+
+            tooth = (
+                0.50
+                + 0.26 * math.sin(gx * 3.6 + 0.7 * math.cos(gy * 3.1))
+                + 0.24 * math.cos(gy * 3.9 - 0.7 * math.sin(gx * 3.4))
+            )
+            valley_thresh = (0.12 + 0.16 * tilt_norm) * (1.0 - 0.44 * frc_norm)
+            if tooth < valley_thresh:
                 continue
 
             px = gx * dpi_scale
             py = gy * dpi_scale
-            cmd = f"M{px:.1f},{py:.1f}h0.01"
-            if not is_core:
-                b_idx = 1 if (frc_norm > 0.85 and tooth > 0.55) else 0
+
+            radial_profile = max(0.05, 1.0 - rel_r2) ** (1.58 - 1.18 * tilt_norm)
+            dark_score = p_cov * (0.14 + 0.86 * radial_profile) * (0.42 + 0.58 * tooth)
+
+            if dark_score > 0.45:
+                t_idx = 3
+            elif dark_score > 0.27:
+                t_idx = 2
+            elif dark_score > 0.13:
+                t_idx = 1
             else:
-                darkness = (frc_norm * 0.68 + tooth * 0.22 + rng.random() * 0.10) * tilt_atten
-                b_idx = 0 if darkness < 0.28 else (1 if darkness < 0.52 else (2 if darkness < 0.76 else 3))
-            cur_buckets[b_idx].append(cmd)
+                t_idx = 0
+
+            p_idx = (k + i) % 3
+            buckets["grain"][t_idx][p_idx].append(f"M{px:.2f},{py:.2f}h0.01")
 
         arc_accum += seg_len
-        if arc_accum >= 45.0 and any(cur_buckets):
-            chunks.append(cur_buckets)
-            cur_buckets = [[], [], [], []]
+        if arc_accum >= 14.0:
+            flush_chunk(buckets, width)
+            buckets = make_buckets()
             arc_accum = 0.0
+            last_wash_op = -1
 
-    if any(cur_buckets):
-        chunks.append(cur_buckets)
-
-    out: list[str] = []
-    if highlight:
-        all_cmds = "".join("".join(b) for cb in chunks for b in cb)
-        if all_cmds:
-            out.append(
-                f'<path d="{all_cmds}" fill="none" stroke="#fffa65" stroke-opacity="0.75" '
-                f'stroke-width="{dot_sw + 3.0:.2f}" stroke-linecap="round"/>'
-            )
-
-    for cb in chunks:
-        for b_idx, cmds in enumerate(cb):
-            if cmds:
-                out.append(
-                    f'<path d="{"".join(cmds)}" fill="none" stroke="{color}" stroke-opacity="{tier_ops[b_idx]:.3f}" '
-                    f'stroke-width="{dot_sw:.2f}" stroke-linecap="round"{css_class}{data_attr}/>'
-                )
-    return out
+    flush_chunk(buckets, width)
+    return out_paths
 
 
 def _rounded_polygon_svg_path(pts: tuple[tuple[float, float], ...], r: float, scale: float = 1.0, is_closed: bool = True) -> str:
