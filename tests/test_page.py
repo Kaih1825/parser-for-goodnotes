@@ -237,6 +237,21 @@ class PageTests(unittest.TestCase):
             if rec233 is not None:
                 self.assertEqual(rec233.dash_pattern, (0.0, 2.0))
 
+    def test_1104test_pencil_stipple_export(self) -> None:
+        from goodnotes_re.export import page_to_svg
+
+        sample = resolve_sample("1104test.goodnotes")
+        if not sample.exists():
+            self.skipTest("1104test.goodnotes not present")
+        with GoodNotesDocument.open(sample) as document:
+            page = document.pages()[0]
+            pencil_strokes = [s for s in page.strokes if s.is_pencil]
+            self.assertGreater(len(pencil_strokes), 0)
+            self.assertTrue(all(len(s.pencil_samples) >= 2 for s in pencil_strokes))
+            svg = page_to_svg(page, document=document)
+            self.assertIn("h0.01", svg)
+            self.assertNotIn("pencil-core-", svg)
+
 
 if __name__ == "__main__":
     unittest.main()

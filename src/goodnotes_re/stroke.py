@@ -46,6 +46,7 @@ class Stroke:
     is_tape: bool = False
     is_pencil: bool = False
     z_order: int = 0
+    pencil_samples: tuple[tuple[float, float, float, float, float, int], ...] = ()
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -213,6 +214,66 @@ def _path_jitter_ratio(points: Sequence[StrokePoint]) -> float:
 
 _JITTER_REJECT_THRESHOLD = 0.35
 
+
+
+def _extract_raw_pencil_samples(
+    tpl_img: TplImage,
+) -> list[tuple[float, float, float, float, float, int]]:
+    """Extract raw (x, y, azimuth, altitude, force, seed) samples for Schema 2 pencil strokes."""
+    if not ("A(S(uuuuuuuuuuu" in tpl_img.format and len(tpl_img.values) > 4):
+        return []
+    seg_list = tpl_img.values[4]
+    if not isinstance(seg_list, list) or not seg_list:
+        return []
+
+    raw_samples: list[tuple[float, float, float, float, float, int]] = []
+
+    def _append_sample(
+        x: float, y: float, az: float, alt: float, frc: float, seed: int
+    ) -> None:
+        if not (is_valid_coord(x) and is_valid_coord(y)):
+            return
+        if raw_samples and math.hypot(x - raw_samples[-1][0], y - raw_samples[-1][1]) < 1e-3:
+            return
+        if not (-10.0 <= az <= 10.0):
+            az = 0.0
+        if not (0.01 <= alt <= 1.65):
+            alt = 1.35
+        if not (0.01 <= frc <= 5.0):
+            frc = 0.5
+        raw_samples.append((x, y, az, alt, frc, seed))
+
+    if len(tpl_img.values) > 3 and isinstance(tpl_img.values[3], list) and tpl_img.values[3]:
+        for p5 in tpl_img.values[3]:
+            if isinstance(p5, (tuple, list)) and len(p5) >= 5:
+                _append_sample(
+                    uint32_to_float32(p5[0]),
+                    uint32_to_float32(p5[1]),
+                    uint32_to_float32(p5[2]),
+                    uint32_to_float32(p5[3]),
+                    uint32_to_float32(p5[4]),
+                    0,
+                )
+    for p11 in seg_list:
+        if isinstance(p11, (tuple, list)) and len(p11) >= 11:
+            seed_u32 = int(p11[0]) & 0xFFFFFFFF
+            _append_sample(
+                uint32_to_float32(p11[1]),
+                uint32_to_float32(p11[2]),
+                uint32_to_float32(p11[3]),
+                uint32_to_float32(p11[4]),
+                uint32_to_float32(p11[5]),
+                seed_u32,
+            )
+            _append_sample(
+                uint32_to_float32(p11[6]),
+                uint32_to_float32(p11[7]),
+                uint32_to_float32(p11[8]),
+                uint32_to_float32(p11[9]),
+                uint32_to_float32(p11[10]),
+                seed_u32,
+            )
+    return raw_samples
 
 
 def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]], float]:
@@ -407,121 +468,44 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
     # 5-tuple start point: (x, y, azimuth, altitude, force)
     # 11-tuple segment:    (seed_u32, x1, y1, az1, alt1, frc1, x2, y2, az2, alt2, frc2)
     if "A(S(uuuuuuuuuuu" in fmt:
-        if len(tpl_img.values) > 4 and isinstance(tpl_img.values[4], list) and len(tpl_img.values[4]) > 0:
-            raw_samples: list[tuple[float, float, float, float, float]] = []
+        raw_samples = _extract_raw_pencil_samples(tpl_img)
+        if len(raw_samples) >= 2:
+            n_s = len(raw_samples)
+            normals_raw: list[tuple[float, float]] = []
+            for i in range(n_s):
+                if i == 0:
+                    dx_s = raw_samples[1][0] - raw_samples[0][0]
+                    dy_s = raw_samples[1][1] - raw_samples[0][1]
+                elif i == n_s - 1:
+                    dx_s = raw_samples[-1][0] - raw_samples[-2][0]
+                    dy_s = raw_samples[-1][1] - raw_samples[-2][1]
+                else:
+                    dx_s = raw_samples[i + 1][0] - raw_samples[i - 1][0]
+                    dy_s = raw_samples[i + 1][1] - raw_samples[i - 1][1]
+                ds = math.hypot(dx_s, dy_s)
+                normals_raw.append((-dy_s / ds, dx_s / ds) if ds > 1e-6 else (0.0, 1.0))
 
-            def _append_sample(x: float, y: float, az: float, alt: float, frc: float) -> None:
-                if not (is_valid_coord(x) and is_valid_coord(y)):
-                    return
-                if raw_samples and math.hypot(x - raw_samples[-1][0], y - raw_samples[-1][1]) < 1e-3:
-                    return
-                if not (-10.0 <= az <= 10.0):
-                    az = 0.0
-                if not (0.01 <= alt <= 1.65):
-                    alt = 1.35
-                if not (0.01 <= frc <= 5.0):
-                    frc = 0.5
-                raw_samples.append((x, y, az, alt, frc))
+            g = []
+            for i, (x, y, az, alt, frc, _seed) in enumerate(raw_samples):
+                lo = max(0, i - 1)
+                hi = min(n_s, i + 2)
+                sx = sum(normals_raw[j][0] for j in range(lo, hi))
+                sy = sum(normals_raw[j][1] for j in range(lo, hi))
+                sn = math.hypot(sx, sy)
+                nx, ny = (sx / sn, sy / sn) if sn > 1e-6 else (0.0, 1.0)
 
-            if len(tpl_img.values) > 3 and isinstance(tpl_img.values[3], list) and len(tpl_img.values[3]) > 0:
-                for p5 in tpl_img.values[3]:
-                    if isinstance(p5, (tuple, list)) and len(p5) >= 5:
-                        _append_sample(
-                            uint32_to_float32(p5[0]),
-                            uint32_to_float32(p5[1]),
-                            uint32_to_float32(p5[2]),
-                            uint32_to_float32(p5[3]),
-                            uint32_to_float32(p5[4]),
-                        )
-            for p11 in tpl_img.values[4]:
-                if isinstance(p11, (tuple, list)) and len(p11) >= 11:
-                    _append_sample(
-                        uint32_to_float32(p11[1]),
-                        uint32_to_float32(p11[2]),
-                        uint32_to_float32(p11[3]),
-                        uint32_to_float32(p11[4]),
-                        uint32_to_float32(p11[5]),
-                    )
-                    _append_sample(
-                        uint32_to_float32(p11[6]),
-                        uint32_to_float32(p11[7]),
-                        uint32_to_float32(p11[8]),
-                        uint32_to_float32(p11[9]),
-                        uint32_to_float32(p11[10]),
-                    )
+                # Project tilted elliptical nib (r_major, r_minor) at angle az onto stroke normal
+                tilt = max(0.0, 1.20 - alt)
+                r_minor = (default_width * 0.5) * (0.42 + 0.58 * min(1.5, max(0.15, frc)))
+                r_major = r_minor + default_width * 3.2 * (tilt ** 1.15)
+                ca, sa = math.cos(az), math.sin(az)
+                proj_major = nx * ca + ny * sa
+                proj_minor = -nx * sa + ny * ca
+                r_eff = math.hypot(r_major * proj_major, r_minor * proj_minor)
+                g.append(StrokePoint(x, y, r_eff))
 
-            if len(raw_samples) >= 2:
-                n_s = len(raw_samples)
-                normals_raw: list[tuple[float, float]] = []
-                for i in range(n_s):
-                    if i == 0:
-                        dx_s = raw_samples[1][0] - raw_samples[0][0]
-                        dy_s = raw_samples[1][1] - raw_samples[0][1]
-                    elif i == n_s - 1:
-                        dx_s = raw_samples[-1][0] - raw_samples[-2][0]
-                        dy_s = raw_samples[-1][1] - raw_samples[-2][1]
-                    else:
-                        dx_s = raw_samples[i + 1][0] - raw_samples[i - 1][0]
-                        dy_s = raw_samples[i + 1][1] - raw_samples[i - 1][1]
-                    ds = math.hypot(dx_s, dy_s)
-                    normals_raw.append((-dy_s / ds, dx_s / ds) if ds > 1e-6 else (0.0, 1.0))
-
-                g = []
-                for i, (x, y, az, alt, frc) in enumerate(raw_samples):
-                    lo = max(0, i - 1)
-                    hi = min(n_s, i + 2)
-                    sx = sum(normals_raw[j][0] for j in range(lo, hi))
-                    sy = sum(normals_raw[j][1] for j in range(lo, hi))
-                    sn = math.hypot(sx, sy)
-                    nx, ny = (sx / sn, sy / sn) if sn > 1e-6 else (0.0, 1.0)
-
-                    # Project tilted elliptical nib (r_major, r_minor) at angle az onto stroke normal
-                    tilt = max(0.0, 1.20 - alt)
-                    r_minor = (default_width * 0.5) * (0.42 + 0.58 * min(1.5, max(0.15, frc)))
-                    r_major = r_minor + default_width * 3.2 * (tilt ** 1.15)
-                    ca, sa = math.cos(az), math.sin(az)
-                    proj_major = nx * ca + ny * sa
-                    proj_minor = -nx * sa + ny * ca
-                    r_eff = math.hypot(r_major * proj_major, r_minor * proj_minor)
-                    g.append(StrokePoint(x, y, r_eff))
-
-                # Split broad zig-zag pencil shading strokes at sharp turnaround corners
-                split_indices: list[int] = []
-                if len(g) >= 20:
-                    k = 6
-                    cos_arr = [1.0] * len(g)
-                    for i in range(k, len(g) - k):
-                        v1x, v1y = g[i].x - g[i - k].x, g[i].y - g[i - k].y
-                        v2x, v2y = g[i + k].x - g[i].x, g[i + k].y - g[i].y
-                        d1, d2 = math.hypot(v1x, v1y), math.hypot(v2x, v2y)
-                        if d1 > 2.0 and d2 > 2.0:
-                            cos_arr[i] = (v1x * v2x + v1y * v2y) / (d1 * d2)
-                    last_turn = -10
-                    for i in range(k, len(g) - k):
-                        if cos_arr[i] < -0.2 and i - last_turn >= 10:
-                            win_min = min(cos_arr[max(k, i - 5) : min(len(g) - k, i + 6)])
-                            if cos_arr[i] <= win_min + 1e-9 and (len(g) - 1 - i) >= k:
-                                split_indices.append(i)
-                                last_turn = i
-
-                if split_indices:
-                    cuts_pts: list[list[StrokePoint]] = []
-                    cuts_jumps: list[tuple[tuple[float, float] | None, tuple[float, float] | None]] = []
-                    prev_idx = 0
-                    all_bounds = split_indices + [len(g) - 1]
-                    for bi, bound in enumerate(all_bounds):
-                        seg_pts = g[prev_idx : bound + 1]
-                        if len(seg_pts) >= 2:
-                            start_j = (1.0, 0.0) if bi > 0 else None
-                            end_j = (1.0, 0.0) if bi < len(all_bounds) - 1 else None
-                            cuts_pts.append(seg_pts)
-                            cuts_jumps.append((start_j, end_j))
-                        prev_idx = bound
-                    if cuts_pts:
-                        return cuts_pts, default_width, cuts_jumps, []
-
-                groups.append(g)
-                return groups, default_width, [(None, None)] * len(groups), []
+            groups.append(g)
+            return groups, default_width, [(None, None)] * len(groups), []
 
     # 3. Candidate point-array format matching (a) 3-float, (b) 5-float, (c) 2-float
     # Limit idx <= 5 to avoid misidentifying trailing outline polygon / mesh lists (values[6..10]) as point arrays
@@ -1237,6 +1221,13 @@ def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = N
     # Highlighter & tool detection based on alpha + trailer protobuf flags + TPL format
     is_highlighter = (alpha < 0.95) or is_hl_flag
     is_pencil = "A(S(uuuuuuuuuuu" in tpl_img.format
+    pencil_samples: tuple[tuple[float, float, float, float, float, int], ...] = ()
+    if is_pencil:
+        raw_ps = _extract_raw_pencil_samples(tpl_img)
+        if dx or dy:
+            pencil_samples = tuple((x + dx, y + dy, az, alt, frc, seed) for x, y, az, alt, frc, seed in raw_ps)
+        else:
+            pencil_samples = tuple(raw_ps)
 
     chains = []
     chain_polys: list[tuple[tuple[tuple[float, float], ...], ...]] = []
@@ -1306,6 +1297,7 @@ def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = N
                 eraser_cuts=tuple(eraser_cuts),
                 is_tape=is_tape_flag,
                 is_pencil=is_pencil,
+                pencil_samples=pencil_samples if len(chains) == 1 else (),
             )
         )
 

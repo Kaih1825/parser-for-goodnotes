@@ -7,6 +7,7 @@ import hashlib
 import html
 import json
 import math
+import random
 import struct
 import zlib
 from pathlib import Path
@@ -194,49 +195,119 @@ def _trim_polyline_ends(
     return out
 
 
-@functools.lru_cache(maxsize=256)
-def _make_pencil_grain_pattern_png_b64(
-    color_hex: str,
-    density: float,
-    contrast: float,
-    seed_offset: int,
-) -> str:
-    """Generate a seamless 64x64 RGBA PNG data-URI for pencil paper-tooth grain."""
-    clean = color_hex.lstrip("#")
-    if len(clean) == 6:
-        r = int(clean[0:2], 16)
-        g = int(clean[2:4], 16)
-        b = int(clean[4:6], 16)
-    else:
-        r, g, b = 80, 80, 80
+def _render_pencil_stipple_paths(
+    samples: Sequence[tuple[float, float, float, float, float, int]],
+    width: float,
+    color: str,
+    alpha: float,
+    dpi_scale: float,
+    css_class: str,
+    data_attr: str,
+    highlight: bool = False,
+) -> list[str]:
+    """Render a pencil stroke as deterministic vector stipple dots across opacity buckets."""
+    if len(samples) < 2:
+        return []
 
-    size = 64
-    rows = bytearray()
-    seed_bytes = f"{r}:{g}:{b}:{seed_offset}".encode("ascii")
+    # Deterministic per-stroke RNG seeded from sample seed and initial coordinates
+    s0 = samples[0]
+    seed_val = (int(s0[5]) ^ int(round(s0[0] * 100.0)) ^ (int(round(s0[1] * 100.0)) << 16)) & 0xFFFFFFFF
+    rng = random.Random(seed_val)
 
-    for y in range(size):
-        rows.append(0)  # PNG filter type 0 (None)
-        for x in range(size):
-            # Fine isotropic 1px + 2x2 paper tooth with no coarse block or stripe artifacts
-            h1 = hashlib.blake2b(seed_bytes + bytes((x, y, 1)), digest_size=2).digest()
-            h2 = hashlib.blake2b(seed_bytes + bytes((x >> 1, y >> 1, 2)), digest_size=2).digest()
-            n1 = int.from_bytes(h1, "little") / 65535.0
-            n2 = int.from_bytes(h2, "little") / 65535.0
-            paper = 0.68 * n1 + 0.32 * n2
+    dot_sw = (0.65 + 0.095 * min(width, 10.0)) * dpi_scale
+    # Emit separate <path> chunks every ~45 units of arc length so overlapping passes
+    # alpha-composite on top of each other, and interleave core dots across 3 layers so
+    # dense cores darken smoothly without visible chunk-boundary seams.
+    core_op = 0.32 * alpha
+    halo_op = 0.14 * alpha
+    chunks: list[tuple[list[list[str]], list[str]]] = []
+    cur_cores: list[list[str]] = [[], [], []]
+    cur_halo: list[str] = []
+    arc_accum = 0.0
+    dot_idx = 0
 
-            raw_a = (paper - (1.0 - density)) * contrast + 0.28 * density
-            alpha_f = max(0.0, min(1.0, raw_a))
-            a_byte = int(round(alpha_f * 255.0))
-            rows.extend((r, g, b, a_byte))
+    dot_accum = 0.0
+    width_factor = max(1.0, width * 0.65)
+    for i in range(len(samples) - 1):
+        x0, y0, az0, alt0, frc0, _ = samples[i]
+        x1, y1, az1, alt1, frc1, _ = samples[i + 1]
+        seg_len = math.hypot(x1 - x0, y1 - y0)
+        if seg_len < 1e-4:
+            continue
 
-    def _chunk(tag: bytes, data: bytes) -> bytes:
-        crc = zlib.crc32(tag + data) & 0xFFFFFFFF
-        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", crc)
+        az_m = 0.5 * (az0 + az1)
+        alt_m = 0.5 * (alt0 + alt1)
+        frc_m = 0.5 * (frc0 + frc1)
+        tilt = max(0.0, 1.20 - alt_m)
+        r_min = (width * 0.78) * (0.55 + 0.45 * min(1.5, max(0.15, frc_m)))
+        r_maj = r_min + width * 3.0 * (tilt ** 1.15)
+        ca, sa = math.cos(az_m), math.sin(az_m)
 
-    ihdr = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
-    idat = zlib.compress(bytes(rows), level=6)
-    png_bytes = b"\x89PNG\r\n\x1a\n" + _chunk(b"IHDR", ihdr) + _chunk(b"IDAT", idat) + _chunk(b"IEND", b"")
-    return base64.b64encode(png_bytes).decode("ascii")
+        dens = max(3.2, 2.2 * width_factor * (1.0 + 0.45 * (r_maj / max(1.0, r_min))) * (0.65 + 0.90 * min(1.5, frc_m)))
+        dot_accum += seg_len * dens
+        n_dots = int(dot_accum)
+        dot_accum -= n_dots
+
+        # Higher tilt spreads grain more uniformly across r_maj; upright concentrates a legible core
+        core_prob = max(0.25, 0.72 - 0.55 * min(1.0, tilt))
+        core_spread = 0.48 + 0.35 * min(1.0, tilt)
+
+        for _ in range(n_dots):
+            t = rng.random()
+            cx = x0 + (x1 - x0) * t
+            cy = y0 + (y1 - y0) * t
+            u1 = ((rng.random() + rng.random() + rng.random()) / 3.0 - 0.5) * 2.2
+            u2 = ((rng.random() + rng.random() + rng.random()) / 3.0 - 0.5) * 2.2
+
+            is_core = rng.random() < core_prob
+            if is_core:
+                lx = u1 * core_spread * r_maj
+                ly = u2 * core_spread * r_min
+            else:
+                lx = u1 * r_maj
+                ly = u2 * r_min
+
+            px = (cx + lx * ca - ly * sa) * dpi_scale
+            py = (cy + lx * sa + ly * ca) * dpi_scale
+            cmd = f"M{px:.1f},{py:.1f}h0.01"
+            if is_core:
+                cur_cores[dot_idx % 3].append(cmd)
+                dot_idx += 1
+            else:
+                cur_halo.append(cmd)
+
+        arc_accum += seg_len
+        if arc_accum >= 45.0 and (any(cur_cores) or cur_halo):
+            chunks.append((cur_cores, cur_halo))
+            cur_cores = [[], [], []]
+            cur_halo = []
+            arc_accum = 0.0
+
+    if any(cur_cores) or cur_halo:
+        chunks.append((cur_cores, cur_halo))
+
+    out: list[str] = []
+    if highlight:
+        all_cmds = "".join("".join("".join(cl) for cl in c) + "".join(h) for c, h in chunks)
+        if all_cmds:
+            out.append(
+                f'<path d="{all_cmds}" fill="none" stroke="#fffa65" stroke-opacity="0.75" '
+                f'stroke-width="{dot_sw + 3.0:.2f}" stroke-linecap="round"/>'
+            )
+
+    for c_layers, h_cmds in chunks:
+        if h_cmds:
+            out.append(
+                f'<path d="{"".join(h_cmds)}" fill="none" stroke="{color}" stroke-opacity="{halo_op:.3f}" '
+                f'stroke-width="{dot_sw:.2f}" stroke-linecap="round"{css_class}{data_attr}/>'
+            )
+        for c_cmds in c_layers:
+            if c_cmds:
+                out.append(
+                    f'<path d="{"".join(c_cmds)}" fill="none" stroke="{color}" stroke-opacity="{core_op:.3f}" '
+                    f'stroke-width="{dot_sw:.2f}" stroke-linecap="round"{css_class}{data_attr}/>'
+                )
+    return out
 
 
 def _rounded_polygon_svg_path(pts: tuple[tuple[float, float], ...], r: float, scale: float = 1.0, is_closed: bool = True) -> str:
@@ -592,18 +663,9 @@ def page_to_svg(
                 f'</g>'
             )
 
-    # Collect SVG <defs> for arrow markers and pencil paper-grain patterns
+    # Collect SVG <defs> for arrow markers
     arrow_shapes = [s for s in page.shapes if getattr(s, "start_arrow", False) or getattr(s, "end_arrow", False)]
-    pencil_styles: set[tuple[str, int]] = set()
-    for stroke in page.strokes:
-        if getattr(stroke, "is_pencil", False):
-            s_style = stroke_styles.get(stroke.uuid, {}) if stroke_styles and stroke.uuid else {}
-            s_color = str(s_style.get("color", stroke.color_hex))
-            s_alpha = float(s_style.get("opacity", stroke.alpha))
-            a_key = int(round(max(0.0, min(1.0, s_alpha)) * 100))
-            pencil_styles.add((s_color, a_key))
-
-    if arrow_shapes or pencil_styles:
+    if arrow_shapes:
         arrow_colors = sorted({s.color_hex for s in arrow_shapes})
         defs_elements = ['<defs>']
         for color in arrow_colors:
@@ -647,23 +709,6 @@ def page_to_svg(
                 f'<circle cx="5" cy="5" r="4" fill="{color}"/>'
                 f'</marker>'
             )
-
-        for p_color, a_key in sorted(pencil_styles):
-            c_clean = p_color.replace("#", "")
-            alpha_f = a_key / 100.0
-            tile_pt = 64 * 0.28
-            for variant, base_dens, contrast, seed in (
-                ("shade", 0.42, 2.6, 1),
-                ("edge", 0.30, 2.3, 2),
-                ("core", 0.78, 2.8, 3),
-            ):
-                b64 = _make_pencil_grain_pattern_png_b64(p_color, base_dens * alpha_f, contrast, seed)
-                pat_id = f"pencil-{variant}-{c_clean}-{a_key}"
-                defs_elements.append(
-                    f'<pattern id="{pat_id}" patternUnits="userSpaceOnUse" width="{tile_pt:.2f}" height="{tile_pt:.2f}">'
-                    f'<image href="data:image/png;base64,{b64}" x="0" y="0" width="{tile_pt:.2f}" height="{tile_pt:.2f}"/>'
-                    f'</pattern>'
-                )
 
         defs_elements.append('</defs>')
         elements.append("".join(defs_elements))
@@ -1054,41 +1099,29 @@ def page_to_svg(
                     f'<g fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="{s_color}" stroke-opacity="{s_alpha:.2f}" stroke-width="{0.5 * dpi_scale:.2f}" stroke-linejoin="round"{css_class}{data_attr}>{"".join(poly_elems)}</g>'
                 )
         elif getattr(stroke, "is_pencil", False) and pts:
-            c_clean = s_color.replace("#", "")
-            a_key = int(round(max(0.0, min(1.0, s_alpha)) * 100))
-            mean_r = sum(p.pressure for p in pts) / len(pts)
-            is_tilted = mean_r > stroke.width * 0.58
-
-            def _scaled_ribbon(scale_r: float) -> str | None:
-                s_pts = [StrokePoint(pt.x, pt.y, pt.pressure * scale_r) for pt in pts]
-                return build_stroke_ribbon(
-                    s_pts,
-                    stroke.width * scale_r,
+            raw_ps = getattr(stroke, "pencil_samples", ())
+            if raw_ps:
+                if parent_note is not None:
+                    p_samples = tuple(
+                        (sx + parent_note.x, sy + parent_note.y, az, alt, frc, seed)
+                        for sx, sy, az, alt, frc, seed in raw_ps
+                    )
+                else:
+                    p_samples = raw_ps
+            else:
+                p_samples = tuple((pt.x, pt.y, 0.0, 1.35, 0.5, 0) for pt in pts)
+            elements.extend(
+                _render_pencil_stipple_paths(
+                    p_samples,
+                    stroke.width,
+                    s_color,
+                    s_alpha,
                     dpi_scale,
-                    tpl_format=stroke.tpl_format,
-                    is_cut_start=stroke.is_cut_start,
-                    is_cut_end=stroke.is_cut_end,
-                    start_cut_vec=stroke.start_cut_vec,
-                    end_cut_vec=stroke.end_cut_vec,
+                    css_class,
+                    data_attr,
+                    highlight=s_highlight,
                 )
-
-            edge_d = _scaled_ribbon(1.05 if is_tilted else 1.15)
-            body_d = _scaled_ribbon(0.90 if is_tilted else 0.85)
-            body_variant = "shade" if is_tilted else "core"
-
-            if s_highlight and (edge_d or body_d):
-                elements.append(
-                    f'<path d="{edge_d or body_d}" fill="#fffa65" fill-opacity="0.75" stroke="#fffa65" stroke-width="4.0" stroke-linecap="round" stroke-linejoin="round"/>'
-                )
-            # Do not put fill-opacity on paths referencing url(#pattern): CairoSVG caches pattern alpha
-            if edge_d:
-                elements.append(
-                    f'<path d="{edge_d}" fill="url(#pencil-edge-{c_clean}-{a_key})" stroke="none"{css_class}{data_attr}/>'
-                )
-            if body_d:
-                elements.append(
-                    f'<path d="{body_d}" fill="url(#pencil-{body_variant}-{c_clean}-{a_key})" stroke="none"{css_class}{data_attr}/>'
-                )
+            )
         else:
                 if (
                     stroke.is_highlighter
