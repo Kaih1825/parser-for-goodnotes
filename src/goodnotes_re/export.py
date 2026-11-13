@@ -218,13 +218,13 @@ def _render_pencil_stipple_paths(
     # Emit separate <path> chunks every ~45 units of arc length so overlapping passes
     # alpha-composite on top of each other, and bucket dots into 4 pressure/opacity
     # tiers (interleaving core tiers) so force (frc) drives realistic light-to-dark shading.
-    tier_ops = (0.12 * alpha, 0.28 * alpha, 0.52 * alpha, 0.80 * alpha)
+    tier_ops = (0.26 * alpha, 0.45 * alpha, 0.66 * alpha, 0.88 * alpha)
     chunks: list[list[list[str]]] = []
     cur_buckets: list[list[str]] = [[], [], [], []]
     arc_accum = 0.0
 
     dot_accum = 0.0
-    width_factor = max(1.0, width * 0.65)
+    width_factor = max(1.0, width * 0.68)
     for i in range(len(samples) - 1):
         x0, y0, az0, alt0, frc0, _ = samples[i]
         x1, y1, az1, alt1, frc1, _ = samples[i + 1]
@@ -236,27 +236,27 @@ def _render_pencil_stipple_paths(
         alt_m = 0.5 * (alt0 + alt1)
         frc_m = 0.5 * (frc0 + frc1)
         frc_norm = min(1.5, max(0.02, frc_m))
-        tilt = max(0.0, 1.20 - alt_m)
-        r_min = (width * 0.78) * (0.45 + 0.55 * max(0.15, frc_norm))
-        r_maj = r_min + width * 3.0 * (tilt ** 1.15)
+        tilt = max(0.0, 1.32 - alt_m)
+        r_min = (width * 0.82) * (0.82 + 0.22 * min(1.2, frc_norm))
+        r_maj = r_min + width * 4.5 * (tilt ** 1.1)
         ca, sa = math.cos(az_m), math.sin(az_m)
 
-        dens = max(0.6, 2.2 * width_factor * (1.0 + 0.45 * (r_maj / max(1.0, r_min))) * (0.22 + 1.15 * frc_norm))
+        dens = max(1.6, 2.4 * width_factor * (1.0 + 0.65 * (r_maj / max(1.0, r_min))) * (0.55 + 0.85 * frc_norm))
         dot_accum += seg_len * dens
         n_dots = int(dot_accum)
         dot_accum -= n_dots
 
         # Higher tilt spreads grain more uniformly across r_maj; upright concentrates a legible core
-        core_prob = max(0.25, 0.72 - 0.55 * min(1.0, tilt))
-        core_spread = 0.48 + 0.35 * min(1.0, tilt)
-        tilt_atten = 1.0 / (1.0 + 0.25 * tilt)
+        core_prob = max(0.28, 0.74 - 0.50 * min(1.0, tilt))
+        core_spread = 0.58 + 0.35 * min(1.0, tilt)
+        tilt_atten = 1.0 / (1.0 + 0.12 * tilt)
 
         for _ in range(n_dots):
             t = rng.random()
             cx = x0 + (x1 - x0) * t
             cy = y0 + (y1 - y0) * t
-            u1 = ((rng.random() + rng.random() + rng.random()) / 3.0 - 0.5) * 2.2
-            u2 = ((rng.random() + rng.random() + rng.random()) / 3.0 - 0.5) * 2.2
+            u1 = ((rng.random() + rng.random()) * 0.5 - 0.5) * 2.1
+            u2 = ((rng.random() + rng.random()) * 0.5 - 0.5) * 2.1
 
             is_core = rng.random() < core_prob
             if is_core:
