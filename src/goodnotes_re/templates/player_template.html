@@ -702,6 +702,8 @@
     function attachStrokeClickListeners(rootElement) {
       syncTapeStates(rootElement);
       rootElement.querySelectorAll('.gn-tape[data-tape-id]').forEach(tapeEl => {
+        if (tapeEl.dataset.tapeBound === '1') return;
+        tapeEl.dataset.tapeBound = '1';
         const tid = tapeEl.getAttribute('data-tape-id');
         tapeEl.setAttribute('title', '點擊切換膠帶（蓋住 / 揭開）');
         tapeEl.addEventListener('click', (e) => {
@@ -719,6 +721,9 @@
 
       const strokeElements = rootElement.querySelectorAll('[data-stroke-id]');
       strokeElements.forEach(el => {
+        if (el.closest('.gn-tape')) return;
+        if (el.dataset.strokeBound === '1') return;
+        el.dataset.strokeBound = '1';
         const suuid = el.getAttribute('data-stroke-id');
         for (let rIdx = 0; rIdx < recordings.length; rIdx++) {
           const r = recordings[rIdx];
@@ -995,8 +1000,9 @@
 
     // Initialize
     buildStackViewer();
-    attachStrokeClickListeners(stackViewer);
-    loadRecording(0, 0, false);
+    if (recordings.length > 0) {
+      loadRecording(0, 0, false);
+    }
     progressBar.max = totalDuration;
     totalDurationEl.textContent = formatTime(totalDuration);
     requestAnimationFrame(animate);
