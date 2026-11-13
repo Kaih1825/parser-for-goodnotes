@@ -213,6 +213,30 @@ class PageTests(unittest.TestCase):
             self.assertTrue(any("你好" in te.text for te in text_elements))
             self.assertTrue(any(te.alignment in ("center", "right") for te in text_elements))
 
+    def test_1104test_z_order_and_type31_arrows(self) -> None:
+        sample = resolve_sample("1104test.goodnotes")
+        if not sample.exists():
+            self.skipTest("1104test.goodnotes not present")
+        with GoodNotesDocument.open(sample) as document:
+            page = document.pages()[0]
+            hl_strokes = [s for s in page.strokes if s.is_highlighter]
+            self.assertGreater(len(hl_strokes), 0)
+            self.assertEqual(page.strokes[: len(hl_strokes)], hl_strokes)
+            non_hl_z = [s.z_order for s in page.strokes[len(hl_strokes) :] if s.z_order > 0]
+            self.assertGreater(len(non_hl_z), 0)
+            self.assertEqual(non_hl_z, sorted(non_hl_z))
+
+            arrows = [s for s in page.shapes if s.start_arrow or s.end_arrow]
+            self.assertGreaterEqual(len(arrows), 9)
+            rec23 = next((s for s in arrows if s.record_index == 23), None)
+            self.assertIsNotNone(rec23)
+            if rec23 is not None:
+                self.assertEqual(len(rec23.points), 2)
+            rec233 = next((s for s in arrows if s.record_index == 233), None)
+            self.assertIsNotNone(rec233)
+            if rec233 is not None:
+                self.assertEqual(rec233.dash_pattern, (0.0, 2.0))
+
 
 if __name__ == "__main__":
     unittest.main()

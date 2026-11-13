@@ -80,6 +80,23 @@ class StrokeTests(unittest.TestCase):
                 self.assertTrue(ribbon_d.startswith("M "))
                 self.assertTrue(ribbon_d.endswith("Z"))
 
+    def test_1104test_pencil_and_tape_strokes(self) -> None:
+        sample = resolve_sample("1104test.goodnotes")
+        if not sample.exists():
+            self.skipTest("1104test.goodnotes not present")
+        with GoodNotesDocument.open(sample) as document:
+            page = document.pages()[0]
+            self.assertTrue(any(s.is_pencil for s in page.strokes))
+            self.assertTrue(any(s.is_tape for s in page.strokes))
+            self.assertTrue(
+                any(
+                    op == "E"
+                    for s in page.strokes
+                    for seg in s.native_cgpaths
+                    for op, _ in seg
+                )
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -43,6 +43,9 @@ class Stroke:
     dash_pattern: tuple[float, ...] | None = None
     eraser_cuts: tuple[tuple[float, ...], ...] = ()
     native_cgpaths: tuple[tuple[tuple[str, tuple[float, ...]], ...], ...] = ()
+    is_tape: bool = False
+    is_pencil: bool = False
+    z_order: int = 0
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -55,6 +58,9 @@ class Stroke:
             "is_highlighter": self.is_highlighter,
             "tpl_format": self.tpl_format,
             "parent_uuid": self.parent_uuid,
+            "is_tape": self.is_tape,
+            "is_pencil": self.is_pencil,
+            "z_order": self.z_order,
         }
 
 
@@ -111,6 +117,28 @@ def extract_move_offset_from_trailer(trailer_bytes: bytes) -> tuple[float, float
     except (DecodeError, ValueError, struct.error):
         pass
     return 0.0, 0.0
+
+
+def extract_flags_from_trailer(trailer_bytes: bytes) -> tuple[bool, bool]:
+    """Decode (is_highlighter_flag, is_tape_flag) from stroke trailer protobuf.
+
+    Field 5 == 1 marks highlighter tool strokes (even when styled at higher opacity).
+    Non-empty bytes in field 20 (e.g. b'\\x0a\\x00') marks Tape (紙膠帶) strokes.
+    """
+    if not trailer_bytes:
+        return False, False
+    is_hl = False
+    is_tape = False
+    try:
+        msg = decode_message(trailer_bytes)
+        for field in msg.fields:
+            if field.number == 5 and field.value == 1:
+                is_hl = True
+            elif field.number == 20 and isinstance(field.value, bytes) and len(field.value) > 0:
+                is_tape = True
+    except (DecodeError, ValueError, struct.error):
+        pass
+    return is_hl, is_tape
 
 
 def _top_level_tokens(format_string: str) -> list[str]:
@@ -375,31 +403,123 @@ def extract_points_from_tpl(tpl_img: TplImage) -> tuple[list[list[StrokePoint]],
                 groups.append(g)
                 return groups, default_width, [(None, None)] * len(groups), []
 
-    # 2. Schema 2: vuA(v)A(S(uuuuu))A(S(uuuuuuuuuuu))... (11-tuple)
+    # 2. Schema 2: vuA(v)A(S(uuuuu))A(S(uuuuuuuuuuu))... (11-tuple Pencil tool t16=25)
+    # 5-tuple start point: (x, y, azimuth, altitude, force)
+    # 11-tuple segment:    (seed_u32, x1, y1, az1, alt1, frc1, x2, y2, az2, alt2, frc2)
     if "A(S(uuuuuuuuuuu" in fmt:
         if len(tpl_img.values) > 4 and isinstance(tpl_img.values[4], list) and len(tpl_img.values[4]) > 0:
-            g = []
+            raw_samples: list[tuple[float, float, float, float, float]] = []
+
+            def _append_sample(x: float, y: float, az: float, alt: float, frc: float) -> None:
+                if not (is_valid_coord(x) and is_valid_coord(y)):
+                    return
+                if raw_samples and math.hypot(x - raw_samples[-1][0], y - raw_samples[-1][1]) < 1e-3:
+                    return
+                if not (-10.0 <= az <= 10.0):
+                    az = 0.0
+                if not (0.01 <= alt <= 1.65):
+                    alt = 1.35
+                if not (0.01 <= frc <= 5.0):
+                    frc = 0.5
+                raw_samples.append((x, y, az, alt, frc))
+
             if len(tpl_img.values) > 3 and isinstance(tpl_img.values[3], list) and len(tpl_img.values[3]) > 0:
                 for p5 in tpl_img.values[3]:
                     if isinstance(p5, (tuple, list)) and len(p5) >= 5:
-                        x0, y0, raw_p0 = uint32_to_float32(p5[0]), uint32_to_float32(p5[1]), uint32_to_float32(p5[4])
-                        p0 = raw_p0 if is_valid_pressure(raw_p0) else default_radius
-                        if is_valid_coord(x0) and is_valid_coord(y0):
-                            if not g or math.hypot(x0 - g[-1].x, y0 - g[-1].y) >= 1e-3:
-                                g.append(StrokePoint(x0, y0, p0))
+                        _append_sample(
+                            uint32_to_float32(p5[0]),
+                            uint32_to_float32(p5[1]),
+                            uint32_to_float32(p5[2]),
+                            uint32_to_float32(p5[3]),
+                            uint32_to_float32(p5[4]),
+                        )
             for p11 in tpl_img.values[4]:
                 if isinstance(p11, (tuple, list)) and len(p11) >= 11:
-                    x1, y1, raw_p1 = uint32_to_float32(p11[1]), uint32_to_float32(p11[2]), uint32_to_float32(p11[5])
-                    x2, y2, raw_p2 = uint32_to_float32(p11[6]), uint32_to_float32(p11[7]), uint32_to_float32(p11[10])
-                    p1 = raw_p1 if is_valid_pressure(raw_p1) else default_radius
-                    p2 = raw_p2 if is_valid_pressure(raw_p2) else default_radius
-                    if is_valid_coord(x1) and is_valid_coord(y1):
-                        if not g or math.hypot(x1 - g[-1].x, y1 - g[-1].y) >= 1e-3:
-                            g.append(StrokePoint(x1, y1, p1))
-                    if is_valid_coord(x2) and is_valid_coord(y2):
-                        if not g or math.hypot(x2 - g[-1].x, y2 - g[-1].y) >= 1e-3:
-                            g.append(StrokePoint(x2, y2, p2))
-            if len(g) >= 2:
+                    _append_sample(
+                        uint32_to_float32(p11[1]),
+                        uint32_to_float32(p11[2]),
+                        uint32_to_float32(p11[3]),
+                        uint32_to_float32(p11[4]),
+                        uint32_to_float32(p11[5]),
+                    )
+                    _append_sample(
+                        uint32_to_float32(p11[6]),
+                        uint32_to_float32(p11[7]),
+                        uint32_to_float32(p11[8]),
+                        uint32_to_float32(p11[9]),
+                        uint32_to_float32(p11[10]),
+                    )
+
+            if len(raw_samples) >= 2:
+                n_s = len(raw_samples)
+                normals_raw: list[tuple[float, float]] = []
+                for i in range(n_s):
+                    if i == 0:
+                        dx_s = raw_samples[1][0] - raw_samples[0][0]
+                        dy_s = raw_samples[1][1] - raw_samples[0][1]
+                    elif i == n_s - 1:
+                        dx_s = raw_samples[-1][0] - raw_samples[-2][0]
+                        dy_s = raw_samples[-1][1] - raw_samples[-2][1]
+                    else:
+                        dx_s = raw_samples[i + 1][0] - raw_samples[i - 1][0]
+                        dy_s = raw_samples[i + 1][1] - raw_samples[i - 1][1]
+                    ds = math.hypot(dx_s, dy_s)
+                    normals_raw.append((-dy_s / ds, dx_s / ds) if ds > 1e-6 else (0.0, 1.0))
+
+                g = []
+                for i, (x, y, az, alt, frc) in enumerate(raw_samples):
+                    lo = max(0, i - 1)
+                    hi = min(n_s, i + 2)
+                    sx = sum(normals_raw[j][0] for j in range(lo, hi))
+                    sy = sum(normals_raw[j][1] for j in range(lo, hi))
+                    sn = math.hypot(sx, sy)
+                    nx, ny = (sx / sn, sy / sn) if sn > 1e-6 else (0.0, 1.0)
+
+                    # Project tilted elliptical nib (r_major, r_minor) at angle az onto stroke normal
+                    tilt = max(0.0, 1.20 - alt)
+                    r_minor = (default_width * 0.5) * (0.42 + 0.58 * min(1.5, max(0.15, frc)))
+                    r_major = r_minor + default_width * 3.2 * (tilt ** 1.15)
+                    ca, sa = math.cos(az), math.sin(az)
+                    proj_major = nx * ca + ny * sa
+                    proj_minor = -nx * sa + ny * ca
+                    r_eff = math.hypot(r_major * proj_major, r_minor * proj_minor)
+                    g.append(StrokePoint(x, y, r_eff))
+
+                # Split broad zig-zag pencil shading strokes at sharp turnaround corners
+                split_indices: list[int] = []
+                if len(g) >= 20:
+                    k = 6
+                    cos_arr = [1.0] * len(g)
+                    for i in range(k, len(g) - k):
+                        v1x, v1y = g[i].x - g[i - k].x, g[i].y - g[i - k].y
+                        v2x, v2y = g[i + k].x - g[i].x, g[i + k].y - g[i].y
+                        d1, d2 = math.hypot(v1x, v1y), math.hypot(v2x, v2y)
+                        if d1 > 2.0 and d2 > 2.0:
+                            cos_arr[i] = (v1x * v2x + v1y * v2y) / (d1 * d2)
+                    last_turn = -10
+                    for i in range(k, len(g) - k):
+                        if cos_arr[i] < -0.2 and i - last_turn >= 10:
+                            win_min = min(cos_arr[max(k, i - 5) : min(len(g) - k, i + 6)])
+                            if cos_arr[i] <= win_min + 1e-9 and (len(g) - 1 - i) >= k:
+                                split_indices.append(i)
+                                last_turn = i
+
+                if split_indices:
+                    cuts_pts: list[list[StrokePoint]] = []
+                    cuts_jumps: list[tuple[tuple[float, float] | None, tuple[float, float] | None]] = []
+                    prev_idx = 0
+                    all_bounds = split_indices + [len(g) - 1]
+                    for bi, bound in enumerate(all_bounds):
+                        seg_pts = g[prev_idx : bound + 1]
+                        if len(seg_pts) >= 2:
+                            start_j = (1.0, 0.0) if bi > 0 else None
+                            end_j = (1.0, 0.0) if bi < len(all_bounds) - 1 else None
+                            cuts_pts.append(seg_pts)
+                            cuts_jumps.append((start_j, end_j))
+                        prev_idx = bound
+                    if cuts_pts:
+                        return cuts_pts, default_width, cuts_jumps, []
+
                 groups.append(g)
                 return groups, default_width, [(None, None)] * len(groups), []
 
@@ -736,6 +856,38 @@ def build_stroke_ribbon(
 
     # Extend cut endpoints slightly along tangent to reach true eraser boundary
     pts_to_render = list(filtered_points)
+
+    # Strip tiny micro-hook reversals at free stroke endpoints (e.g. thick highlighter stylus lift-off)
+    # so the endpoint normal does not flip 180 degrees and twist the cap into a flat bowtie.
+    if not is_cut_end and len(pts_to_render) >= 4:
+        while len(pts_to_render) >= 4:
+            p_last = pts_to_render[-1]
+            p_prev = pts_to_render[-2]
+            seg_len = math.hypot(p_last.x - p_prev.x, p_last.y - p_prev.y)
+            ref_idx = max(0, len(pts_to_render) - 5)
+            cx = p_prev.x - pts_to_render[ref_idx].x
+            cy = p_prev.y - pts_to_render[ref_idx].y
+            if seg_len < max(0.5, p_last.pressure * 0.35) and (
+                (p_last.x - p_prev.x) * cx + (p_last.y - p_prev.y) * cy < 0.0
+            ):
+                pts_to_render.pop()
+            else:
+                break
+    if not is_cut_start and len(pts_to_render) >= 4:
+        while len(pts_to_render) >= 4:
+            p_first = pts_to_render[0]
+            p_next = pts_to_render[1]
+            seg_len = math.hypot(p_next.x - p_first.x, p_next.y - p_first.y)
+            ref_idx = min(len(pts_to_render) - 1, 4)
+            cx = pts_to_render[ref_idx].x - p_next.x
+            cy = pts_to_render[ref_idx].y - p_next.y
+            if seg_len < max(0.5, p_first.pressure * 0.35) and (
+                (p_next.x - p_first.x) * cx + (p_next.y - p_first.y) * cy < 0.0
+            ):
+                pts_to_render.pop(0)
+            else:
+                break
+
     n_pts = len(pts_to_render)
     tot_len = sum(math.hypot(pts_to_render[k].x - pts_to_render[k - 1].x, pts_to_render[k].y - pts_to_render[k - 1].y) for k in range(1, n_pts)) if n_pts >= 2 else 0.0
     effective_ext = ext_dist if tot_len >= 8.0 else 0.0
@@ -765,24 +917,32 @@ def build_stroke_ribbon(
         x, y, r = raw_pts[0]
         return f"M {x - r:.2f},{y:.2f} A {r:.2f},{r:.2f} 0 1,1 {x + r:.2f},{y:.2f} A {r:.2f},{r:.2f} 0 1,1 {x - r:.2f},{y:.2f}"
 
-    # Direct spline vertices (already interpolated in GoodNotes engine)
-    pass
-
-    # Calculate normal vectors
+    # Calculate normal vectors with minimum chord length at endpoints and sign continuity
     normals: list[tuple[float, float]] = []
     for i in range(n):
+        min_chord = max(1.5 * scale, raw_pts[i][2] * 0.35)
         if i == 0:
-            dx, dy = raw_pts[1][0] - raw_pts[0][0], raw_pts[1][1] - raw_pts[0][1]
+            j = 1
+            while j < n - 1 and math.hypot(raw_pts[j][0] - raw_pts[0][0], raw_pts[j][1] - raw_pts[0][1]) < min_chord:
+                j += 1
+            dx, dy = raw_pts[j][0] - raw_pts[0][0], raw_pts[j][1] - raw_pts[0][1]
         elif i == n - 1:
-            dx, dy = raw_pts[n - 1][0] - raw_pts[n - 2][0], raw_pts[n - 1][1] - raw_pts[n - 2][1]
+            j = n - 2
+            while j > 0 and math.hypot(raw_pts[n - 1][0] - raw_pts[j][0], raw_pts[n - 1][1] - raw_pts[j][1]) < min_chord:
+                j -= 1
+            dx, dy = raw_pts[n - 1][0] - raw_pts[j][0], raw_pts[n - 1][1] - raw_pts[j][1]
         else:
             dx, dy = raw_pts[i + 1][0] - raw_pts[i - 1][0], raw_pts[i + 1][1] - raw_pts[i - 1][1]
 
         dist = math.hypot(dx, dy)
         if dist < 1e-6:
-            nx, ny = 0.0, 1.0 
+            nx, ny = normals[-1] if normals else (0.0, 1.0)
         else:
             nx, ny = -dy / dist, dx / dist
+        if (i == 0 or i == n - 1) and normals and (nx * normals[-1][0] + ny * normals[-1][1] < -0.5):
+            # Only guard endpoint tangents if still opposed across very tiny step; do NOT flip interior U-turns!
+            if math.hypot(raw_pts[i][0] - raw_pts[i - 1][0], raw_pts[i][1] - raw_pts[i - 1][1]) < raw_pts[i][2] * 0.5:
+                nx, ny = -nx, -ny
         normals.append((nx, ny))
 
     # Normal vector moving average smoothing (preserve strict endpoint normals for cut boundaries)
@@ -889,7 +1049,7 @@ def extract_dash_pattern_from_tpl(tpl_img: TplImage) -> tuple[float, ...] | None
 def extract_native_cgpath_segments_from_tpl(
     tpl_img: TplImage,
 ) -> tuple[tuple[tuple[str, tuple[float, ...]], ...], ...]:
-    """Extract native Apple CGPath segment definitions (M, C, A commands) from tpl values."""
+    """Extract native Apple CGPath segment definitions (M, C, A, E commands) from tpl values."""
     fmt = tpl_img.format
     if "vuA(v)A(u)A(u)A(v)A(v)" in fmt and len(tpl_img.values) >= 12:
         shift = 1
@@ -912,7 +1072,9 @@ def extract_native_cgpath_segments_from_tpl(
         and isinstance(v_cubic_raw, list)
     ):
         return ()
-    if len(v_counts) == 0 or len(v_cmds) == 0 or len(v_start_raw) < 2 or len(v_cubic_raw) < 6:
+    if len(v_counts) == 0 or len(v_cmds) == 0 or (len(v_start_raw) < 2 and len(v_arc_raw) < 5):
+        return ()
+    if len(v_cubic_raw) < 6 and len(v_arc_raw) < 5:
         return ()
 
     v7 = [uint32_to_float32(x) for x in v_start_raw]
@@ -922,16 +1084,16 @@ def extract_native_cgpath_segments_from_tpl(
 
     v7_pts = [(v7[i], v7[i + 1]) for i in range(0, len(v7) - 1, 2)]
     v9_pts = [(v9[i], v9[i + 1]) for i in range(0, len(v9) - 1, 2)]
-    v10_arcs = [(v10[i], v10[i + 1], v10[i + 2], v10[i + 3], v10[i + 4]) for i in range(0, len(v10) - 4, 5)]
 
     cmd_move = 2 if shift == 1 else 0
     cmd_cubic = 4 if shift == 1 else 2
     cmd_arc = 5 if shift == 1 else 3
+    cmd_earc = 8 if shift == 1 else 6
 
     v6_idx = 0
     v7_idx = 0
     v9_idx = 0
-    v10_idx = 0
+    v10_float_idx = 0
     v11_idx = 0
 
     segments = []
@@ -954,12 +1116,29 @@ def extract_native_cgpath_segments_from_tpl(
                     v9_idx += 3
                     seg_cmds.append(("C", (c1[0], c1[1], c2[0], c2[1], p2[0], p2[1])))
             elif cmd == cmd_arc:
-                if v10_idx < len(v10_arcs):
-                    cx, cy, r, a0, a1 = v10_arcs[v10_idx]
+                if v10_float_idx + 5 <= len(v10):
+                    cx, cy, r, a0, a1 = v10[v10_float_idx : v10_float_idx + 5]
+                    v10_float_idx += 5
                     flag = v11[v11_idx] if v11_idx < len(v11) else 1
-                    v10_idx += 1
                     v11_idx += 1
+                    if not seg_cmds:
+                        sx = cx + r * math.cos(a0)
+                        sy = cy + r * math.sin(a0)
+                        seg_cmds.append(("M", (sx, sy)))
                     seg_cmds.append(("A", (cx, cy, r, a0, a1, float(flag))))
+            elif cmd == cmd_earc:
+                if v10_float_idx + 7 <= len(v10):
+                    cx, cy, rx, ry, a0, a1, rot = v10[v10_float_idx : v10_float_idx + 7]
+                    v10_float_idx += 7
+                    flag = v11[v11_idx] if v11_idx < len(v11) else 1
+                    v11_idx += 1
+                    if not seg_cmds:
+                        ca0, sa0 = math.cos(a0), math.sin(a0)
+                        crot, srot = math.cos(rot), math.sin(rot)
+                        sx = cx + rx * ca0 * crot - ry * sa0 * srot
+                        sy = cy + rx * ca0 * srot + ry * sa0 * crot
+                        seg_cmds.append(("M", (sx, sy)))
+                    seg_cmds.append(("E", (cx, cy, rx, ry, a0, a1, rot, float(flag))))
         if seg_cmds:
             segments.append(tuple(seg_cmds))
     return tuple(segments)
@@ -988,12 +1167,13 @@ def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = N
     except Exception:
         return []
 
-    if not point_groups:
+    if not point_groups and not native_cgpaths:
         return []
 
     trailer = field_data[pos + bytes_consumed :]
     color_hex, alpha = extract_color_from_trailer(trailer)
     dx, dy = extract_move_offset_from_trailer(trailer)
+    is_hl_flag, is_tape_flag = extract_flags_from_trailer(trailer)
     if dx or dy:
         point_groups = [
             [StrokePoint(p.x + dx, p.y + dy, p.pressure) for p in group] for group in point_groups
@@ -1036,12 +1216,27 @@ def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = N
                                 args[5],
                             ),
                         ))
+                    elif op == "E":
+                        shifted_seg.append((
+                            "E",
+                            (
+                                args[0] + dx,
+                                args[1] + dy,
+                                args[2],
+                                args[3],
+                                args[4],
+                                args[5],
+                                args[6],
+                                args[7],
+                            ),
+                        ))
                     else:
                         shifted_seg.append((op, args))
                 shifted_cgpaths.append(tuple(shifted_seg))
             native_cgpaths = tuple(shifted_cgpaths)
-    # Highlighter detection based on alpha
-    is_highlighter = alpha < 0.95
+    # Highlighter & tool detection based on alpha + trailer protobuf flags + TPL format
+    is_highlighter = (alpha < 0.95) or is_hl_flag
+    is_pencil = "A(S(uuuuuuuuuuu" in tpl_img.format
 
     chains = []
     chain_polys: list[tuple[tuple[tuple[float, float], ...], ...]] = []
@@ -1077,11 +1272,12 @@ def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = N
                 dash_pattern=tpl_dash,
                 eraser_cuts=tuple(eraser_cuts),
                 native_cgpaths=native_cgpaths,
+                is_tape=is_tape_flag,
+                is_pencil=is_pencil,
             )
         ]
 
     strokes = []
-    num_chains = len(chains)
     for chain_i, chain in enumerate(chains):
         is_dot = len(chain) == 1
         start_cut, end_cut = chain_cut_jumps[chain_i] if chain_i < len(chain_cut_jumps) else (None, None)
@@ -1108,6 +1304,8 @@ def parse_stroke_field(uuid: str, field_data: bytes, parent_uuid: str | None = N
                 parent_uuid=parent_uuid,
                 dash_pattern=dash_pattern,
                 eraser_cuts=tuple(eraser_cuts),
+                is_tape=is_tape_flag,
+                is_pencil=is_pencil,
             )
         )
 

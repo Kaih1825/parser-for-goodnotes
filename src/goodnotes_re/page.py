@@ -103,13 +103,14 @@ def parse_page_from_records(
     strokes: list[Stroke] = []
     fragments: list[TextFragment] = []
 
-    # Map UUID -> metadata (is_erased, type_code) & parent UUID from metadata records
+    # Map UUID -> metadata (is_erased, type_code, z_order) & parent UUID from metadata records
     uuid_metadata: dict[str, dict[str, object]] = {}
     uuid_parent: dict[str, str] = {}
     sn_uuids = {sn.uuid for sn in sticky_notes}
     for record in records:
         f1 = record.by_number(1)
         f3 = record.by_number(3)
+        f9 = record.by_number(9)
         f16 = record.by_number(16)
         f20 = record.by_number(20)
         f21 = record.by_number(21)
@@ -118,8 +119,13 @@ def parse_page_from_records(
                 u_str = f1[0].value.decode("utf-8")
                 if len(u_str) == 36 and "-" in u_str:
                     is_erased = bool(f3 and f3[0].value == 1)
+                    z_order = f9[0].value if f9 and isinstance(f9[0].value, int) else 0
                     type_code = f16[0].value if f16 and not isinstance(f16[0].value, bytes) else None
-                    uuid_metadata[u_str] = {"is_erased": is_erased, "type_code": type_code}
+                    uuid_metadata[u_str] = {
+                        "is_erased": is_erased,
+                        "type_code": type_code,
+                        "z_order": z_order,
+                    }
 
                     p_20 = ""
                     if f20 and isinstance(f20[0].value, bytes):
@@ -238,10 +244,13 @@ def parse_page_from_records(
                 p_cand = uuid_parent.get(shape.uuid)
                 if p_cand in sn_uuids:
                     shape = replace(shape, parent_uuid=p_cand)
-            if shape.uuid:
-                meta = uuid_metadata.get(shape.uuid, {})
+            if shape.uuid or rec_uuid:
+                meta = uuid_metadata.get(shape.uuid or rec_uuid, {})
                 if meta.get("is_erased"):
                     continue
+                z_val = int(meta.get("z_order", 0) or 0)
+                if z_val:
+                    shape = replace(shape, z_order=z_val)
 
             # GoodNotes stores both visible Text Box backgrounds and invisible
             # Text Box border records as separate rectangle shapes. Only suppress
@@ -301,7 +310,15 @@ def parse_page_from_records(
             try:
                 sub_strokes = parse_stroke_field(stroke_uuid, val, parent_uuid=parent_uuid)
                 if sub_strokes:
-                    strokes.extend(sub_strokes)
+                    z_val = int(meta.get("z_order", 0) or 0)
+                    type_code = meta.get("type_code")
+                    for s in sub_strokes:
+                        updates: dict[str, object] = {}
+                        if z_val:
+                            updates["z_order"] = z_val
+                        if type_code == 25 and not s.is_pencil:
+                            updates["is_pencil"] = True
+                        strokes.append(replace(s, **updates) if updates else s)
             except Exception:
                 pass
 
@@ -330,6 +347,10 @@ def parse_page_from_records(
                 key = (sh.color_hex, round(sh.stroke_width, 2))
                 if key in brush_dash_map:
                     shapes[idx] = replace(sh, dash_pattern=brush_dash_map[key])
+
+    # Render highlighters in their dedicated bottom layer, then ink/tape/pencil by z_order
+    strokes.sort(key=lambda s: (0 if s.is_highlighter else 1, s.z_order == 0, s.z_order))
+    shapes.sort(key=lambda sh: (sh.z_order == 0, sh.z_order))
 
     return Page(
         index=page_index,

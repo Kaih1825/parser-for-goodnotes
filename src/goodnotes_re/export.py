@@ -1,15 +1,20 @@
 """JSON and high-fidelity vector SVG export for GoodNotes documents."""
 from __future__ import annotations
 
+import base64
+import functools
+import hashlib
 import html
 import json
 import math
+import struct
+import zlib
 from pathlib import Path
 from typing import Iterator, Sequence
 
 from .archive import GoodNotesDocument
 from .pdf import render_pdf_page_to_svg, resolve_svg_image_masks
-from .stroke import build_stroke_ribbon
+from .stroke import StrokePoint, build_stroke_ribbon
 from .wire import Field, Message, WireType, try_decode_message
 
 
@@ -59,7 +64,51 @@ def stroke_candidates(message: Message) -> Iterator[tuple[str, list[tuple[float,
                 yield f"{path}.f{number}", points
 
 
-import base64
+def _catmull_rom_beziers(
+    pts: Sequence[tuple[float, float]],
+) -> list[tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]]]:
+    """Compute cubic Bezier control segments for a centripetal Catmull-Rom spline.
+
+    Uses natural/Bessel endpoint tangents at pts[0] and pts[-1] so the curve stays
+    round through endpoints rather than flattening toward zero velocity.
+    """
+    n = len(pts)
+    if n < 2:
+        return []
+    if n == 2:
+        p0, p1 = pts[0], pts[1]
+        return [(p0, p0, p1, p1)]
+
+    h = [
+        max(math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]) ** 0.5, 1e-4)
+        for i in range(n - 1)
+    ]
+
+    tangents: list[tuple[float, float]] = [(0.0, 0.0)] * n
+    for i in range(1, n - 1):
+        p0, p1, p2 = pts[i - 1], pts[i], pts[i + 1]
+        d1, d2 = h[i - 1], h[i]
+        tx = (p1[0] - p0[0]) / d1 - (p2[0] - p0[0]) / (d1 + d2) + (p2[0] - p1[0]) / d2
+        ty = (p1[1] - p0[1]) / d1 - (p2[1] - p0[1]) / (d1 + d2) + (p2[1] - p1[1]) / d2
+        tangents[i] = (tx, ty)
+
+    tangents[0] = (
+        1.5 * (pts[1][0] - pts[0][0]) / h[0] - 0.5 * tangents[1][0],
+        1.5 * (pts[1][1] - pts[0][1]) / h[0] - 0.5 * tangents[1][1],
+    )
+    tangents[-1] = (
+        1.5 * (pts[-1][0] - pts[-2][0]) / h[-1] - 0.5 * tangents[-2][0],
+        1.5 * (pts[-1][1] - pts[-2][1]) / h[-1] - 0.5 * tangents[-2][1],
+    )
+
+    beziers: list[tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]]] = []
+    for i in range(n - 1):
+        p1, p2 = pts[i], pts[i + 1]
+        d = h[i] / 3.0
+        c1 = (p1[0] + tangents[i][0] * d, p1[1] + tangents[i][1] * d)
+        c2 = (p2[0] - tangents[i + 1][0] * d, p2[1] - tangents[i + 1][1] * d)
+        beziers.append((p1, c1, c2, p2))
+    return beziers
 
 
 def _catmull_rom_to_svg_path(pts: tuple[tuple[float, float], ...], scale: float = 1.0) -> str:
@@ -71,34 +120,123 @@ def _catmull_rom_to_svg_path(pts: tuple[tuple[float, float], ...], scale: float 
     if len(pts) == 2:
         return f"M {pts[0][0]*scale:.2f} {pts[0][1]*scale:.2f} L {pts[1][0]*scale:.2f} {pts[1][1]*scale:.2f}"
 
-    p = [pts[0]] + list(pts) + [pts[-1]]
     path = [f"M {pts[0][0]*scale:.2f} {pts[0][1]*scale:.2f}"]
-
-    for i in range(1, len(p) - 2):
-        p0, p1, p2, p3 = p[i-1], p[i], p[i+1], p[i+2]
-
-        d1 = math.hypot(p1[0] - p0[0], p1[1] - p0[1]) ** 0.5 or 1e-4
-        d2 = math.hypot(p2[0] - p1[0], p2[1] - p1[1]) ** 0.5 or 1e-4
-        d3 = math.hypot(p3[0] - p2[0], p3[1] - p2[1]) ** 0.5 or 1e-4
-
-        t1x = (p1[0] - p0[0]) / d1 - (p2[0] - p0[0]) / (d1 + d2) + (p2[0] - p1[0]) / d2
-        t1y = (p1[1] - p0[1]) / d1 - (p2[1] - p0[1]) / (d1 + d2) + (p2[1] - p1[1]) / d2
-        t2x = (p2[0] - p1[0]) / d2 - (p3[0] - p1[0]) / (d2 + d3) + (p3[0] - p2[0]) / d3
-        t2y = (p2[1] - p1[1]) / d2 - (p3[1] - p1[1]) / (d2 + d3) + (p3[1] - p2[1]) / d3
-
-        t1x *= d2 / 3.0
-        t1y *= d2 / 3.0
-        t2x *= d2 / 3.0
-        t2y *= d2 / 3.0
-
-        c1x = p1[0] + t1x
-        c1y = p1[1] + t1y
-        c2x = p2[0] - t2x
-        c2y = p2[1] - t2y
-
-        path.append(f"C {c1x*scale:.2f} {c1y*scale:.2f} {c2x*scale:.2f} {c2y*scale:.2f} {p2[0]*scale:.2f} {p2[1]*scale:.2f}")
-
+    for _, c1, c2, p2 in _catmull_rom_beziers(pts):
+        path.append(
+            f"C {c1[0]*scale:.2f} {c1[1]*scale:.2f} {c2[0]*scale:.2f} {c2[1]*scale:.2f} {p2[0]*scale:.2f} {p2[1]*scale:.2f}"
+        )
     return " ".join(path)
+
+
+def _sample_polyline_from_pts(pts: Sequence[tuple[float, float]], steps_per_seg: int = 24) -> list[tuple[float, float]]:
+    if len(pts) <= 2:
+        return list(pts)
+    if len(pts) == 3:
+        (x0, y0), (x1, y1), (x2, y2) = pts
+        area = abs((x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0))
+        dist = math.hypot(x2 - x0, y2 - y0)
+        if dist > 0.0 and (area / dist) < 3.0:
+            return [pts[0], pts[2]]
+    sampled: list[tuple[float, float]] = [pts[0]]
+    for p1, c1, c2, p2 in _catmull_rom_beziers(pts):
+        for s in range(1, steps_per_seg + 1):
+            t = s / steps_per_seg
+            u = 1.0 - t
+            x = u**3 * p1[0] + 3 * u**2 * t * c1[0] + 3 * u * t**2 * c2[0] + t**3 * p2[0]
+            y = u**3 * p1[1] + 3 * u**2 * t * c1[1] + 3 * u * t**2 * c2[1] + t**3 * p2[1]
+            sampled.append((x, y))
+    return sampled
+
+
+def _point_at_arc_dist(
+    poly: Sequence[tuple[float, float]],
+    target_dist: float,
+    from_end: bool = False,
+) -> tuple[float, float]:
+    seq = list(reversed(poly)) if from_end else list(poly)
+    if not seq:
+        return (0.0, 0.0)
+    if target_dist <= 0.0 or len(seq) == 1:
+        return seq[0]
+    acc = 0.0
+    for i in range(1, len(seq)):
+        x0, y0 = seq[i - 1]
+        x1, y1 = seq[i]
+        seg = math.hypot(x1 - x0, y1 - y0)
+        if acc + seg >= target_dist and seg > 1e-6:
+            f = (target_dist - acc) / seg
+            return (x0 + (x1 - x0) * f, y0 + (y1 - y0) * f)
+        acc += seg
+    return seq[-1]
+
+
+def _trim_polyline_ends(
+    poly: Sequence[tuple[float, float]],
+    trim_start: float,
+    trim_end: float,
+) -> list[tuple[float, float]]:
+    if len(poly) < 2:
+        return list(poly)
+    cum = [0.0]
+    for i in range(1, len(poly)):
+        cum.append(cum[-1] + math.hypot(poly[i][0] - poly[i - 1][0], poly[i][1] - poly[i - 1][1]))
+    total = cum[-1]
+    if total <= 1e-4 or trim_start + trim_end >= total * 0.95:
+        mid = _point_at_arc_dist(poly, total * 0.5, from_end=False)
+        return [mid, mid]
+
+    end_target = total - trim_end
+    out: list[tuple[float, float]] = [_point_at_arc_dist(poly, trim_start, from_end=False)]
+    for i in range(1, len(poly) - 1):
+        if trim_start < cum[i] < end_target:
+            out.append(poly[i])
+    out.append(_point_at_arc_dist(poly, end_target, from_end=False))
+    return out
+
+
+@functools.lru_cache(maxsize=256)
+def _make_pencil_grain_pattern_png_b64(
+    color_hex: str,
+    density: float,
+    contrast: float,
+    seed_offset: int,
+) -> str:
+    """Generate a seamless 64x64 RGBA PNG data-URI for pencil paper-tooth grain."""
+    clean = color_hex.lstrip("#")
+    if len(clean) == 6:
+        r = int(clean[0:2], 16)
+        g = int(clean[2:4], 16)
+        b = int(clean[4:6], 16)
+    else:
+        r, g, b = 80, 80, 80
+
+    size = 64
+    rows = bytearray()
+    seed_bytes = f"{r}:{g}:{b}:{seed_offset}".encode("ascii")
+
+    for y in range(size):
+        rows.append(0)  # PNG filter type 0 (None)
+        for x in range(size):
+            # Fine isotropic 1px + 2x2 paper tooth with no coarse block or stripe artifacts
+            h1 = hashlib.blake2b(seed_bytes + bytes((x, y, 1)), digest_size=2).digest()
+            h2 = hashlib.blake2b(seed_bytes + bytes((x >> 1, y >> 1, 2)), digest_size=2).digest()
+            n1 = int.from_bytes(h1, "little") / 65535.0
+            n2 = int.from_bytes(h2, "little") / 65535.0
+            paper = 0.68 * n1 + 0.32 * n2
+
+            raw_a = (paper - (1.0 - density)) * contrast + 0.28 * density
+            alpha_f = max(0.0, min(1.0, raw_a))
+            a_byte = int(round(alpha_f * 255.0))
+            rows.extend((r, g, b, a_byte))
+
+    def _chunk(tag: bytes, data: bytes) -> bytes:
+        crc = zlib.crc32(tag + data) & 0xFFFFFFFF
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", crc)
+
+    ihdr = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
+    idat = zlib.compress(bytes(rows), level=6)
+    png_bytes = b"\x89PNG\r\n\x1a\n" + _chunk(b"IHDR", ihdr) + _chunk(b"IDAT", idat) + _chunk(b"IEND", b"")
+    return base64.b64encode(png_bytes).decode("ascii")
 
 
 def _rounded_polygon_svg_path(pts: tuple[tuple[float, float], ...], r: float, scale: float = 1.0, is_closed: bool = True) -> str:
@@ -454,9 +592,18 @@ def page_to_svg(
                 f'</g>'
             )
 
-    # Render vector shapes
+    # Collect SVG <defs> for arrow markers and pencil paper-grain patterns
     arrow_shapes = [s for s in page.shapes if getattr(s, "start_arrow", False) or getattr(s, "end_arrow", False)]
-    if arrow_shapes:
+    pencil_styles: set[tuple[str, int]] = set()
+    for stroke in page.strokes:
+        if getattr(stroke, "is_pencil", False):
+            s_style = stroke_styles.get(stroke.uuid, {}) if stroke_styles and stroke.uuid else {}
+            s_color = str(s_style.get("color", stroke.color_hex))
+            s_alpha = float(s_style.get("opacity", stroke.alpha))
+            a_key = int(round(max(0.0, min(1.0, s_alpha)) * 100))
+            pencil_styles.add((s_color, a_key))
+
+    if arrow_shapes or pencil_styles:
         arrow_colors = sorted({s.color_hex for s in arrow_shapes})
         defs_elements = ['<defs>']
         for color in arrow_colors:
@@ -500,6 +647,24 @@ def page_to_svg(
                 f'<circle cx="5" cy="5" r="4" fill="{color}"/>'
                 f'</marker>'
             )
+
+        for p_color, a_key in sorted(pencil_styles):
+            c_clean = p_color.replace("#", "")
+            alpha_f = a_key / 100.0
+            tile_pt = 64 * 0.28
+            for variant, base_dens, contrast, seed in (
+                ("shade", 0.42, 2.6, 1),
+                ("edge", 0.30, 2.3, 2),
+                ("core", 0.78, 2.8, 3),
+            ):
+                b64 = _make_pencil_grain_pattern_png_b64(p_color, base_dens * alpha_f, contrast, seed)
+                pat_id = f"pencil-{variant}-{c_clean}-{a_key}"
+                defs_elements.append(
+                    f'<pattern id="{pat_id}" patternUnits="userSpaceOnUse" width="{tile_pt:.2f}" height="{tile_pt:.2f}">'
+                    f'<image href="data:image/png;base64,{b64}" x="0" y="0" width="{tile_pt:.2f}" height="{tile_pt:.2f}"/>'
+                    f'</pattern>'
+                )
+
         defs_elements.append('</defs>')
         elements.append("".join(defs_elements))
 
@@ -530,9 +695,17 @@ def page_to_svg(
         if dash_pattern:
             first_val = dash_pattern[0]
             gap_val = dash_pattern[1] if len(dash_pattern) > 1 else dash_pattern[0]
-            if first_val <= 2.5:
-                dot_gap = max(stroke_w * 1.5, gap_val * dpi_scale)
+            if first_val <= 0.5:
+                dot_gap = (
+                    max(stroke_w * 2.1, gap_val * stroke_w * 1.1)
+                    if gap_val <= 6.0
+                    else max(stroke_w * 1.5, gap_val * dpi_scale)
+                )
                 dash_attr = f' stroke-dasharray="0 {dot_gap:.2f}"'
+            elif first_val <= 6.0 and gap_val <= 6.0:
+                dash_len = max(stroke_w * 2.0, first_val * stroke_w)
+                gap_len = max(stroke_w * 1.8, gap_val * stroke_w)
+                dash_attr = f' stroke-dasharray="{dash_len:.2f} {gap_len:.2f}"'
             else:
                 dash_len = max(stroke_w * 2.0, first_val * dpi_scale)
                 gap_len = max(stroke_w * 1.5, gap_val * dpi_scale)
@@ -543,19 +716,21 @@ def page_to_svg(
         s_style = int(getattr(shape, "start_arrow", 0))
         e_style = int(getattr(shape, "end_arrow", 0))
 
-        if s_style == 1:
-            marker_attr += f' marker-start="url(#arrow-start-open-{c_clean})"'
-        elif s_style == 2 or (isinstance(getattr(shape, "start_arrow", False), bool) and shape.start_arrow):
-            marker_attr += f' marker-start="url(#arrow-start-filled-{c_clean})"'
-        elif s_style >= 3:
-            marker_attr += f' marker-start="url(#arrow-start-dot-{c_clean})"'
+        is_type31_arrow = is_polyline and (s_style > 0 or e_style > 0) and (16 in shape.field_numbers)
+        if not is_type31_arrow:
+            if s_style == 1:
+                marker_attr += f' marker-start="url(#arrow-start-open-{c_clean})"'
+            elif s_style == 2 or (isinstance(getattr(shape, "start_arrow", False), bool) and shape.start_arrow):
+                marker_attr += f' marker-start="url(#arrow-start-filled-{c_clean})"'
+            elif s_style >= 3:
+                marker_attr += f' marker-start="url(#arrow-start-dot-{c_clean})"'
 
-        if e_style == 1:
-            marker_attr += f' marker-end="url(#arrow-end-open-{c_clean})"'
-        elif e_style == 2 or (isinstance(getattr(shape, "end_arrow", False), bool) and shape.end_arrow):
-            marker_attr += f' marker-end="url(#arrow-end-filled-{c_clean})"'
-        elif e_style >= 3:
-            marker_attr += f' marker-end="url(#arrow-end-dot-{c_clean})"'
+            if e_style == 1:
+                marker_attr += f' marker-end="url(#arrow-end-open-{c_clean})"'
+            elif e_style == 2 or (isinstance(getattr(shape, "end_arrow", False), bool) and shape.end_arrow):
+                marker_attr += f' marker-end="url(#arrow-end-filled-{c_clean})"'
+            elif e_style >= 3:
+                marker_attr += f' marker-end="url(#arrow-end-dot-{c_clean})"'
 
         is_filled = getattr(shape, "is_filled", True)
         if fill_shapes and is_filled:
@@ -565,11 +740,86 @@ def page_to_svg(
             fill_attr = 'fill="none"'
 
         c_rad = getattr(shape, "corner_radius", 0.0)
-        is_dotted = bool(dash_pattern and dash_pattern[0] <= 2.5)
         if marker_attr:
             join_cap_attr = 'stroke-linecap="butt" stroke-linejoin="miter"'
         else:
             join_cap_attr = 'stroke-linecap="round" stroke-linejoin="round"'
+
+        if is_type31_arrow and len(pts) >= 2:
+            curve = _sample_polyline_from_pts(pts, steps_per_seg=28)
+            total_len = sum(
+                math.hypot(curve[i][0] - curve[i - 1][0], curve[i][1] - curve[i - 1][1])
+                for i in range(1, len(curve))
+            )
+            w_raw = max(1.0, shape.stroke_width)
+            arrow_svgs: list[str] = []
+            trims = [0.0, 0.0]
+
+            for end_idx, a_style in enumerate((s_style, e_style)):
+                if a_style <= 0:
+                    continue
+                from_end = (end_idx == 1)
+                p_tip = curve[-1] if from_end else curve[0]
+                if a_style == 2:
+                    l_side = min(total_len * 0.48, max(9.5, w_raw * 4.5))
+                    h_tri = l_side * (math.sqrt(3.0) / 2.0)
+                    w_half = l_side * 0.5
+                    r_corner = max(0.8, l_side * 0.10)
+                    p_base = _point_at_arc_dist(curve, h_tri, from_end=from_end)
+                    dx, dy = p_tip[0] - p_base[0], p_tip[1] - p_base[1]
+                    dlen = math.hypot(dx, dy)
+                    if dlen > 1e-4:
+                        ux, uy = dx / dlen, dy / dlen
+                        nx, ny = -uy, ux
+                        v1 = (p_base[0] + nx * w_half, p_base[1] + ny * w_half)
+                        v2 = (p_base[0] - nx * w_half, p_base[1] - ny * w_half)
+                        tri_d = _rounded_polygon_svg_path((p_tip, v1, v2), r_corner, dpi_scale, is_closed=True)
+                        arrow_svgs.append(
+                            f'<path d="{tri_d}" fill="{shape.color_hex}" fill-opacity="{shape.alpha:.2f}" stroke="none"/>'
+                        )
+                        trims[end_idx] = max(w_raw * 0.6, h_tri * 0.85)
+                elif a_style == 1:
+                    l_wing = min(total_len * 0.45, max(8.5, w_raw * 3.6))
+                    theta = math.radians(31.0)
+                    ref_dist = min(l_wing * 0.65, total_len * 0.25)
+                    p_ref = _point_at_arc_dist(curve, ref_dist, from_end=from_end)
+                    dx, dy = p_tip[0] - p_ref[0], p_tip[1] - p_ref[1]
+                    dlen = math.hypot(dx, dy)
+                    if dlen > 1e-4:
+                        ux, uy = dx / dlen, dy / dlen
+                        nx, ny = -uy, ux
+                        back = l_wing * math.cos(theta)
+                        wing = l_wing * math.sin(theta)
+                        w1x = (p_tip[0] - ux * back + nx * wing) * dpi_scale
+                        w1y = (p_tip[1] - uy * back + ny * wing) * dpi_scale
+                        w2x = (p_tip[0] - ux * back - nx * wing) * dpi_scale
+                        w2y = (p_tip[1] - uy * back - ny * wing) * dpi_scale
+                        tx, ty = p_tip[0] * dpi_scale, p_tip[1] * dpi_scale
+                        arrow_svgs.append(
+                            f'<path d="M {w1x:.2f} {w1y:.2f} L {tx:.2f} {ty:.2f} L {w2x:.2f} {w2y:.2f}" '
+                            f'fill="none" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" '
+                            f'stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"/>'
+                        )
+                        trims[end_idx] = w_raw * 0.30
+                else:
+                    r_dot = max(3.0, w_raw * 1.8) * dpi_scale
+                    arrow_svgs.append(
+                        f'<circle cx="{p_tip[0]*dpi_scale:.2f}" cy="{p_tip[1]*dpi_scale:.2f}" r="{r_dot:.2f}" '
+                        f'fill="{shape.color_hex}" fill-opacity="{shape.alpha:.2f}"/>'
+                    )
+                    trims[end_idx] = w_raw * 0.50
+
+            trimmed = _trim_polyline_ends(curve, trims[0], trims[1])
+            shaft_cmds = [f"M {trimmed[0][0]*dpi_scale:.2f} {trimmed[0][1]*dpi_scale:.2f}"]
+            for px, py in trimmed[1:]:
+                shaft_cmds.append(f"L {px*dpi_scale:.2f} {py*dpi_scale:.2f}")
+            shaft_d = " ".join(shaft_cmds)
+            elements.append(
+                f'<path d="{shaft_d}" stroke="{shape.color_hex}" stroke-opacity="{shape.alpha:.2f}" '
+                f'stroke-width="{stroke_w:.2f}" stroke-linecap="round" stroke-linejoin="round"{dash_attr} fill="none"/>'
+            )
+            elements.extend(arrow_svgs)
+            continue
 
         if shape.shape_type == "ellipse" and cx is not None and cy is not None:
             ellipse_cx = cx * dpi_scale
@@ -661,7 +911,6 @@ def page_to_svg(
             )
 
     shape_uuids = {shape.uuid for shape in page.shapes if shape.uuid}
-    from .stroke import StrokePoint
 
     for stroke_idx, stroke in enumerate(page.strokes):
         if stroke.uuid in shape_uuids:
@@ -723,6 +972,22 @@ def page_to_svg(
                         end_y = cy_t + r * math.sin(a1)
                         r_scaled = r * dpi_scale
                         cmds.append(f"A {r_scaled:.2f} {r_scaled:.2f} 0 {large_arc} {sweep} {end_x * dpi_scale:.2f} {end_y * dpi_scale:.2f}")
+                    elif op == "E":
+                        cx, cy, rx, ry, a0, a1, rot, flag = args
+                        cx_t = cx + dx
+                        cy_t = cy + dy
+                        d_theta = (a0 - a1) % (2.0 * math.pi)
+                        sweep = 0 if int(flag) == 1 else 1
+                        large_arc = 1 if d_theta > math.pi else 0
+                        ca1, sa1 = math.cos(a1), math.sin(a1)
+                        crot, srot = math.cos(rot), math.sin(rot)
+                        end_x = cx_t + rx * ca1 * crot - ry * sa1 * srot
+                        end_y = cy_t + rx * ca1 * srot + ry * sa1 * crot
+                        rot_deg = math.degrees(rot)
+                        cmds.append(
+                            f"A {rx * dpi_scale:.2f} {ry * dpi_scale:.2f} {rot_deg:.2f} {large_arc} {sweep} "
+                            f"{end_x * dpi_scale:.2f} {end_y * dpi_scale:.2f}"
+                        )
                 cmds.append("Z")
                 all_path_cmds.append(" ".join(cmds))
 
@@ -731,6 +996,14 @@ def page_to_svg(
             if s_highlight:
                 elements.append(
                     f'<path d="{d_str}" fill="#fffa65" fill-opacity="0.75" stroke="#fffa65" stroke-width="4.0" stroke-linecap="round" stroke-linejoin="round"/>'
+                )
+            if getattr(stroke, "is_tape", False):
+                dx_sh = 0.8 * dpi_scale
+                dy_sh = 1.4 * dpi_scale
+                elements.append(
+                    f'<g transform="translate({dx_sh:.2f}, {dy_sh:.2f})">'
+                    f'<path d="{d_str}" fill="#000000" fill-opacity="0.18" stroke="none"/>'
+                    f'</g>'
                 )
             elements.append(
                 f'<path d="{d_str}" fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="{s_color}" stroke-opacity="{s_alpha:.2f}" stroke-width="{seam_w:.2f}" stroke-linejoin="round" stroke-linecap="round"{css_class}{data_attr}/>'
@@ -780,7 +1053,62 @@ def page_to_svg(
                 elements.append(
                     f'<g fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="{s_color}" stroke-opacity="{s_alpha:.2f}" stroke-width="{0.5 * dpi_scale:.2f}" stroke-linejoin="round"{css_class}{data_attr}>{"".join(poly_elems)}</g>'
                 )
+        elif getattr(stroke, "is_pencil", False) and pts:
+            c_clean = s_color.replace("#", "")
+            a_key = int(round(max(0.0, min(1.0, s_alpha)) * 100))
+            mean_r = sum(p.pressure for p in pts) / len(pts)
+            is_tilted = mean_r > stroke.width * 0.58
+
+            def _scaled_ribbon(scale_r: float) -> str | None:
+                s_pts = [StrokePoint(pt.x, pt.y, pt.pressure * scale_r) for pt in pts]
+                return build_stroke_ribbon(
+                    s_pts,
+                    stroke.width * scale_r,
+                    dpi_scale,
+                    tpl_format=stroke.tpl_format,
+                    is_cut_start=stroke.is_cut_start,
+                    is_cut_end=stroke.is_cut_end,
+                    start_cut_vec=stroke.start_cut_vec,
+                    end_cut_vec=stroke.end_cut_vec,
+                )
+
+            edge_d = _scaled_ribbon(1.05 if is_tilted else 1.15)
+            body_d = _scaled_ribbon(0.90 if is_tilted else 0.85)
+            body_variant = "shade" if is_tilted else "core"
+
+            if s_highlight and (edge_d or body_d):
+                elements.append(
+                    f'<path d="{edge_d or body_d}" fill="#fffa65" fill-opacity="0.75" stroke="#fffa65" stroke-width="4.0" stroke-linecap="round" stroke-linejoin="round"/>'
+                )
+            # Do not put fill-opacity on paths referencing url(#pattern): CairoSVG caches pattern alpha
+            if edge_d:
+                elements.append(
+                    f'<path d="{edge_d}" fill="url(#pencil-edge-{c_clean}-{a_key})" stroke="none"{css_class}{data_attr}/>'
+                )
+            if body_d:
+                elements.append(
+                    f'<path d="{body_d}" fill="url(#pencil-{body_variant}-{c_clean}-{a_key})" stroke="none"{css_class}{data_attr}/>'
+                )
         else:
+                if (
+                    stroke.is_highlighter
+                    and not stroke.is_cut_start
+                    and not stroke.is_cut_end
+                    and len(pts) >= 2
+                    and (max(p.pressure for p in pts) - min(p.pressure for p in pts)) < 0.05
+                ):
+                    center_d = _catmull_rom_to_svg_path(tuple((pt.x, pt.y) for pt in pts), dpi_scale)
+                    sw = max(0.2, pts[0].pressure * 2.0 * dpi_scale)
+                    if center_d:
+                        if s_highlight:
+                            elements.append(
+                                f'<path d="{center_d}" fill="none" stroke="#fffa65" stroke-opacity="0.75" stroke-width="{sw + 4.0:.2f}" stroke-linecap="round" stroke-linejoin="round"/>'
+                            )
+                        elements.append(
+                            f'<path d="{center_d}" fill="none" stroke="{s_color}" stroke-opacity="{s_alpha:.2f}" stroke-width="{sw:.2f}" stroke-linecap="round" stroke-linejoin="round"{css_class}{data_attr}/>'
+                        )
+                    continue
+
                 ribbon_d = build_stroke_ribbon(
                     pts,
                     stroke.width,

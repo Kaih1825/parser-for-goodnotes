@@ -31,6 +31,7 @@ class ShapePath:
     corner_radius: float = 0.0
     is_text_box_background: bool = False
     parent_uuid: str | None = None
+    z_order: int = 0
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -55,6 +56,7 @@ class ShapePath:
             "corner_radius": self.corner_radius,
             "is_text_box_background": self.is_text_box_background,
             "parent_uuid": self.parent_uuid,
+            "z_order": self.z_order,
         }
 
 
@@ -123,7 +125,6 @@ def _parse_curves(container: Message) -> list[tuple[float, float]]:
         elif 3 in pts_dict and 4 in pts_dict:
             # Cubic Bezier curve
             p_c1, p_c2, p_end = pts_dict[2], pts_dict[3], pts_dict[4]
-            print("Type1")
             for j in range(1, 31):
                 t = j / 30.0
                 u = 1.0 - t
@@ -133,6 +134,10 @@ def _parse_curves(container: Message) -> list[tuple[float, float]]:
         else:
             pts.append(pts_dict[2])
         return pts
+
+    # Straight segment in Type 31 m21: f1 (start) and f3 (end); f5 is only the chord midpoint
+    if 1 in pts_dict and 3 in pts_dict and 2 not in pts_dict and 4 not in pts_dict:
+        return [pts_dict[1], pts_dict[3]]
 
     # Case B: Continuous path commands (usually present in Field 9)
     commands = []
@@ -305,6 +310,21 @@ def extract_move_offset_from_message(msg: Message) -> tuple[float, float]:
     return 0.0, 0.0
 
 
+def _extract_dash_pattern(m_dash: Message) -> tuple[float, ...] | None:
+    """Extract normalized 2-element (dash, gap) pattern, preserving omitted 0.0 field 1."""
+    has_f1 = bool(m_dash.by_number(1))
+    has_f2 = bool(m_dash.by_number(2))
+    if has_f1 or has_f2:
+        df1 = (m_dash.by_number(1)[0].fixed_float() or 0.0) if has_f1 else 0.0
+        df2 = (m_dash.by_number(2)[0].fixed_float() or 0.0) if has_f2 else 0.0
+        if df1 > 0.0 or df2 > 0.0:
+            return (df1, df2)
+    d_vals = [sf.fixed_float() for sf in m_dash.fields if sf.fixed_float() is not None]
+    if d_vals and any(v > 0.0 for v in d_vals):
+        return tuple(d_vals)
+    return None
+
+
 def _parse_type31_shape(record_index: int, msg: Message, parent_uuid: str | None = None) -> ShapePath | None:
     uuid = _uuid_from_message(msg)
 
@@ -324,14 +344,25 @@ def _parse_type31_shape(record_index: int, msg: Message, parent_uuid: str | None
         if f20 and isinstance(f20[0].value, bytes):
             m20 = try_decode_message(f20[0].value)
             if m20:
+                def _extract_m20_pt(field_bytes: bytes) -> tuple[float, float] | None:
+                    sub = try_decode_message(field_bytes)
+                    return _get_point(sub) if sub else None
+
+                for sf in m20.by_number(1):
+                    if isinstance(sf.value, bytes):
+                        pt = _extract_m20_pt(sf.value)
+                        if pt is not None:
+                            pts.append(pt)
                 for sf in m20.by_number(2):
                     if isinstance(sf.value, bytes):
-                        m_pt = try_decode_message(sf.value)
-                        if m_pt and m_pt.by_number(1) and m_pt.by_number(2):
-                            fx = m_pt.by_number(1)[0].fixed_float()
-                            fy = m_pt.by_number(2)[0].fixed_float()
-                            if fx is not None and fy is not None:
-                                pts.append((fx, fy))
+                        pt = _extract_m20_pt(sf.value)
+                        if pt is not None and (not pts or pt != pts[-1]):
+                            pts.append(pt)
+                for sf in m20.by_number(3):
+                    if isinstance(sf.value, bytes):
+                        pt = _extract_m20_pt(sf.value)
+                        if pt is not None and (not pts or pt != pts[-1]):
+                            pts.append(pt)
 
     if not pts:
         return None
@@ -351,9 +382,7 @@ def _parse_type31_shape(record_index: int, msg: Message, parent_uuid: str | None
                 if m2 and m2.by_number(2) and isinstance(m2.by_number(2)[0].value, bytes):
                     m_dash = try_decode_message(m2.by_number(2)[0].value)
                     if m_dash:
-                        d_vals = [sf.fixed_float() for sf in m_dash.fields if sf.fixed_float() is not None]
-                        if d_vals:
-                            dash_pattern = tuple(d_vals)
+                        dash_pattern = _extract_dash_pattern(m_dash)
             if m32.by_number(3) and isinstance(m32.by_number(3)[0].value, bytes):
                 m_c = try_decode_message(m32.by_number(3)[0].value)
                 if m_c and m_c.by_number(1) and isinstance(m_c.by_number(1)[0].value, bytes):
@@ -453,9 +482,7 @@ def _parse_type35_shape(record_index: int, msg: Message, parent_uuid: str | None
                 if m2 and m2.by_number(2) and isinstance(m2.by_number(2)[0].value, bytes):
                     m_dash = try_decode_message(m2.by_number(2)[0].value)
                     if m_dash:
-                        d_vals = [sf.fixed_float() for sf in m_dash.fields if sf.fixed_float() is not None]
-                        if d_vals:
-                            dash_pattern = tuple(d_vals)
+                        dash_pattern = _extract_dash_pattern(m_dash)
             if m31.by_number(3) and isinstance(m31.by_number(3)[0].value, bytes):
                 m3 = try_decode_message(m31.by_number(3)[0].value)
                 if m3 and m3.by_number(1) and isinstance(m3.by_number(1)[0].value, bytes):
