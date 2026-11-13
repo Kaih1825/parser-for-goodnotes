@@ -214,17 +214,17 @@ def _render_pencil_stipple_paths(
     seed_val = (int(s0[5]) ^ int(round(s0[0] * 100.0)) ^ (int(round(s0[1] * 100.0)) << 16)) & 0xFFFFFFFF
     rng = random.Random(seed_val)
 
-    dot_sw = (0.45 + 0.068 * min(width, 10.0)) * dpi_scale
+    dot_sw = (0.52 + 0.075 * min(width, 10.0)) * dpi_scale
     # Emit separate <path> chunks every ~45 units of arc length so overlapping passes
     # alpha-composite on top of each other, and bucket dots into 4 pressure/opacity
-    # tiers so force (frc) drives crisp light-to-dark shading.
-    tier_ops = (0.22 * alpha, 0.44 * alpha, 0.72 * alpha, 0.96 * alpha)
+    # tiers with 2D paper-tooth modulation for soft, natural graphite shading.
+    tier_ops = (0.18 * alpha, 0.34 * alpha, 0.54 * alpha, 0.76 * alpha)
     chunks: list[list[list[str]]] = []
     cur_buckets: list[list[str]] = [[], [], [], []]
     arc_accum = 0.0
 
     dot_accum = 0.0
-    width_factor = max(1.0, width * 0.68)
+    width_factor = max(1.0, width * 0.62)
     for i in range(len(samples) - 1):
         x0, y0, az0, alt0, frc0, _ = samples[i]
         x1, y1, az1, alt1, frc1, _ = samples[i + 1]
@@ -235,45 +235,52 @@ def _render_pencil_stipple_paths(
         az_m = 0.5 * (az0 + az1)
         alt_m = 0.5 * (alt0 + alt1)
         frc_m = 0.5 * (frc0 + frc1)
-        frc_norm = min(1.5, max(0.02, frc_m))
-        tilt = max(0.0, 1.32 - alt_m)
-        r_min = (width * 0.78) * (0.85 + 0.18 * min(1.2, frc_norm))
-        r_maj = r_min + width * 4.2 * (tilt ** 1.1)
+        frc_norm = min(1.25, max(0.05, frc_m))
+        tilt = max(0.0, 1.12 - alt_m)
+        r_min = (width * 0.72) * (0.85 + 0.15 * frc_norm)
+        r_maj = r_min + width * 4.4 * (tilt ** 1.15)
         ca, sa = math.cos(az_m), math.sin(az_m)
 
-        dens = max(1.6, 2.8 * width_factor * (1.0 + 0.65 * (r_maj / max(1.0, r_min))) * (0.38 + 1.05 * frc_norm))
+        dens = max(1.6, 2.3 * width_factor * (1.0 + 0.55 * (r_maj / max(1.0, r_min))) * (0.50 + 0.68 * frc_norm))
         dot_accum += seg_len * dens
         n_dots = int(dot_accum)
         dot_accum -= n_dots
 
-        # Higher tilt spreads grain more uniformly across r_maj while keeping crisp edges
-        core_prob = max(0.55, 0.85 - 0.28 * min(1.0, tilt))
-        core_spread = 0.68 + 0.20 * min(1.0, tilt)
-        tilt_atten = 1.0 / (1.0 + 0.10 * tilt)
+        # Higher tilt spreads grain across r_maj; upright keeps a soft, feathered core
+        core_prob = max(0.32, 0.72 - 0.45 * min(1.0, tilt))
+        core_spread = 0.52 + 0.32 * min(1.0, tilt)
+        tilt_atten = 1.0 / (1.0 + 0.14 * tilt)
 
         for _ in range(n_dots):
             t = rng.random()
             cx = x0 + (x1 - x0) * t
             cy = y0 + (y1 - y0) * t
-            u1 = (rng.random() - rng.random()) * 0.98
-            u2 = (rng.random() - rng.random()) * 0.98
+            u1 = ((rng.random() + rng.random() + rng.random()) / 3.0 - 0.5) * 2.2
+            u2 = ((rng.random() + rng.random() + rng.random()) / 3.0 - 0.5) * 2.2
 
             is_core = rng.random() < core_prob
             if is_core:
                 lx = u1 * core_spread * r_maj
                 ly = u2 * core_spread * r_min
             else:
-                lx = u1 * 0.95 * r_maj
-                ly = u2 * 0.95 * r_min
+                lx = u1 * r_maj
+                ly = u2 * r_min
 
-            px = (cx + lx * ca - ly * sa) * dpi_scale
-            py = (cy + lx * sa + ly * ca) * dpi_scale
+            gx = cx + lx * ca - ly * sa
+            gy = cy + lx * sa + ly * ca
+            # Deterministic 2D paper-tooth modulation in page coordinates
+            tooth = 0.5 + 0.25 * math.sin(gx * 2.3 + math.cos(gy * 1.9)) + 0.25 * math.cos(gy * 3.1 - math.sin(gx * 2.7))
+            if tooth + frc_norm * 0.45 < 0.32:
+                continue
+
+            px = gx * dpi_scale
+            py = gy * dpi_scale
             cmd = f"M{px:.1f},{py:.1f}h0.01"
             if not is_core:
-                b_idx = 1 if (frc_norm > 0.75 and rng.random() < 0.45) else 0
+                b_idx = 1 if (frc_norm > 0.85 and tooth > 0.55) else 0
             else:
-                darkness = (frc_norm * 0.78 + rng.random() * 0.22) * tilt_atten
-                b_idx = 0 if darkness < 0.25 else (1 if darkness < 0.48 else (2 if darkness < 0.70 else 3))
+                darkness = (frc_norm * 0.68 + tooth * 0.22 + rng.random() * 0.10) * tilt_atten
+                b_idx = 0 if darkness < 0.28 else (1 if darkness < 0.52 else (2 if darkness < 0.76 else 3))
             cur_buckets[b_idx].append(cmd)
 
         arc_accum += seg_len
