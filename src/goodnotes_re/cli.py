@@ -103,6 +103,7 @@ def export_video_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("-r", "--recording", type=str, default=None, help="Recording ID to export (default: all active recordings in sequence)")
     parser.add_argument("-p", "--page-index", type=int, default=None, help="Target page index (0-indexed, default: auto-detect from recording)")
     parser.add_argument("-s", "--sticky-note-state", choices=["open", "close", "auto"], default=None, help="Force sticky notes state: open (expand all) or close (collapse all)")
+    parser.add_argument("-t", "--tape-state", choices=["on", "off"], default=None, help="Force tape state: on (cover underneath, default) or off (reveal underneath and hide top strokes)")
     parser.add_argument("-b", "--textbox", nargs="?", const=True, default=False, help="Show text box bounding borders (flag or -b open / -b close)")
     parser.add_argument("-a", "--parse-all", action="store_true", help="Parse all pages instead of only active page")
     parser.add_argument("--no-fill", dest="fill_shapes", action="store_false", help="Do not fill vector shapes")
@@ -126,6 +127,7 @@ def export_video_main(argv: Sequence[str] | None = None) -> int:
             sticky_note_state=args.sticky_note_state,
             textbox_state=args.textbox,
             parse_all=args.parse_all,
+            tape_state=args.tape_state,
         )
         print(str(out_path))
     return 0
@@ -138,6 +140,7 @@ def export_html_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("-r", "--recording", type=str, default=None, help="Recording ID to export (default: includes all recordings)")
     parser.add_argument("-p", "--page-index", type=int, default=None, help="Target page index (0-indexed, default: auto-detect from recording)")
     parser.add_argument("-s", "--sticky-note-state", choices=["open", "close", "auto"], default=None, help="Force sticky notes state: open (expand all) or close (collapse all)")
+    parser.add_argument("-t", "--tape-state", choices=["on", "off"], default=None, help="Force tape state: on (cover underneath, default) or off (reveal underneath and hide top strokes)")
     parser.add_argument("-b", "--textbox", nargs="?", const=True, default=False, help="Show text box bounding borders (flag or -b open / -b close)")
     parser.add_argument("-a", "--parse-all", action="store_true", help="Parse all pages instead of only active page")
     parser.add_argument("--no-fill", dest="fill_shapes", action="store_false", help="Do not fill vector shapes")
@@ -154,6 +157,7 @@ def export_html_main(argv: Sequence[str] | None = None) -> int:
             sticky_note_state=args.sticky_note_state,
             textbox_state=args.textbox,
             parse_all=args.parse_all,
+            tape_state=args.tape_state,
         )
         print(str(out_path))
     return 0
@@ -174,6 +178,7 @@ def export_svg_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("document", type=Path)
     parser.add_argument("-o", "--output", type=Path, required=True)
     parser.add_argument("-s", "--sticky-note-state", choices=["open", "close", "auto"], default=None, help="Force sticky notes state: open (expand all) or close (collapse all)")
+    parser.add_argument("-t", "--tape-state", choices=["on", "off"], default=None, help="Force tape state: on (cover underneath, default) or off (reveal underneath and hide top strokes)")
     parser.add_argument("-b", "--textbox", nargs="?", const=True, default=False, help="Show text box bounding borders (flag or -b open / -b close)")
     parser.add_argument("-a", "--parse-all", action="store_true", help="Parse all pages instead of only active page")
     parser.add_argument("--no-fill", dest="fill_shapes", action="store_false", help="Do not fill vector shapes")
@@ -195,6 +200,7 @@ def export_svg_main(argv: Sequence[str] | None = None) -> int:
             textbox_state=args.textbox,
             parse_all=args.parse_all,
             export_pdf=args.pdf,
+            tape_state=args.tape_state,
         )
     print("\n".join(str(path) for path in paths))
     return 0
@@ -205,6 +211,7 @@ def export_pdf_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("document", type=Path)
     parser.add_argument("-o", "--output", type=Path, required=True)
     parser.add_argument("-s", "--sticky-note-state", choices=["open", "close", "auto"], default=None, help="Force sticky notes state: open (expand all) or close (collapse all)")
+    parser.add_argument("-t", "--tape-state", choices=["on", "off"], default=None, help="Force tape state: on (cover underneath, default) or off (reveal underneath and hide top strokes)")
     parser.add_argument("-b", "--textbox", nargs="?", const=True, default=False, help="Show text box bounding borders (flag or -b open / -b close)")
     parser.add_argument("-a", "--parse-all", action="store_true", help="Parse all pages instead of only active page")
     parser.add_argument("--no-fill", dest="fill_shapes", action="store_false", help="Do not fill vector shapes")
@@ -218,6 +225,7 @@ def export_pdf_main(argv: Sequence[str] | None = None) -> int:
             sticky_note_state=args.sticky_note_state,
             textbox_state=args.textbox,
             parse_all=args.parse_all,
+            tape_state=args.tape_state,
         )
     print(str(pdf_path))
     return 0

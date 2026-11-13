@@ -237,6 +237,7 @@ gn-export-pdf <document> -o <output.pdf> [options]
 - `-o`, `--output`: (Required) Output PDF file path or target directory.
 - `-a`, `--parse-all`: Parses and exports all pages.
 - `-s`, `--sticky-note-state`: Sticky note display override (`open` / `close` / `auto`).
+- `-t`, `--tape-state`: Force tape state (`on` to cover underneath [default], `off` to reveal underneath and hide top strokes).
 - `-b`, `--textbox`: Displays text box bounding borders.
 - `--no-fill`: Disables filling for closed vector shapes.
 
@@ -306,6 +307,7 @@ gn-export-video <document> -o <output.mp4> [options]
 - `-r`, `--recording`: Target recording ID (default: all active recordings in sequential order).
 - `-p`, `--page-index`: Target page index (0-indexed, default: auto-detects and transitions across pages dynamically).
 - `-s`, `--sticky-note-state`: Sticky note display override (`open` / `close` / `auto`).
+- `-t`, `--tape-state`: Force tape state (`on` to cover underneath [default], `off` to reveal underneath and hide top strokes).
 - `-b`, `--textbox`: Displays text box bounding borders.
 - `-a`, `--parse-all`: Parses and renders all pages.
 - `--no-fill`: Disables filling for closed vector shapes.
@@ -339,6 +341,7 @@ gn-export-html <document> -o <output.html> [options]
 - `-r`, `--recording`: Target recording ID (default: includes all recordings with multi-session playlist).
 - `-p`, `--page-index`: Initial page index (0-indexed, default: first active page).
 - `-s`, `--sticky-note-state`: Sticky note display override (`open` / `close` / `auto`).
+- `-t`, `--tape-state`: Force tape state (`on` to cover underneath [default], `off` to reveal underneath and hide top strokes).
 - `-b`, `--textbox`: Displays text box bounding borders.
 - `-a`, `--parse-all`: Parses and embeds all pages (enabled by default).
 - `--no-fill`: Disables filling for closed vector shapes.
@@ -643,6 +646,7 @@ gn-export-pdf <document> -o <output.pdf> [選項]
 - `-o`, `--output`：（必填）輸出 PDF 檔案路徑或目標目錄。
 - `-a`, `--parse-all`：解析並匯出整份文件所有的頁面。
 - `-s`, `--sticky-note-state`：控制便條紙展開狀態（`open` / `close` / `auto`）。
+- `-t`, `--tape-state`：強制指定膠帶狀態（`on` 蓋住底層內容 [預設]／`off` 揭開透視底層並隱藏膠帶上方筆跡）。
 - `-b`, `--textbox`：顯示文字方塊外框輔助線。
 - `--no-fill`：停用向量封閉圖形的自動填色功能。
 
@@ -712,6 +716,7 @@ gn-export-video <document> -o <output.mp4> [選項]
 - `-r`, `--recording`：指定欲匯出的單一錄音 UUID（預設依順序播放所有有效錄音）。
 - `-p`, `--page-index`：指定固定頁面索引（0 為第一頁，預設會依語音進度自動跨頁切換）。
 - `-s`, `--sticky-note-state`：控制便條紙展開狀態（`open` / `close` / `auto`）。
+- `-t`, `--tape-state`：強制指定膠帶狀態（`on` 蓋住底層內容 [預設]／`off` 揭開透視底層並隱藏膠帶上方筆跡）。
 - `-b`, `--textbox`：顯示文字方塊外框輔助線。
 - `-a`, `--parse-all`：解析並渲染整份文件所有頁面。
 - `--no-fill`：停用向量封閉圖形的自動填色功能。
@@ -745,6 +750,7 @@ gn-export-html <document> -o <output.html> [選項]
 - `-r`, `--recording`：指定欲匯出的單一錄音 UUID（預設包含所有錄音並支援連續播放）。
 - `-p`, `--page-index`：初始載入之頁面索引（0 為第一頁）。
 - `-s`, `--sticky-note-state`：控制便條紙展開狀態（`open` / `close` / `auto`）。
+- `-t`, `--tape-state`：強制指定膠帶狀態（`on` 蓋住底層內容 [預設]／`off` 揭開透視底層並隱藏膠帶上方筆跡）。
 - `-b`, `--textbox`：顯示文字方塊外框輔助線。
 - `-a`, `--parse-all`：解析並內嵌整份文件所有頁面（預設已開啟）。
 - `--no-fill`：停用向量封閉圖形的自動填色功能。

@@ -255,6 +255,27 @@ class PageTests(unittest.TestCase):
             self.assertIn('data-tape-open="false"', svg)
             self.assertIn("monospace", svg)
 
+            # Verify --tape-state off reveals underneath and omits top overlay strokes & shadow
+            svg_off = page_to_svg(page, document=document, tape_state="off")
+            self.assertIn('data-tape-open="true"', svg_off)
+            self.assertNotIn('class="gn-tape-shadow"', svg_off)
+            self.assertNotIn('data-tape-overlay=', svg_off)
+
+    def test_cli_export_svg_tape_state(self) -> None:
+        from goodnotes_re.cli import export_svg_main
+
+        sample = resolve_sample("1104test.goodnotes")
+        if not sample.exists():
+            self.skipTest("1104test.goodnotes not present")
+        with tempfile.TemporaryDirectory() as tmp:
+            rc = export_svg_main([str(sample), "-o", tmp, "-t", "off"])
+            self.assertEqual(rc, 0)
+            svgs = list(Path(tmp).glob("*.svg"))
+            self.assertEqual(len(svgs), 1)
+            content = svgs[0].read_text(encoding="utf-8")
+            self.assertIn('data-tape-open="true"', content)
+            self.assertNotIn('class="gn-tape-shadow"', content)
+
 
 if __name__ == "__main__":
     unittest.main()

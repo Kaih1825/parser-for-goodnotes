@@ -92,6 +92,7 @@ gn-export-svg samples/Teat.goodnotes -o pages-svg/
 
 #### Advanced Parameters:
 - `-s, --sticky-note-state {open,close,auto}`: Controls sticky note state (`open` expands the card, `close` collapses the icon).
+- `-t, --tape-state {on,off}`: Force tape state (`on` covers underneath [default], `off` reveals underneath and hides strokes written on top of the tape).
 - `-b, --textbox [open|close]`: Controls whether to draw the text box bounding border.
 - `-a, --parse-all`: Parses all pages in the document instead of only the active page.
 - `--no-fill`: Disables filling for vector shapes.
@@ -147,6 +148,7 @@ gn-export-video samples/record.goodnotes -o replay.mp4 --fps 15 -s open -b -a
 - `--fps`: Frame rate (default: `15`).
 - `--resolution-scale`: Rendering scale factor (default: `1.0`).
 - `-s, --sticky-note-state {open,close,auto}`: Sticky note display mode.
+- `-t, --tape-state {on,off}`: Force tape state (`on` covers underneath, `off` reveals underneath).
 - `-b, --textbox [open|close]`: Text box border rendering.
 - `-a, --parse-all`: Parse and follow all active pages.
 
@@ -387,6 +389,7 @@ gn-export-svg samples/Teat.goodnotes -o pages-svg/
 
 #### 高級參數：
 - `-s, --sticky-note-state {open,close,auto}`：控制便條紙狀態 (`open` 展開卡片, `close` 折疊圖示)。
+- `-t, --tape-state {on,off}`：強制指定膠帶狀態（`on` 蓋住底層 [預設]，`off` 揭開透視底層並隱藏上方筆跡）。
 - `-b, --textbox [open|close]`：控制是否繪製藍色文字選取框。
 - `-a, --parse-all`：解析並匯出整份文件所有的頁面（而非僅活動頁）。
 - `--no-fill`：關閉向量圖形填色。
@@ -442,6 +445,7 @@ gn-export-video samples/record.goodnotes -o replay.mp4 --fps 15 -s open -b -a
 - `--fps`：影片幀率（預設：`15`）。
 - `--resolution-scale`：畫面解析度縮放倍率（預設：`1.0`）。
 - `-s, --sticky-note-state {open,close,auto}`：便條紙展開狀態。
+- `-t, --tape-state {on,off}`：強制指定膠帶狀態（`on` 蓋住／`off` 揭開）。
 - `-b, --textbox [open|close]`：文字框外框繪製。
 - `-a, --parse-all`：解析並追蹤所有有效頁面。
 

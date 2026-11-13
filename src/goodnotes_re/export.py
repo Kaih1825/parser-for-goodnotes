@@ -473,6 +473,7 @@ def page_to_svg(
     textbox_state: bool | str | None = False,
     stroke_styles: dict[str, dict[str, object]] | None = None,
     stroke_data_attributes: bool = False,
+    tape_state: str | None = None,
 ) -> str:
     """Render a single GoodNotes Page object to an SVG XML string in memory."""
     # GoodNotes internal coordinates are 132 DPI, PDF canvas is 72 DPI
@@ -712,6 +713,14 @@ def page_to_svg(
 
         defs_elements.append('</defs>')
         elements.append("".join(defs_elements))
+
+    tape_open_override: bool | None = None
+    if tape_state is not None:
+        t_lower = str(tape_state).lower().strip()
+        if t_lower in ("off", "open", "reveal", "false", "0"):
+            tape_open_override = True
+        elif t_lower in ("on", "close", "cover", "true", "1"):
+            tape_open_override = False
 
     stroke_uuids = {s.uuid for s in page.strokes if s.uuid}
 
@@ -1015,17 +1024,19 @@ def page_to_svg(
         s_alpha = float(s_style.get("opacity", stroke.alpha))
         s_highlight = bool(s_style.get("highlight", False))
         data_attr = f' data-stroke-id="{html.escape(stroke.uuid)}"' if (stroke_data_attributes or stroke_styles is not None or stroke.uuid) else ""
+        matched_tape_id: str | None = None
         if tape_regions and not getattr(stroke, "is_tape", False) and not stroke.is_highlighter and pts:
             sxs = [pt.x for pt in pts]
             sys = [pt.y for pt in pts]
             scx = 0.5 * (min(sxs) + max(sxs))
             scy = 0.5 * (min(sys) + max(sys))
-            matched_tape_id: str | None = None
             for tid, t_idx, t_z, tmin_x, tmin_y, tmax_x, tmax_y in tape_regions:
                 is_above = (stroke.z_order > t_z) if (stroke.z_order and t_z) else (stroke_idx > t_idx)
                 if is_above and (tmin_x - 5.0 <= scx <= tmax_x + 5.0) and (tmin_y - 5.0 <= scy <= tmax_y + 5.0):
                     matched_tape_id = tid
             if matched_tape_id:
+                if tape_open_override is True:
+                    continue
                 data_attr += f' data-tape-overlay="{html.escape(matched_tape_id)}"'
         css_class = ' class="gn-stroke"' if data_attr else ""
 
@@ -1088,12 +1099,22 @@ def page_to_svg(
                 dy_sh = 1.4 * dpi_scale
                 tape_id = html.escape(stroke.uuid or f"tape-{stroke_idx}")
                 tape_body_cls = "gn-tape-body gn-stroke" if css_class else "gn-tape-body"
+                is_tape_revealed = tape_open_override is True
+                tape_open_attr = "true" if is_tape_revealed else "false"
+                tape_fill_op = 0.25 if is_tape_revealed else s_alpha
+                shadow_svg = (
+                    ""
+                    if is_tape_revealed
+                    else (
+                        f'<g class="gn-tape-shadow" transform="translate({dx_sh:.2f}, {dy_sh:.2f})">'
+                        f'<path d="{d_str}" fill="#000000" fill-opacity="0.18" stroke="none"/>'
+                        f'</g>'
+                    )
+                )
                 elements.append(
-                    f'<g class="gn-tape" data-tape-id="{tape_id}" data-tape-open="false">'
-                    f'<g class="gn-tape-shadow" transform="translate({dx_sh:.2f}, {dy_sh:.2f})">'
-                    f'<path d="{d_str}" fill="#000000" fill-opacity="0.18" stroke="none"/>'
-                    f'</g>'
-                    f'<path class="{tape_body_cls}" d="{d_str}" fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="none"{data_attr}/>'
+                    f'<g class="gn-tape" data-tape-id="{tape_id}" data-tape-open="{tape_open_attr}">'
+                    f'{shadow_svg}'
+                    f'<path class="{tape_body_cls}" d="{d_str}" fill="{s_color}" fill-opacity="{tape_fill_op:.2f}" stroke="none"{data_attr}/>'
                     f'</g>'
                 )
             else:
@@ -1422,12 +1443,14 @@ def write_svg(
     textbox_state: bool | str | None = False,
     parse_all: bool = False,
     export_pdf: bool | str | Path = False,
+    tape_state: str | None = None,
 ) -> list[Path]:
     """Export SVG vector pages for each page in the GoodNotes document.
 
     sticky_note_state: Optional override for sticky notes state ('open' or 'close').
     textbox_state: Optional toggle for drawing text box bounding borders ('open' or 'close').
     export_pdf: Optional flag or path to package exported SVG pages into a single PDF.
+    tape_state: Optional override for tape state ('on' to cover, 'off' to reveal underneath).
     """
     output = Path(directory)
     output.mkdir(parents=True, exist_ok=True)
@@ -1447,6 +1470,7 @@ def write_svg(
             fill_shapes=fill_shapes,
             sticky_note_state=sticky_note_state,
             textbox_state=textbox_state,
+            tape_state=tape_state,
         )
         target.write_text(svg_str, encoding="utf-8")
         written.append(target)
@@ -1559,6 +1583,7 @@ def write_pdf(
     sticky_note_state: str | None = None,
     textbox_state: bool = False,
     parse_all: bool = False,
+    tape_state: str | None = None,
 ) -> Path:
     """Export all document pages to vector SVGs in order and compile into a single multi-page PDF via CairoSVG."""
     import tempfile
@@ -1579,6 +1604,7 @@ def write_pdf(
             textbox_state=textbox_state,
             parse_all=parse_all,
             export_pdf=False,
+            tape_state=tape_state,
         )
         return svgs_to_pdf(svg_paths, output_path)
 
@@ -1679,6 +1705,7 @@ def write_recording_video(
     sticky_note_state: str | None = None,
     textbox_state: bool | str | None = False,
     parse_all: bool = False,
+    tape_state: str | None = None,
 ) -> Path:
     """Export synchronized MP4 video matching recorded audio with handwritten strokes.
 
@@ -1842,6 +1869,7 @@ def write_recording_video(
                     sticky_note_state=sticky_note_state,
                     textbox_state=textbox_state,
                     stroke_styles=stroke_styles,
+                    tape_state=tape_state,
                 )
 
                 if has_rsvg:
@@ -1892,6 +1920,7 @@ def write_recording_html(
     sticky_note_state: str | None = None,
     textbox_state: bool | str | None = False,
     parse_all: bool = True,
+    tape_state: str | None = None,
 ) -> Path:
     """Export standalone interactive HTML5 player for playback with synchronized handwriting highlight."""
     all_recordings = document.recordings()
@@ -1944,6 +1973,7 @@ def write_recording_html(
             sticky_note_state=sticky_note_state,
             textbox_state=textbox_state,
             stroke_data_attributes=True,
+            tape_state=tape_state,
         )
 
     # Prepare recordings data structure
