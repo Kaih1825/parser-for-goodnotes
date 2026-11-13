@@ -183,6 +183,7 @@ const state = {
   currentSvgString: "",
   isPageRendering: false,
   pageSvgCache: new Map(), // key -> { svg, strokes_count, width, height }
+  openedTapes: new Set(), // tape UUIDs currently toggled open
   zoomLevel: 1.0,
   userHasZoomed: false,
   activeMobileTab: "sidebar",
@@ -835,6 +836,7 @@ async function renderCurrentPage(showModal = true) {
       const cached = state.pageSvgCache.get(optKey);
       el.svgStage.innerHTML = cached.svg;
       state.currentSvgString = cached.svg;
+      syncTapeStates();
 
       // Update synchronized stroke states
       updateAudioSync();
@@ -887,6 +889,7 @@ async function renderCurrentPage(showModal = true) {
 
     // Inject SVG into DOM
     el.svgStage.innerHTML = state.currentSvgString;
+    syncTapeStates();
 
     // Resolve any PDF background / sticker placeholders using PDF.js
     await resolvePdfPlaceholders(el.svgStage);
@@ -1924,10 +1927,43 @@ function updateAudioSync(allowAutoFlip = false) {
   });
 }
 
+function syncTapeStates() {
+  if (!el.svgStage) return;
+  el.svgStage.querySelectorAll(".gn-tape[data-tape-id]").forEach((tapeEl) => {
+    const tid = tapeEl.getAttribute("data-tape-id");
+    tapeEl.setAttribute("data-tape-open", state.openedTapes.has(tid) ? "true" : "false");
+  });
+  el.svgStage.querySelectorAll("[data-tape-overlay]").forEach((ovEl) => {
+    const tid = ovEl.getAttribute("data-tape-overlay");
+    ovEl.classList.toggle("gn-tape-overlay-hidden", state.openedTapes.has(tid));
+  });
+}
+
 /**
- * Handle user clicking any stroke on canvas to jump audio
+ * Handle user clicking any tape or stroke on canvas
  */
 function handleCanvasStrokeClick(e) {
+  const tapeEl = e.target.closest(".gn-tape[data-tape-id]");
+  if (tapeEl) {
+    e.stopPropagation();
+    const tid = tapeEl.getAttribute("data-tape-id");
+    const nextOpen = !state.openedTapes.has(tid);
+    if (nextOpen) {
+      state.openedTapes.add(tid);
+    } else {
+      state.openedTapes.delete(tid);
+    }
+    if (el.svgStage) {
+      el.svgStage.querySelectorAll(`.gn-tape[data-tape-id="${CSS.escape(tid)}"]`).forEach((item) => {
+        item.setAttribute("data-tape-open", nextOpen ? "true" : "false");
+      });
+      el.svgStage.querySelectorAll(`[data-tape-overlay="${CSS.escape(tid)}"]`).forEach((ovEl) => {
+        ovEl.classList.toggle("gn-tape-overlay-hidden", nextOpen);
+      });
+    }
+    return;
+  }
+
   const target = e.target.closest("path[data-stroke-id]");
   if (!target) return;
   const strokeId = target.getAttribute("data-stroke-id");

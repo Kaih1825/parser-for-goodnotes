@@ -715,6 +715,35 @@ def page_to_svg(
 
     stroke_uuids = {s.uuid for s in page.strokes if s.uuid}
 
+    # Precompute bounding boxes of tape strokes so strokes written ON TOP of a tape
+    # (higher z_order and centered within the tape bbox) can hide when the tape is peeled off.
+    tape_regions: list[tuple[str, int, int, float, float, float, float]] = []
+    for s_idx, s in enumerate(page.strokes):
+        if not getattr(s, "is_tape", False):
+            continue
+        txs: list[float] = []
+        tys: list[float] = []
+        for seg in getattr(s, "native_cgpaths", ()):
+            for op, args in seg:
+                if op == "M":
+                    txs.append(args[0])
+                    tys.append(args[1])
+                elif op == "C":
+                    txs.extend((args[0], args[2], args[4]))
+                    tys.extend((args[1], args[3], args[5]))
+        if not txs and getattr(s, "outline_polygons", ()):
+            for poly in s.outline_polygons:
+                for px, py in poly:
+                    txs.append(px)
+                    tys.append(py)
+        if not txs and s.points:
+            for pt in s.points:
+                txs.append(pt.x)
+                tys.append(pt.y)
+        if txs and tys:
+            tid = s.uuid or f"tape-{s_idx}"
+            tape_regions.append((tid, s_idx, s.z_order, min(txs), min(tys), max(txs), max(tys)))
+
     for shape in page.shapes:
         if shape.uuid and shape.uuid in stroke_uuids:
             continue
@@ -986,6 +1015,18 @@ def page_to_svg(
         s_alpha = float(s_style.get("opacity", stroke.alpha))
         s_highlight = bool(s_style.get("highlight", False))
         data_attr = f' data-stroke-id="{html.escape(stroke.uuid)}"' if (stroke_data_attributes or stroke_styles is not None or stroke.uuid) else ""
+        if tape_regions and not getattr(stroke, "is_tape", False) and not stroke.is_highlighter and pts:
+            sxs = [pt.x for pt in pts]
+            sys = [pt.y for pt in pts]
+            scx = 0.5 * (min(sxs) + max(sxs))
+            scy = 0.5 * (min(sys) + max(sys))
+            matched_tape_id: str | None = None
+            for tid, t_idx, t_z, tmin_x, tmin_y, tmax_x, tmax_y in tape_regions:
+                is_above = (stroke.z_order > t_z) if (stroke.z_order and t_z) else (stroke_idx > t_idx)
+                if is_above and (tmin_x - 5.0 <= scx <= tmax_x + 5.0) and (tmin_y - 5.0 <= scy <= tmax_y + 5.0):
+                    matched_tape_id = tid
+            if matched_tape_id:
+                data_attr += f' data-tape-overlay="{html.escape(matched_tape_id)}"'
         css_class = ' class="gn-stroke"' if data_attr else ""
 
         dash_pattern = getattr(stroke, "dash_pattern", None)
@@ -1052,7 +1093,7 @@ def page_to_svg(
                     f'<g class="gn-tape-shadow" transform="translate({dx_sh:.2f}, {dy_sh:.2f})">'
                     f'<path d="{d_str}" fill="#000000" fill-opacity="0.18" stroke="none"/>'
                     f'</g>'
-                    f'<path class="{tape_body_cls}" d="{d_str}" fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="{s_color}" stroke-opacity="{s_alpha:.2f}" stroke-width="{seam_w:.2f}" stroke-linejoin="round" stroke-linecap="round"{data_attr}/>'
+                    f'<path class="{tape_body_cls}" d="{d_str}" fill="{s_color}" fill-opacity="{s_alpha:.2f}" stroke="none"{data_attr}/>'
                     f'</g>'
                 )
             else:

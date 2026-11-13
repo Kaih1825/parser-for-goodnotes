@@ -2047,6 +2047,34 @@ path[data-stroke-id]:hover {
   filter: drop-shadow(0 0 8px #facc15) drop-shadow(0 0 16px rgba(250, 204, 21, 0.9)) !important;
 }
 
+/* Interactive Tape Toggle (Cover / Reveal) */
+.gn-tape {
+  cursor: pointer;
+}
+
+.gn-tape .gn-tape-shadow,
+.gn-tape .gn-tape-body {
+  transition: opacity 0.18s ease, fill-opacity 0.18s ease, stroke-opacity 0.18s ease, filter 0.15s ease;
+}
+
+.gn-tape:hover .gn-tape-body {
+  filter: brightness(0.96);
+}
+
+.gn-tape[data-tape-open="true"] .gn-tape-shadow {
+  opacity: 0;
+}
+
+.gn-tape[data-tape-open="true"] .gn-tape-body {
+  fill-opacity: 0.25 !important;
+  stroke: none !important;
+}
+
+.gn-tape-overlay-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 
 
 

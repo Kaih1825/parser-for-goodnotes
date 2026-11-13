@@ -66,20 +66,21 @@ For more detailed parsing principles, please refer to the [GitHub Wiki](https://
 ### Feature Support Status
 
 #### ✅ Working / Fully Supported
-- **Fountain Pen, Ballpoint Pen, Brush Pen, Highlighter**: Full support with custom colors and line thicknesses.
+- **Fountain Pen, Ballpoint Pen, Brush Pen, Highlighter**: Full support with custom colors, line thicknesses, and `f9` z-order layering (highlighters rendered under ink).
+- **Pencil (`t16=25`)**: Pressure, azimuth, and tilt-aware rendering using multi-layer vector stipple dots with realistic overlap darkening.
+- **Arrows (Type 31 & 35)**: Straight (`m21`) and curved Catmull-Rom shafts, dashed/dotted patterns (`m32`/`m31`), and geometric arrowheads (open V, filled triangle, dot).
+- **Stickers & Tape (`t16=27` / `is_tape`)**: Full CGPath rendering including 7-float elliptical arcs, drop shadows, and interactive cover/reveal toggle in the Web Viewer and HTML5 Player.
 - **Audio Recordings & Timed Inking**: Audio extraction, timeline stroke synchronization, MP4 video replay, and interactive HTML5 player.
-- **Text**: Typed text fragments.
-- **Sticky Notes**: Sticky note contents and formatting.
-- **Images**: Embedded images.
+- **Text & Sticky Notes**: Typed text fragments, sticky note contents/formatting, and author metadata (`f33`).
+- **Images**: Embedded images with crop and rotation.
 - **Auto-Shapes & Shapes**: Vector shape rendering.
 - **Eraser**: Eraser strokes and line cuts.
 - **Lasso Tool**: Transformed, copied, or moved elements.
 - **PDF-backed Notebooks**: PDF background pages with dimensions (`/MediaBox`).
 
 #### ⚠️ Known Issues / In Progress
-- **Pencil**: Visible output, but pressure sensitivity is incorrect and tilt sensitivity is missing.
-- **Arrows**: Render output is currently highly unstable.
-- **Stickers / Elements**: Certain vector lines/strokes may fail to export.
+- **Tape Reveal State Persistence**: GoodNotes does not save tape cover/reveal toggle state inside `.goodnotes` archives (all tapes default to covered on load and can be toggled interactively in the Web Viewer).
+- **Rare Format Variants**: Unseen TPL schemas or proprietary protobuf sub-fields in future GoodNotes updates may require additional mapping.
 
 
 ## Installation & Setup
@@ -267,20 +268,21 @@ GoodNotes 是一個很棒的筆記軟體，但由於其封閉性，除了匯出�
 ### 功能支援狀態
 
 #### ✅ 目前測試可正常輸出
-- **鋼筆、原子筆、畫筆、螢光筆**：可處理不同顏色及粗細。
+- **鋼筆、原子筆、畫筆、螢光筆**：完整支援自訂顏色、粗細與 `f9` 圖層順序（螢光筆自動置於墨水筆跡底層）。
+- **鉛筆（`t16=25`）**：支援壓感、方位角與傾斜角（Tilt）感知，並以多圖層向量點狀（Stipple Dots）渲染，重疊處可自然加深。
+- **箭頭（Type 31 & 35）**：支援直線（`m21`）與平滑曲線、虛線／點線樣式（`m32`/`m31`），以及三種幾何箭頭端點（開口 V 形、實心三角形、圓點）。
+- **素材貼紙與膠帶（`t16=27` / `is_tape`）**：支援含 7 浮點數橢圓弧的原生 CGPath、膠帶陰影，以及網頁版／HTML5 播放器點擊切換「蓋住／揭開」效果。
 - **錄音與時間筆跡**：音訊提取、筆跡時間軸同步、MP4 影片重播、互動式 HTML5 網頁播放器。
-- **文字**：打字文字內容。
-- **便利貼**：便條紙內容。
-- **圖片**：內嵌圖片。
+- **文字與便利貼**：打字文字內容、便條紙開合狀態、內容與作者名稱（`f33`）。
+- **圖片**：內嵌圖片、裁切與旋轉。
 - **自動形狀、形狀**：幾何圖形。
 - **橡皮擦**：橡皮擦筆跡與切口。
 - **套索工具**：選取、移動與變形的元素。
 - **有 PDF 的筆記本**：PDF 背景與頁面尺寸。
 
-#### ⚠️ 目前已知有問題 / 開發中
-- **鉛筆**：可顯示，但壓感有問題，以及沒有傾斜感知。
-- **箭頭**：目前輸出極度不穩定。
-- **素材（貼紙）**：可能有部分線條無法輸出。
+#### ⚠️ 目前已知限制 / 開發中
+- **膠帶開關狀態**：GoodNotes 不會將膠帶的「蓋住／揭開」切換狀態儲存於 `.goodnotes` 檔案內，載入時預設為蓋住，可在網頁版中點擊互動切換。
+- **少見格式變體**：新版 GoodNotes 若出現尚未收錄的 TPL 格式或未知 protobuf 欄位，仍需持續補充解析規則。
 
 
 ## 安裝與設定

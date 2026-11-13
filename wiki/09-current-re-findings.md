@@ -190,7 +190,23 @@ GoodNotes 6 does not simply store centerlines for erased/clipped strokes or foun
 
 ---
 
-## 13. Parts Yet to Be Fully Defined
+## 13. Z-Order Layering, Pencil Stippling, Elliptical CGPath Arcs, Tape & Type 31 Arrows
+
+1. **Record Z-Order (`f9`) & Highlighter Layering**:
+   - Note record protobuf field `f9` stores a monotonic sequence/z-order integer. Sorting strokes by `z_order` (with highlighters grouped beneath non-highlighter ink) preserves exact GoodNotes stacking order.
+2. **Pencil Tool (`t16 == 25`, 11-tuple `A(S(uuuuuuuuuuu))`)**:
+   - Start point 5-tuple: `(x, y, azimuth, altitude, force)`.
+   - Segment 11-tuple: `(seed_u32, x1, y1, az1, alt1, frc1, x2, y2, az2, alt2, frc2)`.
+   - Rendered as deterministic multi-layer vector stipple dots (`M x,y h 0.01` with `stroke-linecap="round"`) split into arc-length chunks and interleaved core layers so overlapping passes naturally darken via SVG alpha compositing.
+3. **Elliptical CGPath Arcs (`t16 == 27`) & Tape (`is_tape`)**:
+   - `t16 == 27` uses `cmd == 5` / `3` with 7 floats `(cx, cy, rx, ry, a0, a1, rot)` for elliptical arcs (`E` op -> SVG `A rx ry rot_deg large_arc sweep x y`).
+   - Tape strokes (`is_tape`) render a subtle drop shadow and support interactive cover/reveal toggling in the Web Viewer and HTML5 Player (`data-tape-open`, hiding `data-tape-overlay` strokes written above the tape). Diffing `1104test.goodnotes` vs `off.goodnotes` confirmed GoodNotes does not persist tape open/close state in `.goodnotes`.
+4. **Type 31 Arrows (`shape.py`)**:
+   - Supports `m21` straight-line flag, `m20` endpoint-only mode, `m32`/`m31` dash patterns, natural Catmull-Rom endpoint tangents, and geometric arrowheads with trimmed shafts.
+
+---
+
+## 14. Parts Yet to Be Fully Defined
 
 The following items should still be viewed as ongoing format analysis, rather than a stable format specification:
 
@@ -426,7 +442,22 @@ GoodNotes 6 對於被橡皮擦切削（Erased/Clipped）的筆跡或鋼筆筆跡
 
 ---
 
-## 13. 目前尚未完全定義的部分
+## 13. 圖層 Z-Order、鉛筆點狀顆粒、橢圓 CGPath、膠帶互動與 Type 31 箭頭
+
+1. **圖層順序（`f9`）與螢光筆底層規則**：
+   - Note 記錄中的 protobuf 欄位 `f9` 存放單調遞增的圖層順序值；依 `z_order` 排序並將螢光筆置於一般墨水筆跡下方，可精準還原遮擋關係。
+2. **鉛筆工具（`t16 == 25`，11-tuple `A(S(uuuuuuuuuuu))`）**：
+   - 起始 5-tuple 為 `(x, y, azimuth, altitude, force)`；線段 11-tuple 為 `(seed_u32, x1, y1, az1, alt1, frc1, x2, y2, az2, alt2, frc2)`。
+   - 依壓感、方位角與傾斜角展開橢圓分佈，切分弧長區段並交錯輸出多圖層向量圓點（`M x,y h 0.01`），使來回塗抹重疊處能透過 Alpha 疊加自然變深。
+3. **橢圓弧 CGPath（`t16 == 27`）與膠帶（`is_tape`）**：
+   - `t16 == 27` 支援 7 浮點數 `(cx, cy, rx, ry, a0, a1, rot)` 的橢圓弧指令。
+   - 膠帶繪製底部陰影，並在網頁版與 HTML5 播放器支援點擊「蓋住／揭開」切換（`data-tape-open` 隱藏陰影與上層 `data-tape-overlay` 筆跡）。經比對實測檔案，GoodNotes 不會將膠帶開關狀態寫入 `.goodnotes` 壓縮檔。
+4. **Type 31 箭頭（`shape.py`）**：
+   - 解析 `m21` 直線旗標、`m20` 端點模式、`m32`/`m31` 虛線樣式，並以幾何計算箭頭與裁切後線身精準對接。
+
+---
+
+## 14. 目前尚未完全定義的部分
 
 以下項目仍應視為持續格式分析 (format analysis)，而不是穩定格式規格：
 

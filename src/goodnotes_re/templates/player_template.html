@@ -318,7 +318,11 @@
     }
     .gn-tape[data-tape-open="true"] .gn-tape-body {
       fill-opacity: 0.25 !important;
-      stroke-opacity: 0.25 !important;
+      stroke: none !important;
+    }
+    .gn-tape-overlay-hidden {
+      opacity: 0 !important;
+      pointer-events: none !important;
     }
 
     /* Mobile Responsive Adaptation (iOS Safari & Android) */
@@ -697,6 +701,10 @@
         const tid = tapeEl.getAttribute('data-tape-id');
         tapeEl.setAttribute('data-tape-open', openedTapes.has(tid) ? 'true' : 'false');
       });
+      rootElement.querySelectorAll('[data-tape-overlay]').forEach(ovEl => {
+        const tid = ovEl.getAttribute('data-tape-overlay');
+        ovEl.classList.toggle('gn-tape-overlay-hidden', openedTapes.has(tid));
+      });
     }
 
     function attachStrokeClickListeners(rootElement) {
@@ -708,13 +716,17 @@
         tapeEl.setAttribute('title', '點擊切換膠帶（蓋住 / 揭開）');
         tapeEl.addEventListener('click', (e) => {
           e.stopPropagation();
-          if (openedTapes.has(tid)) {
-            openedTapes.delete(tid);
-          } else {
+          const nextOpen = !openedTapes.has(tid);
+          if (nextOpen) {
             openedTapes.add(tid);
+          } else {
+            openedTapes.delete(tid);
           }
           document.querySelectorAll(`.gn-tape[data-tape-id="${CSS.escape(tid)}"]`).forEach(el => {
-            el.setAttribute('data-tape-open', openedTapes.has(tid) ? 'true' : 'false');
+            el.setAttribute('data-tape-open', nextOpen ? 'true' : 'false');
+          });
+          document.querySelectorAll(`[data-tape-overlay="${CSS.escape(tid)}"]`).forEach(ovEl => {
+            ovEl.classList.toggle('gn-tape-overlay-hidden', nextOpen);
           });
         });
       });
