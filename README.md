@@ -32,9 +32,10 @@ It **deliberately does NOT use heuristic float scanning**.
 
 | Source Archive | GoodNotes Original (`.jpg`) | This Project SVG Export (`.svg`) |
 | :---: | :---: | :---: |
-| **Example 1: Handwritten Formulas & Images**<br>([`ex1.goodnotes`](assets/ex1.goodnotes)) | <img src="assets/ex1.jpg" width="400" alt="GoodNotes Original 1"> | <img src="assets/ex1.svg" width="400" alt="Parser SVG 1"> |
-| **Example 2: Brush Styles & Stroke Variations**<br>([`ex2.goodnotes`](assets/ex2.goodnotes)) | <img src="assets/ex2.jpg" width="400" alt="GoodNotes Original 2"> | <img src="assets/ex2.svg" width="400" alt="Parser SVG 2"> |
-| **Example 3: Multi-Layer Images & Chinese Text**<br>([`ex3.goodnotes`](assets/ex3.goodnotes)) | <img src="assets/ex3.jpg" width="400" alt="GoodNotes Original 3"> | <img src="assets/ex3.svg" width="400" alt="Parser SVG 3"> |
+| **Example 1: Pens, Pencils, Arrows, Stickers, Tape & Sticky Notes**<br>([`ex1.goodnotes`](assets/ex1.goodnotes)) | <img src="assets/ex1.jpg" width="400" alt="GoodNotes Original 1"> | <img src="assets/ex1.svg" width="400" alt="Parser SVG 1 (Animated Tape & Sticky Notes)"> |
+| **Example 2: Handwritten Formulas & Images**<br>([`ex2.goodnotes`](assets/ex2.goodnotes)) | <img src="assets/ex2.jpg" width="400" alt="GoodNotes Original 2"> | <img src="assets/ex2.svg" width="400" alt="Parser SVG 2"> |
+| **Example 3: Brush Styles & Stroke Variations**<br>([`ex3.goodnotes`](assets/ex3.goodnotes)) | <img src="assets/ex3.jpg" width="400" alt="GoodNotes Original 3"> | <img src="assets/ex3.svg" width="400" alt="Parser SVG 3"> |
+| **Example 4: Multi-Layer Images & Chinese Text**<br>([`ex4.goodnotes`](assets/ex4.goodnotes)) | <img src="assets/ex4.jpg" width="400" alt="GoodNotes Original 4"> | <img src="assets/ex4.svg" width="400" alt="Parser SVG 4"> |
 
 ## Motivation & Under the Hood
 
@@ -232,9 +233,10 @@ See also the [Contributing Guide](CONTRIBUTING.md).
 
 | 原始封存檔 | GoodNotes 原版渲染 (`.jpg`) | 本專案 SVG 匯出 (`.svg`) |
 | :---: | :---: | :---: |
-| **範例 1：手寫公式與插圖**<br>([`ex1.goodnotes`](assets/ex1.goodnotes)) | <img src="assets/ex1.jpg" width="400" alt="GoodNotes 原版渲染 1"> | <img src="assets/ex1.svg" width="400" alt="本專案 SVG 匯出 1"> |
-| **範例 2：多款筆刷與色彩筆跡**<br>([`ex2.goodnotes`](assets/ex2.goodnotes)) | <img src="assets/ex2.jpg" width="400" alt="GoodNotes 原版渲染 2"> | <img src="assets/ex2.svg" width="400" alt="本專案 SVG 匯出 2"> |
-| **範例 3：多層圖文疊加與中文手寫**<br>([`ex3.goodnotes`](assets/ex3.goodnotes)) | <img src="assets/ex3.jpg" width="400" alt="GoodNotes 原版渲染 3"> | <img src="assets/ex3.svg" width="400" alt="本專案 SVG 匯出 3"> |
+| **範例 1：全工具總覽（鉛筆、箭頭、貼紙、膠帶與便利貼開合）**<br>([`ex1.goodnotes`](assets/ex1.goodnotes)) | <img src="assets/ex1.jpg" width="400" alt="GoodNotes 原版渲染 1"> | <img src="assets/ex1.svg" width="400" alt="本專案 SVG 匯出 1（膠帶與便利貼動態開合）"> |
+| **範例 2：手寫公式與插圖**<br>([`ex2.goodnotes`](assets/ex2.goodnotes)) | <img src="assets/ex2.jpg" width="400" alt="GoodNotes 原版渲染 2"> | <img src="assets/ex2.svg" width="400" alt="本專案 SVG 匯出 2"> |
+| **範例 3：多款筆刷與色彩筆跡**<br>([`ex3.goodnotes`](assets/ex3.goodnotes)) | <img src="assets/ex3.jpg" width="400" alt="GoodNotes 原版渲染 3"> | <img src="assets/ex3.svg" width="400" alt="本專案 SVG 匯出 3"> |
+| **範例 4：多層圖文疊加與中文手寫**<br>([`ex4.goodnotes`](assets/ex4.goodnotes)) | <img src="assets/ex4.jpg" width="400" alt="GoodNotes 原版渲染 4"> | <img src="assets/ex4.svg" width="400" alt="本專案 SVG 匯出 4"> |
 
 ## 開發動機與解析原理
 
