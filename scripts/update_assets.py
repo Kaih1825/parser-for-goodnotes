@@ -16,41 +16,41 @@ ASSETS_DIR = PROJECT_ROOT / "assets"
 
 ANIMATED_TOGGLE_CSS = """<style>
 @keyframes gn-tape-body-anim {
-  0%, 40%, 100% { fill-opacity: 1; }
-  50%, 90% { fill-opacity: 0.22; }
+  0%, 42%, 100% { fill-opacity: 1; }
+  50%, 92% { fill-opacity: 0.22; }
 }
 @keyframes gn-tape-cover-anim {
-  0%, 40%, 100% { opacity: 1; }
-  50%, 90% { opacity: 0; }
+  0%, 42%, 100% { opacity: 1; }
+  50%, 92% { opacity: 0; }
 }
 @keyframes gn-sticky-closed-anim {
-  0%, 40%, 100% { opacity: 1; }
-  50%, 90% { opacity: 0; }
+  0%, 42%, 100% { opacity: 1; }
+  50%, 92% { opacity: 0; }
 }
 @keyframes gn-sticky-open-anim {
-  0%, 40%, 100% { opacity: 0; }
-  50%, 90% { opacity: 1; }
+  0%, 42%, 100% { opacity: 0; }
+  50%, 92% { opacity: 1; }
 }
 .gn-tape-body {
-  animation: gn-tape-body-anim 6s ease-in-out infinite;
+  animation: gn-tape-body-anim 3s ease-in-out infinite;
 }
 .gn-tape-shadow,
 [data-tape-overlay] {
-  animation: gn-tape-cover-anim 6s ease-in-out infinite;
+  animation: gn-tape-cover-anim 3s ease-in-out infinite;
 }
 .gn-sticky-closed {
-  animation: gn-sticky-closed-anim 6s ease-in-out infinite;
+  animation: gn-sticky-closed-anim 3s ease-in-out infinite;
 }
 .gn-sticky-open {
-  animation: gn-sticky-open-anim 6s ease-in-out infinite;
+  animation: gn-sticky-open-anim 3s ease-in-out infinite;
 }
 </style>"""
 
 _STICKY_FOLDED_RE = re.compile(
-    r"(?:<!-- Sticky Note \(Folded\): [^-]+ -->\n[^\n]+\n)+",
+    r"(?:<!-- Sticky Note \(Folded\): .*? -->\n[^\n]+\n)+",
 )
 _STICKY_EXPANDED_RE = re.compile(
-    r"(?:<!-- Sticky Note \(Expanded\): [^-]+ -->\n(?:<(?:rect|text)[^\n]+\n)+)+",
+    r"(?:<!-- Sticky Note \(Expanded\): .*? -->\n(?:<(?:rect|text)[^\n]+\n)+)+",
 )
 
 
